@@ -10,7 +10,7 @@ app = func.FunctionApp()
 def trigger(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Request parameters: %s", req.params)
 
-    response = request("GET", "http://localhost:8080/api/inbound")
+    response = request("GET", "http://localhost:8080/api/inbound")  # temp local test
     response_content = response.content
     logging.info("Response content: %s", response_content)
 
