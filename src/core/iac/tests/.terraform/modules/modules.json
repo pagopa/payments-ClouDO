@@ -1,0 +1,1 @@
+{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"function_app","Source":"./..","Dir":".."},{"Key":"storage_account","Source":"git::https://github.com/pagopa/terraform-azurerm-v4.git//storage_account?ref=8265f125b07251a5efe7b9ff57707109de8b46ba","Dir":".terraform/modules/storage_account/storage_account"}]}
