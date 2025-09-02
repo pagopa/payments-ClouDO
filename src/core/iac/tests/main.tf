@@ -5,17 +5,14 @@ resource "azurerm_resource_group" "rg" {
   tags = var.tags
 }
 
-resource "azurerm_app_service_plan" "this" {
+resource "azurerm_service_plan" "this" {
   name                = "${local.project}-service-plan"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  kind                = "Linux"
+  os_type             = "Linux"
 
-  sku {
-    tier = "Standard"
-    size = "B1"
-  }
-  tags = var.tags
+  sku_name = "B1"
+  tags     = var.tags
 }
 
 module "storage_account" {
@@ -37,13 +34,7 @@ module "function_app" {
   name                       = "${local.project}-function-app"
   location                   = var.location
   resource_group_name        = azurerm_resource_group.rg.name
-  app_service_plan_id        = azurerm_app_service_plan.this.id
+  service_plan_id            = azurerm_service_plan.this.id
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
-
-  source_control = {
-    repo_url = "https://github.com/pagopa/unified-runbook-automation-manager"
-    branch   = "main"
-  }
-  kind = "StorageV2"
 }

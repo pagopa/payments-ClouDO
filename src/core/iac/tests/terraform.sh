@@ -19,6 +19,7 @@ case $action in
         fi
 
         az account set -s "${subscription}"
+        export ARM_SUBSCRIPTION_ID=$(az account list --query "[?isDefault].id" --output tsv)
 
         terraform init
         terraform "$action" $other
