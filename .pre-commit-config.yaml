@@ -1,7 +1,7 @@
 # Pre-commit per progetto Python 3.9.x
-# Include: formattazione (black/ruff), lint (ruff), ordinamento import (isort),
-# type checking (mypy), sicurezza (bandit), modernizzazione (pyupgrade),
-# e controlli generici.
+# Include: formatting (black/ruff), lint (ruff), import sorting (isort),
+# type checking (mypy), security (bandit), patch (pyupgrade),
+# and some generic controls.
 
 minimum_pre_commit_version: "3.0.0"
 
