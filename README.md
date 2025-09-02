@@ -4,6 +4,6 @@
 
 ## Architecture Overview
 
-<img src="docs/images/uram_logo.png" width="400" alt="Architecture Diagram"/>
+<img src="docs/images/uram_logo.png" width="400" style="border-radius: 50%;" alt="Architecture Diagram"/>
 
 Centralized runbook automation for manual or event-driven execution.
