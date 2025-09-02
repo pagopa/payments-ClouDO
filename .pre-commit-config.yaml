@@ -69,7 +69,6 @@ repos:
     hooks:
       - id: mypy
         language_version: python3.9
-        # Aggiungi qui eventuali stub/types necessari al tuo progetto
         additional_dependencies:
           - types-requests
 
@@ -93,7 +92,6 @@ repos:
       - id: terraform_fmt
       - id: terraform_validate
       - id: terraform_tflint
-        # Esempio: abilita una regola aggiuntiva; personalizza come necessario
         args:
           - "--args=--enable-rule=terraform_deprecated_interpolation"
       - id: terraform_tfsec
