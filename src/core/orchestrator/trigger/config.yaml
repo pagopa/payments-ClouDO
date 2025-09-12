@@ -1,0 +1,9 @@
+000-0000-0e0e00ww-wqesd:
+  name: pippo
+  description: "Hello Pippo!"
+  runbook: "http://localhost:8080/api/RunbookTest"
+000-0000-0e0e00ww-wqe01:
+  name: claudio
+  description: "Hello Claudio!"
+  runbook: "http://localhost:8080/api/RunbookTest"
+  script: claudio.sh
