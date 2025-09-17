@@ -10,7 +10,6 @@ import sys
 import time
 
 
-# Calcola Fibonacci in modo iterativo (veloce e prevedibile)
 def fibonacci(n: int) -> int:
     if n < 0:
         raise ValueError("n must be >= 0")

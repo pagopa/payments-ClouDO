@@ -255,7 +255,7 @@ def trigger(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespons
                     mimetype="application/json",
                 )
         except Exception as proc_err:
-            logging.warning(f"Verifica processi attivi fallita: {proc_err}")
+            logging.warning(f"Active process check failed: {proc_err}")
 
         # Call downstream runbook endpoint
         response = request("POST", schema.url, headers=build_headers(schema, exec_id))
@@ -264,7 +264,7 @@ def trigger(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespons
         # Status label for logs
         status_label = "accepted" if response.status_code == 202 else "error"
 
-        # Write log entry to table
+        # Write log entry to the table
         start_log = build_log_entry(
             status=status_label,
             partition_key=partition_key,
