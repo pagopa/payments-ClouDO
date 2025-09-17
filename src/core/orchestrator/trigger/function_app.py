@@ -3,12 +3,10 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlsplit, urlunsplit
 
 import azure.functions as func
-import yaml
 from requests import request
 
 app = func.FunctionApp()
@@ -19,6 +17,7 @@ app = func.FunctionApp()
 
 # Centralize configuration strings to avoid "magic strings"
 TABLE_NAME = "RunbookLogs"
+TABLE_SCHEMAS = "RunbookSchemas"
 STORAGE_CONN = "AzureWebJobsStorage"
 
 # Single source of truth for configuration file name
@@ -188,6 +187,35 @@ def receiver_log_entity(
     }
 
 
+def extract_schema_id_from_req(req: func.HttpRequest) -> Optional[str]:
+    """
+    Resolve schema_id from the incoming request:
+    1) Prefer query string (?id=...)
+    2) Fallback to JSON body: data.essentials.alertId (or schemaId if available)
+    Returns the alertId as-is. If you want only the trailing GUID, enable the split below.
+    """
+    q_id = req.params.get("id")
+    if q_id:
+        return q_id
+    logging.info("Resolving schema_id: %s", req.params.get("id"))
+    try:
+        body = req.get_json()
+    except ValueError:
+        body = None
+
+    if isinstance(body, dict):
+        alert_id = body.get("data", {}).get("essentials", {}).get(
+            "alertId"
+        ) or body.get("schemaId")
+        if alert_id:
+            aid = str(alert_id).strip()
+            if "/" in aid:
+                last = aid.strip("/").split("/")[-1]
+                return last or aid
+            return aid
+    return None
+
+
 # =========================
 # Domain Model
 # =========================
@@ -196,6 +224,7 @@ def receiver_log_entity(
 @dataclass
 class Schema:
     id: str
+    entity: Optional[dict] = None
     name: str | None = None
     description: str | None = None
     url: str | None = None
@@ -207,24 +236,19 @@ class Schema:
         if not self.id or not isinstance(self.id, str):
             raise ValueError("Schema id must be a non-empty string")
 
-        config_path = Path(__file__).parent / CONFIG_FILE
-        logging.info(f"Loading config from {config_path}")
+        if not self.entity:
+            raise ValueError(
+                "Entity not provided: use table input binding to inject the table entity"
+            )
 
-        if not config_path.exists():
-            raise FileNotFoundError(f"{CONFIG_FILE} does not exist")
-
-        with open(config_path) as f:
-            config = yaml.safe_load(f) or {}
-
-        schema_cfg = config.get(self.id)
-        if not schema_cfg:
-            raise ValueError(f"Schema id '{self.id}' not found in {CONFIG_FILE}")
-
-        self.name = schema_cfg.get("name", "")
-        self.description = schema_cfg.get("description")
-        self.url = schema_cfg.get("url")
-        self.runbook = schema_cfg.get("runbook")
-        self.oncall = str(schema_cfg.get("oncall", "false")).strip().lower() or "false"
+        e = self.entity
+        self.name = e.get("name") or e.get("name") or ""
+        self.description = e.get("description") or e.get("description")
+        self.url = e.get("url") or e.get("url")
+        self.runbook = e.get("runbook") or e.get("runbook")
+        self.oncall = (
+            str(e.get("oncall", e.get("oncall", "false"))).strip().lower() or "false"
+        )
 
 
 # =========================
@@ -232,15 +256,70 @@ class Schema:
 # =========================
 
 
-@app.route(route="Trigger", auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="Trigger/{id?}", auth_level=func.AuthLevel.FUNCTION)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
     connection=STORAGE_CONN,
 )
-def Trigger(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpResponse:
-    # Read schema identifier from a query string
-    schema = Schema(id=req.params.get("id", None))
+@app.table_input(
+    arg_name="entities",
+    table_name=TABLE_SCHEMAS,
+    connection=STORAGE_CONN,
+)
+def Trigger(
+    req: func.HttpRequest, log_table: func.Out[str], entities: str
+) -> func.HttpResponse:
+    # Route params (optional): available via req.route_params
+    route_params = getattr(req, "route_params", {}) or {}
+
+    # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
+    schema_id = (route_params.get("id") or "").strip() or extract_schema_id_from_req(
+        req
+    )
+    if not schema_id:
+        return func.HttpResponse(
+            json.dumps(
+                {
+                    "error": "Unable to resolve schema_id (missing route id and alertId/schemaId in request body)"
+                },
+                ensure_ascii=False,
+            ),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    # Parse bound table entities (binding returns a JSON array)
+    try:
+        parsed = json.loads(entities) if isinstance(entities, str) else entities
+    except Exception:
+        parsed = None
+
+    if not isinstance(parsed, list):
+        return func.HttpResponse(
+            json.dumps({"error": "Unexpected table result format"}, ensure_ascii=False),
+            status_code=500,
+            mimetype="application/json",
+        )
+
+    # Apply optional filter in code (case-insensitive fallback on 'Id'/'id')
+    def get_id(e: dict) -> str:
+        return str(e.get("Id") or e.get("id") or "").strip()
+
+    schema_entity = next((e for e in parsed if get_id(e) == schema_id), None)
+
+    if not schema_entity:
+        return func.HttpResponse(
+            json.dumps(
+                {"error": f"Schema with Id '{schema_id}' not found in {TABLE_SCHEMAS}"},
+                ensure_ascii=False,
+            ),
+            status_code=404,
+            mimetype="application/json",
+        )
+
+    # Build domain model
+    schema = Schema(id=schema_id, entity=schema_entity)
 
     # Pre-compute logging fields
     requested_at = format_requested_at()
