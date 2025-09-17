@@ -55,6 +55,11 @@ def resolve_caller_url(req: func.HttpRequest) -> str:
     )
 
 
+def utc_now_iso() -> str:
+    # ISO-like UTC timestamp used in health endpoint
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def make_log_entity(
     *,
     status: str,
@@ -67,6 +72,7 @@ def make_log_entity(
     url: Optional[str],
     runbook: Optional[str],
     log_msg: Optional[str],
+    oncall: Optional[str],
 ) -> dict[str, Any]:
     # Build a normalized log entity for Azure Table Storage
     return {
@@ -80,6 +86,7 @@ def make_log_entity(
         "Url": url,
         "Runbook": runbook,
         "Log": log_msg,
+        "OnCall": oncall,
     }
 
 
@@ -105,6 +112,7 @@ def receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                 "Name": get_header(req, "Name"),
                 "Id": get_header(req, "Id"),
                 "Runbook": get_header(req, "runbook"),
+                "OnCall": get_header(req, "OnCall"),
             }
         },
     )
@@ -112,7 +120,7 @@ def receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
     # Precompute keys and timestamps for logging
     requested_at_utc = utc_now_iso_seconds()
     partition_key = utc_partition_key()
-    row_key = uuid.uuid4().hex  # stable hex representation for RowKey
+    row_key = str(uuid.uuid4())  # stable hex representation for RowKey
     request_origin_url = resolve_caller_url(req)
     status_label = resolve_status(get_header(req, "Status"))
 
@@ -128,20 +136,45 @@ def receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
         url=request_origin_url,
         runbook=get_header(req, "runbook"),
         log_msg=get_header(req, "Log"),
+        oncall=get_header(req, "OnCall"),
     )
     log_table.set(json.dumps(log_entity, ensure_ascii=False))
 
-    if req.headers.get("oncall") == "true":
-        # Return a coherent JSON response
-        return func.HttpResponse(
-            json.dumps({"message": "Received Boss!"}, ensure_ascii=False),
-            status_code=200,
-            mimetype="application/json",
-        )
-    else:
+    if req.headers.get("OnCall") == "true" and status_label == "failed":
         # Return a coherent JSON response
         return func.HttpResponse(
             json.dumps({"message": "Chiamo il reperibile!"}, ensure_ascii=False),
             status_code=200,
             mimetype="application/json",
         )
+    else:
+        # Return a coherent JSON response
+        return func.HttpResponse(
+            json.dumps({"message": "Received Boss!"}, ensure_ascii=False),
+            status_code=200,
+            mimetype="application/json",
+        )
+
+
+# =========================
+# Heartbeat
+# =========================
+
+
+@app.route(route="healthz", auth_level=func.AuthLevel.ANONYMOUS)
+def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
+    now_utc = utc_now_iso()
+    body = json.dumps(
+        {
+            "status": "ok",
+            "time": now_utc,
+            "service": "Receiver",
+        },
+        ensure_ascii=False,
+    )
+    return func.HttpResponse(
+        body,
+        status_code=200,
+        mimetype="application/json",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )

@@ -13,8 +13,10 @@
   name: pluto
   description: "Hello Pluto!"
   url: "http://localhost:8080/api/RunbookTest"
+  runbook: test.py
 alert-xx-12-cosmos-giu:
   name: alert-xx-12-cosmos-giu
   description: "Oh no il cosmos!"
   url: "http://localhost:8080/api/RunbookTest"
   oncall: "true"
+  runbook: fake.sh
