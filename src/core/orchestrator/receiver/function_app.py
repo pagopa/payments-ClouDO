@@ -161,8 +161,8 @@ def receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
 # =========================
 
 
-@app.route(route="healthz", auth_level=func.AuthLevel.ANONYMOUS)
-def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
+@app.route(route="receiver_healthz", auth_level=func.AuthLevel.ANONYMOUS)
+def heartbeat_receiver(req: func.HttpRequest) -> func.HttpResponse:
     now_utc = utc_now_iso()
     body = json.dumps(
         {

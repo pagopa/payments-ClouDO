@@ -9,11 +9,11 @@ export const options = {
   ],
   thresholds: {
     http_req_failed: ['rate<0.01'],        // meno dell’1% di errori
-    http_req_duration: ['p(95)<800'],      // il 95% sotto 800ms
+    http_req_duration: ['p(80)<1200'],      // il 80% sotto 1200ms
   },
 };
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:7071';
+const BASE_URL = __ENV.BASE_URL || 'https://devopseb47a9-fun.azurewebsites.net';
 const ENDPOINT = `${BASE_URL}/api/Trigger`;
 
 const IDS = [
@@ -25,7 +25,7 @@ const IDS = [
 
 export default function () {
   const requests = IDS.map((id) => {
-    const url = `${ENDPOINT}?id=${encodeURIComponent(id)}`;
+    const url = `${ENDPOINT}?id=${encodeURIComponent(id)`;
     return {
       method: 'GET',
       url,

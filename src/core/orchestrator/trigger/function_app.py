@@ -2,8 +2,9 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Optional
 from urllib.parse import urlsplit, urlunsplit
 
 import azure.functions as func
@@ -15,6 +16,10 @@ app = func.FunctionApp()
 # =========================
 # Constants and Utilities
 # =========================
+
+# Centralize configuration strings to avoid "magic strings"
+TABLE_NAME = "RunbookLogs"
+STORAGE_CONN = "AzureWebJobsStorage"
 
 # Single source of truth for configuration file name
 CONFIG_FILE = "config.yaml"
@@ -33,6 +38,38 @@ def today_partition_key() -> str:
 def utc_now_iso() -> str:
     # ISO-like UTC timestamp used in health endpoint
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def utc_now_iso_seconds() -> str:
+    # Generate a UTC timestamp in ISO 8601 format with seconds precision
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def utc_partition_key() -> str:
+    # Generate a compact UTC date for PartitionKey (e.g., 20250915)
+    return datetime.now(timezone.utc).strftime("%Y%m%d")
+
+
+def get_header(
+    req: func.HttpRequest, name: str, default: Optional[str] = None
+) -> Optional[str]:
+    # Safely read a header value with a default fallback
+    return req.headers.get(name, default)
+
+
+def resolve_status(header_status: Optional[str]) -> str:
+    # Map incoming header status to a canonical label for logs
+    normalized = (header_status or "").strip().lower()
+    return "succeeded" if normalized == "completed" else normalized
+
+
+def resolve_caller_url(req: func.HttpRequest) -> str:
+    return (
+        get_header(req, "X-Caller-Url")
+        or get_header(req, "Referer")
+        or get_header(req, "Origin")
+        or req.url
+    )
 
 
 def _strip_after_api(url: str) -> str:
@@ -121,6 +158,36 @@ def build_log_entry(
     }
 
 
+def receiver_log_entity(
+    *,
+    status: str,
+    partition_key: str,
+    row_key: str,
+    exec_id: Optional[str],
+    requested_at: str,
+    name: Optional[str],
+    schema_id: Optional[str],
+    url: Optional[str],
+    runbook: Optional[str],
+    log_msg: Optional[str],
+    oncall: Optional[str],
+) -> dict[str, Any]:
+    # Build a normalized log entity for Azure Table Storage
+    return {
+        "PartitionKey": partition_key,
+        "RowKey": row_key,
+        "ExecId": exec_id,
+        "Status": status,
+        "RequestedAt": requested_at,
+        "Name": name,
+        "Id": schema_id,
+        "Url": url,
+        "Runbook": runbook,
+        "Log": log_msg,
+        "OnCall": oncall,
+    }
+
+
 # =========================
 # Domain Model
 # =========================
@@ -161,17 +228,17 @@ class Schema:
 
 
 # =========================
-# Azure Functions
+# HTTP Function: trigger
 # =========================
 
 
 @app.route(route="Trigger", auth_level=func.AuthLevel.FUNCTION)
 @app.table_output(
     arg_name="log_table",
-    table_name="RunbookLogs",
-    connection="AzureWebJobsStorage",
+    table_name=TABLE_NAME,
+    connection=STORAGE_CONN,
 )
-def trigger(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpResponse:
+def Trigger(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpResponse:
     # Read schema identifier from a query string
     schema = Schema(id=req.params.get("id", None))
 
@@ -181,80 +248,6 @@ def trigger(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespons
     exec_id = str(uuid.uuid4())
 
     try:
-        try:
-            processes_url = f"{_strip_after_api(schema.url)}/api/processes"
-            proc_resp = request(
-                "GET", processes_url, headers={"Accept": "application/json"}
-            )
-            proc_json = safe_json(proc_resp) or {}
-            runs = proc_json.get("runs", []) if isinstance(proc_json, dict) else []
-
-            def _parse_dt(s: str) -> datetime:
-                s2 = (s or "").strip()
-                if not s2:
-                    raise ValueError("empty datetime")
-                if s2.endswith("Z"):
-                    s2 = s2[:-1] + "+00:00"
-                try:
-                    dt = datetime.fromisoformat(s2)
-                    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-                except Exception:
-                    return datetime.strptime(s2, "%Y-%m-%d %H:%M:%S").replace(
-                        tzinfo=timezone.utc
-                    )
-
-            relevant = []
-            for r in runs:
-                try:
-                    if (r.get("id") == schema.id) and (r.get("status") == "running"):
-                        started = _parse_dt(
-                            r.get("startedAt", "") or r.get("requestedAt", "")
-                        )
-                        relevant.append((started, r))
-                except Exception:
-                    continue
-            relevant.sort(key=lambda x: x[0], reverse=True)
-            last_two_active = [r for _, r in relevant[:2]]
-
-            threshold = datetime.now(timezone.utc) - timedelta(minutes=10)
-            should_skip = any(
-                _parse_dt(p.get("startedAt", "") or p.get("requestedAt", ""))
-                >= threshold
-                for p in last_two_active
-            )
-
-            if should_skip:
-                skip_log = build_log_entry(
-                    status="skipped",
-                    partition_key=partition_key,
-                    exec_id=exec_id,
-                    requested_at=requested_at,
-                    name=schema.name or "",
-                    schema_id=schema.id,
-                    url=schema.url,
-                    runbook=schema.runbook,
-                    log={
-                        "reason": "process active in the last 10 minutes",
-                        "source": "worker.processes",
-                    },
-                    oncall=schema.oncall,
-                )
-                log_table.set(json.dumps(skip_log, ensure_ascii=False))
-                response_body = build_response_body(
-                    status_code=200,
-                    schema=schema,
-                    partition_key=partition_key,
-                    exec_id=exec_id,
-                    api_json={"message": "Skip: process active in the last 10 minutes"},
-                )
-                return func.HttpResponse(
-                    response_body,
-                    status_code=200,
-                    mimetype="application/json",
-                )
-        except Exception as proc_err:
-            logging.warning(f"Active process check failed: {proc_err}")
-
         # Call downstream runbook endpoint
         response = request("POST", schema.url, headers=build_headers(schema, exec_id))
         api_body = safe_json(response)
@@ -318,6 +311,72 @@ def trigger(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespons
         return func.HttpResponse(
             response_body,
             status_code=500,
+            mimetype="application/json",
+        )
+
+
+# =========================
+# HTTP Function: receiver
+# =========================
+
+
+@app.route(route="Receiver", auth_level=func.AuthLevel.FUNCTION)
+@app.table_output(
+    arg_name="log_table",
+    table_name=TABLE_NAME,
+    connection=STORAGE_CONN,
+)
+def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpResponse:
+    # Log only relevant and serializable headers for observability
+    logging.info(
+        "Receiver invoked",
+        extra={
+            "headers": {
+                "ExecId": get_header(req, "ExecId"),
+                "Status": get_header(req, "Status"),
+                "Name": get_header(req, "Name"),
+                "Id": get_header(req, "Id"),
+                "Runbook": get_header(req, "runbook"),
+                "OnCall": get_header(req, "OnCall"),
+            }
+        },
+    )
+
+    # Precompute keys and timestamps for logging
+    requested_at_utc = format_requested_at()
+    partition_key = utc_partition_key()
+    row_key = str(uuid.uuid4())  # stable hex representation for RowKey
+    request_origin_url = resolve_caller_url(req)
+    status_label = resolve_status(get_header(req, "Status"))
+
+    # Build and write the log entity
+    log_entity = receiver_log_entity(
+        status=status_label,
+        partition_key=partition_key,
+        row_key=row_key,
+        exec_id=get_header(req, "ExecId"),
+        requested_at=requested_at_utc,
+        name=get_header(req, "Name"),
+        schema_id=get_header(req, "Id"),
+        url=request_origin_url,
+        runbook=get_header(req, "runbook"),
+        log_msg=get_header(req, "Log"),
+        oncall=get_header(req, "OnCall"),
+    )
+    log_table.set(json.dumps(log_entity, ensure_ascii=False))
+
+    if req.headers.get("OnCall") == "true" and status_label == "failed":
+        # Return a coherent JSON response
+        return func.HttpResponse(
+            json.dumps({"message": "Chiamo il reperibile!"}, ensure_ascii=False),
+            status_code=200,
+            mimetype="application/json",
+        )
+    else:
+        # Return a coherent JSON response
+        return func.HttpResponse(
+            json.dumps({"message": "Received Boss!"}, ensure_ascii=False),
+            status_code=200,
             mimetype="application/json",
         )
 

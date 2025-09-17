@@ -10,8 +10,8 @@ import azure.functions as func
 import requests
 
 # Configuration constants
-RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7072/api/Receiver")
-QUEUE_NAME = os.environ.get("QUEUE-NAME", "runbooktest-work")
+RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7071/api/Receiver")
+QUEUE_NAME = os.environ.get("QUEUE_NAME", "runbooktest-work")
 STORAGE_CONNECTION = "AzureWebJobsStorage"
 
 app = func.FunctionApp()
@@ -24,6 +24,11 @@ _ACTIVE_LOCK = Lock()
 def _utc_now_iso() -> str:
     """Return the current UTC timestamp in ISO 8601 format without microseconds."""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _format_requested_at() -> str:
+    # Human-readable UTC timestamp for logs (e.g., 2025-09-15 12:34:56)
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _sanitize_header_value(value: str | None, max_len: int = 4000) -> str:
@@ -87,7 +92,7 @@ def _run_script(script_name: str) -> subprocess.CompletedProcess:
 )
 def runbook_test(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
     payload = {
-        "requestedAt": _utc_now_iso(),
+        "requestedAt": _format_requested_at(),
         "id": req.headers.get("Id"),
         "name": req.headers.get("Name"),
         "runbook": req.headers.get("runbook"),
@@ -106,8 +111,17 @@ def process_runbooktest(msg: func.QueueMessage) -> None:
     payload = json.loads(msg.get_body().decode("utf-8"))
     logging.info("Job started: %s", payload)
 
-    started_at = _utc_now_iso()
+    started_at = _format_requested_at()
     exec_id = payload.get("exec_id") or ""
+
+    # Check if this execution is already running
+    with _ACTIVE_LOCK:
+        items = list(_ACTIVE_RUNS.values())
+        if any(item["id"] == payload.get("id") for item in items):
+            log_msg = f"Execution {exec_id} already in progress, skipping"
+            logging.info(log_msg)
+            _post_status(payload, status="skipped", log_message=log_msg)
+            return
 
     # Register the execution as "in progress"
     with _ACTIVE_LOCK:
@@ -149,7 +163,7 @@ def process_runbooktest(msg: func.QueueMessage) -> None:
             _ACTIVE_RUNS.pop(exec_id, None)
         logging.info(
             "[%s] Job complete (requested at %s)",
-            payload.get("id"),
+            payload.get("ExecId"),
             payload.get("requestedAt"),
         )
 
