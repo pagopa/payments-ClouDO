@@ -1,0 +1,22 @@
+000-0000-0e0e00ww-wqesd:
+  name: pippo
+  description: "Hello Pippo!"
+  url: "http://localhost:8080/api/RunbookTest"
+  runbook: check_sys.sh
+000-0000-0e0e00ww-wqe01:
+  name: claudio
+  description: "Hello Claudio!"
+  url: "http://localhost:8080/api/RunbookTest"
+  runbook: claudio.sh
+  oncall: "true"
+000-0000-0e0e00ww-0002e:
+  name: pluto
+  description: "Hello Pluto!"
+  url: "http://localhost:8080/api/RunbookTest"
+  runbook: test.py
+alert-xx-12-cosmos-giu:
+  name: alert-xx-12-cosmos-giu
+  description: "Oh no il cosmos!"
+  url: "http://localhost:8080/api/RunbookTest"
+  oncall: "true"
+  runbook: fake.sh

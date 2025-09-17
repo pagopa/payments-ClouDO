@@ -3,6 +3,3 @@
 # azure-monitor-opentelemetry
 
 azure-functions
-requests
-logging
-azure-data-tables>=12.5.0

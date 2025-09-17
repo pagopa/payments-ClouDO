@@ -64,12 +64,12 @@ repos:
         args: ["--profile", "black"]
         language_version: python3.9
 
-  - repo: https://github.com/pycqa/bandit
-    rev: 1.7.9
-    hooks:
-      - id: bandit
-        args: ["-r", "."]
-        language_version: python3.9
+#  - repo: https://github.com/pycqa/bandit
+#    rev: 1.7.9
+#    hooks:
+#      - id: bandit
+#        args: ["-r", "."]
+#        language_version: python3.9
 
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.17.0

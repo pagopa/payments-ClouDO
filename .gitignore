@@ -208,4 +208,9 @@ zsdoc/data
 /tests/_output/*
 !/tests/_output/.gitkeep
 
+# Azurite
+*azurite*
+__blobstorage__
+__queuestorage__
+
 # End of https://www.toptal.com/developers/gitignore/api/python,zsh
