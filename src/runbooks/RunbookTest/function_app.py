@@ -10,8 +10,8 @@ import azure.functions as func
 import requests
 
 # Configuration constants
-RECEIVER_URL = "http://localhost:7072/api/Receiver"
-QUEUE_NAME = "runbooktest-work"
+RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7072/api/Receiver")
+QUEUE_NAME = os.environ.get("QUEUE-NAME", "runbooktest-work")
 STORAGE_CONNECTION = "AzureWebJobsStorage"
 
 app = func.FunctionApp()

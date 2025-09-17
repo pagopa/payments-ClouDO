@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -216,8 +216,6 @@ def trigger(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespons
             relevant.sort(key=lambda x: x[0], reverse=True)
             last_two_active = [r for _, r in relevant[:2]]
 
-            from datetime import timedelta
-
             threshold = datetime.now(timezone.utc) - timedelta(minutes=10)
             should_skip = any(
                 _parse_dt(p.get("startedAt", "") or p.get("requestedAt", ""))
@@ -363,10 +361,10 @@ def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
 )
 def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
     """
-    Restituisce l'entità della tabella RunbookLogs identificata da PartitionKey e RowKey.
+    Returns the entity from the RunbookLogs table identified by PartitionKey and RowKey..
     Uso: GET /api/logs/{partitionKey}/{execId}
     """
-    # Se l'entità non esiste, il binding fornisce None/empty
+    # If the entity does not exist, the binding returns None/empty.
     if not log_entity:
         return func.HttpResponse(
             json.dumps({"error": "Entity not found"}, ensure_ascii=False),
@@ -374,7 +372,7 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
             mimetype="application/json",
         )
 
-    # log_entity è una stringa JSON dell'entità completa
+    # log_entity is a JSON string of the complete entity
     return func.HttpResponse(
         log_entity,
         status_code=200,
