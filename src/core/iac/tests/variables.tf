@@ -1,7 +1,7 @@
 variable "prefix" {
   description = "Resorce prefix"
   type        = string
-  default     = "azrmtest"
+  default     = "devops"
 }
 
 variable "location" {

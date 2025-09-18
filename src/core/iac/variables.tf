@@ -1,6 +1,6 @@
-variable "name" {
+variable "prefix" {
   type        = string
-  description = "(Required) The name of the Virtual Machine Scale Set. Changing this forces a new resource to be created."
+  description = "(Required) The prefix of resources. Changing this forces a new resource to be created."
 }
 
 variable "location" {
@@ -13,20 +13,19 @@ variable "resource_group_name" {
   description = "(Required) The name of the Resource Group in which the resources should be exist."
 }
 
-variable "service_plan_id" {
-  description = "The ID of the App Service Plan to host the Function App."
+variable "application_insights_name" {
+  description = "The ID of the Application Insights to be linked to the Function App."
   type        = string
 }
 
-variable "storage_account_name" {
-  description = "The name of the Storage Account used by the Function App."
+variable "application_insights_rg" {
+  description = "The RG of the Application Insights to be linked to the Function App."
   type        = string
 }
 
-variable "storage_account_access_key" {
-  description = "The access key of the Storage Account used by the Function App."
+variable "schemas" {
+  description = "The name of the Storage Table for runbook schemas."
   type        = string
-  sensitive   = true
 }
 
 variable "tags" {
