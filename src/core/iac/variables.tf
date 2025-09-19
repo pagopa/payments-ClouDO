@@ -37,7 +37,7 @@ variable "github_repo_info" {
   })
   description = "A map containing GitHub repository information such as repo, branch, token."
   default = {
-    repo_name    = "payments-cloudo"
+    repo_name    = "pagopa/payments-cloudo"
     repo_branch  = "main"
     repo_token   = ""
     runbook_path = "src/runbooks"

@@ -84,7 +84,7 @@ resource "azurerm_linux_function_app" "worker" {
   }
 
   lifecycle {
-    ignore_changes = [app_settings, tags]
+    ignore_changes = [tags]
   }
 
   tags = var.tags
