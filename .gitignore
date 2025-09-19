@@ -215,4 +215,5 @@ __queuestorage__
 
 # End of https://www.toptal.com/developers/gitignore/api/python,zsh
 
-*+./terraform
+# Local .terraform directories
+**/.terraform/*
