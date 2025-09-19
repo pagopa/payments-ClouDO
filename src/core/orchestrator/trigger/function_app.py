@@ -21,9 +21,6 @@ TABLE_NAME = "RunbookLogs"
 TABLE_SCHEMAS = "RunbookSchemas"
 STORAGE_CONN = "AzureWebJobsStorage"
 
-# Single source of truth for configuration file name
-CONFIG_FILE = "config.yaml"
-
 
 def format_requested_at() -> str:
     # Human-readable UTC timestamp for logs (e.g., 2025-09-15 12:34:56)
@@ -220,7 +217,6 @@ class Schema:
     oncall: str | None = "false"
 
     def __post_init__(self):
-        # Validate and load schema configuration from CONFIG_FILE
         if not self.id or not isinstance(self.id, str):
             raise ValueError("Schema id must be a non-empty string")
 

@@ -14,13 +14,13 @@ import azure.functions as func
 import requests
 
 # Configuration constants
-RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7071/api/Receiver")
+RECEIVER_URL = os.environ.get("RECEIVER_URL")
 QUEUE_NAME = os.environ.get("QUEUE_NAME", "runbooktest-work")
 STORAGE_CONNECTION = "AzureWebJobsStorage"
 SCRIPTS_CONTAINER = os.environ.get("SCRIPTS_CONTAINER", "cloudo-runbooks")
 
 # GitHub fallback configuration
-GITHUB_REPO = os.environ.get("GITHUB_REPO")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "pagopa/payments-cloudo")
 GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_PATH_PREFIX = os.environ.get("GITHUB_PATH_PREFIX", "src/runbooks")
@@ -92,77 +92,116 @@ def _post_status(payload: dict, status: str, log_message: str) -> requests.Respo
         raise
 
 
+def _github_auth_headers() -> list[dict]:
+    """
+    Build alternative auth headers for GitHub:
+    - Prefer Bearer (fine-grained tokens)
+    - Fallback to 'token' (classic PAT)
+    Always include User-Agent and Accept.
+    """
+    base = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "azure-func-runbook/1.0",
+    }
+    headers_list: list[dict] = [base.copy()]
+    if GITHUB_TOKEN:
+        # Try Bearer first
+        h1 = base.copy()
+        h1["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+        headers_list.insert(0, h1)
+        # Then classic 'token' scheme
+        h2 = base.copy()
+        h2["Authorization"] = f"token {GITHUB_TOKEN}"
+        headers_list.append(h2)
+    return headers_list
+
+
 def _download_from_github(script_name: str) -> str:
     """
-    Download a script from GitHub using the Contents API.
-    - Supports private repos when GITHUB_TOKEN is provided.
-    - Uses GITHUB_REPO, GITHUB_BRANCH, and optional GITHUB_PATH_PREFIX.
+    Download a script from GitHub using the Contents API with proper auth.
+    Tries both Bearer and 'token' schemes and falls back to raw download.
     Returns the local temporary file path.
     """
-    if not GITHUB_REPO:
-        raise RuntimeError("GITHUB_REPO is not configured")
+    owner_repo = (GITHUB_REPO or "").strip()
+    if not owner_repo or "/" not in owner_repo:
+        raise RuntimeError(
+            "GITHUB_REPO must be set as 'owner/repo' (e.g., 'pagopa/payments-cloudo')"
+        )
+    branch = (GITHUB_BRANCH or "main").strip()
+    prefix = (GITHUB_PATH_PREFIX or "").strip().strip("/")
 
-    # Compose the path inside the repository
-    path_parts = [p for p in [GITHUB_PATH_PREFIX.strip("/"), script_name] if p]
+    path_parts = [p for p in [prefix, script_name] if p]
     repo_path = "/".join(path_parts)
 
-    # GitHub Contents API endpoint
-    api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{repo_path}"
-    params = {"ref": GITHUB_BRANCH}
-    headers = {"Accept": "application/vnd.github+json"}
-    if GITHUB_TOKEN:
-        # Both 'token' and 'Bearer' are accepted by GitHub; prefer Bearer per modern guidance
-        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    api_url = f"https://api.github.com/repos/{owner_repo}/contents/{repo_path}"
+    params = {"ref": branch}
 
-    resp = requests.get(api_url, headers=headers, params=params, timeout=30)
-    if resp.status_code == 404:
-        raise FileNotFoundError(
-            f"GitHub file not found: {GITHUB_REPO}/{repo_path}@{GITHUB_BRANCH}"
-        )
-    if not resp.ok:
-        raise RuntimeError(f"GitHub API error ({resp.status_code}): {resp.text[:500]}")
+    last_resp = None
+    data = None
 
-    data = resp.json()
+    # Try Contents API with multiple auth headers
+    for headers in _github_auth_headers():
+        try:
+            resp = requests.get(api_url, headers=headers, params=params, timeout=30)
+            last_resp = resp
+            logging.info("GitHub GET %s -> %s", resp.url, resp.status_code)
+            if resp.status_code == 200:
+                data = resp.json()
+                break
+            # If unauthorized/forbidden, try next header variant
+            if resp.status_code in (401, 403):
+                continue
+            # For 404, don't immediately fail; we will also try raw fallback below
+        except requests.RequestException as e:
+            logging.warning("GitHub request error: %s", e)
+            continue
+
     content_bytes: bytes | None = None
-
-    # Case 1: API returns base64 'content'
     if (
         isinstance(data, dict)
         and data.get("encoding") == "base64"
         and "content" in data
     ):
         try:
-            # GitHub may include line breaks in 'content'
             b64 = data["content"].replace("\n", "")
             content_bytes = base64.b64decode(b64)
         except Exception as e:
             raise RuntimeError(f"Failed to decode GitHub content: {e}") from e
 
-    # Case 2: Fallback to 'download_url'
     if content_bytes is None:
-        download_url = data.get("download_url")
-        if not download_url:
-            raise RuntimeError(
-                "GitHub response missing both 'content' and 'download_url'"
-            )
-        # Use headers for auth when downloading raw content (works for private repos)
-        raw_headers = {}
-        if GITHUB_TOKEN:
-            raw_headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
-        raw_resp = requests.get(download_url, headers=raw_headers, timeout=30)
-        if not raw_resp.ok:
-            raise RuntimeError(
-                f"GitHub raw download error ({raw_resp.status_code}): {raw_resp.text[:500]}"
-            )
-        content_bytes = raw_resp.content
+        # Raw fallback: https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}
+        raw_url = f"https://raw.githubusercontent.com/{owner_repo}/{branch}/{repo_path}"
+        raw_ok = False
+        for headers in _github_auth_headers():
+            # Raw supports same auth headers
+            try:
+                raw_resp = requests.get(raw_url, headers=headers, timeout=30)
+                logging.info("GitHub RAW %s -> %s", raw_url, raw_resp.status_code)
+                if raw_resp.status_code == 200:
+                    content_bytes = raw_resp.content
+                    raw_ok = True
+                    break
+                if raw_resp.status_code in (401, 403):
+                    continue
+            except requests.RequestException as e:
+                logging.warning("GitHub raw request error: %s", e)
+                continue
 
-    # Write to a temporary file
+        if not raw_ok:
+            # Build meaningful error based on last response
+            status = getattr(last_resp, "status_code", "n/a")
+            url = getattr(last_resp, "url", api_url)
+            raise FileNotFoundError(
+                f"GitHub file not found or not accessible: {owner_repo}/{repo_path}@{branch} "
+                f"(last status={status}, url={url}). "
+                "Check token scopes (repo or fine-grained: Contents Read, Metadata Read) and SSO authorization."
+            )
+
     suffix = ".py" if script_name.lower().endswith(".py") else ""
     fd, tmp_path = tempfile.mkstemp(prefix="runbook_", suffix=suffix)
     with os.fdopen(fd, "wb") as f:
         f.write(content_bytes)
 
-    # Make it executable (useful for shell scripts)
     try:
         st = os.stat(tmp_path)
         os.chmod(tmp_path, st.st_mode | stat.S_IEXEC)
@@ -173,40 +212,44 @@ def _download_from_github(script_name: str) -> str:
 
 
 def _run_script(script_name: str) -> subprocess.CompletedProcess:
-    """Run the requested script fetching it from Blob Storage (with local fallback)."""
-    # 1) Try Blob Storage
-    tmp_path = None
-    blob_error = None
-    script_path = None
-    try:
-        tmp_path = _download_from_github(script_name)
-        script_path = tmp_path
-    except Exception as e:
-        blob_error = e
-        logging.warning(f"Failed to fetch script: {e}")
+    """Run the requested script fetching it from Blob Storage, falling back to local folder, then GitHub."""
+    script_path: str | None = None
+    tmp_path: str | None = None
+    github_tmp_path: str | None = None
+    github_error: Exception | None = None
 
-    if not os.path.exists(script_path):
-        # If we have a blob error, include it for diagnosis
-        if blob_error:
-            raise FileNotFoundError(
-                f"Script not found on Blob ({SCRIPTS_CONTAINER}/{script_name}) nor locally ({script_path}). "
-                f"Blob details: {type(blob_error).__name__}: {blob_error}"
-            )
-        raise FileNotFoundError(f"Script not found: {script_path}")
+    # 3) GitHub if not found locally
+    if script_path is None:
+        try:
+            github_tmp_path = _download_from_github(script_name)
+            logging.info("Downloaded script from GitHub: %s", github_tmp_path)
+            script_path = github_tmp_path
+        except Exception as e:
+            github_error = e
 
-    # If it's a Python script, run with current interpreter; otherwise execute directly
-    if script_path.lower().endswith(".py"):
-        cmd = [sys.executable, script_path]
-    else:
-        cmd = [script_path]
+    if script_path is None or not os.path.exists(script_path):
+        details = []
+        if github_error:
+            details.append(f"GitHub: {type(github_error).__name__}: {github_error}")
+        raise FileNotFoundError(
+            f"Script '{script_name}' not found. Checked GitHub. "
+            f"Details: {' | '.join(details) if details else 'no extra details'}"
+        )
 
+    # Execute
+    cmd = (
+        [sys.executable, script_path]
+        if script_path.lower().endswith(".py")
+        else [script_path]
+    )
     try:
         return subprocess.run(cmd, capture_output=True, text=True, check=True)
     finally:
-        # Clean up temporary file if created
-        if tmp_path:
+        # Clean up only if paths are valid files
+        for p in (tmp_path, github_tmp_path):
             try:
-                os.remove(tmp_path)
+                if isinstance(p, str) and p and os.path.exists(p):
+                    os.remove(p)
             except Exception:
                 pass
 
