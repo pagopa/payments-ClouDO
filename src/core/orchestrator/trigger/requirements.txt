@@ -5,3 +5,5 @@
 azure-functions
 requests
 PyYAML
+opsgenie-sdk==2.1.5
+slack-sdk==3.36.0

@@ -25,7 +25,7 @@ const IDS = [
 
 export default function () {
   const requests = IDS.map((id) => {
-    const url = `${ENDPOINT}?id=${encodeURIComponent(id)`;
+    const url = `${ENDPOINT}?id=${encodeURIComponent(id)}`;
     return {
       method: 'GET',
       url,

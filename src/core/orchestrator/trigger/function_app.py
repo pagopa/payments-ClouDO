@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import urlsplit, urlunsplit
+from zoneinfo import ZoneInfo
 
 import azure.functions as func
 from requests import request
@@ -26,22 +27,38 @@ CONFIG_FILE = "config.yaml"
 
 def format_requested_at() -> str:
     # Human-readable UTC timestamp for logs (e.g., 2025-09-15 12:34:56)
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return (
+        datetime.now(timezone.utc)
+        .astimezone(ZoneInfo("Europe/Rome"))
+        .strftime("%Y-%m-%d %H:%M:%S")
+    )
 
 
 def today_partition_key() -> str:
     # Compact UTC date used as PartitionKey (e.g., 20250915)
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
+    return (
+        datetime.now(timezone.utc)
+        .astimezone(ZoneInfo("Europe/Rome"))
+        .strftime("%Y%m%d")
+    )
 
 
 def utc_now_iso() -> str:
     # ISO-like UTC timestamp used in health endpoint
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (
+        datetime.now(timezone.utc)
+        .astimezone(ZoneInfo("Europe/Rome"))
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
 
 
 def utc_now_iso_seconds() -> str:
     # Generate a UTC timestamp in ISO 8601 format with seconds precision
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return (
+        datetime.now(timezone.utc)
+        .astimezone(ZoneInfo("Europe/Rome"))
+        .isoformat(timespec="seconds")
+    )
 
 
 def utc_partition_key() -> str:
@@ -130,34 +147,6 @@ def build_response_body(
 
 
 def build_log_entry(
-    status: str,
-    partition_key: str,
-    exec_id: str,
-    requested_at: str,
-    name: str,
-    schema_id: str,
-    url: str | None,
-    runbook: str | None,
-    log: dict | str | None,
-    oncall: str | None = "false",
-) -> dict:
-    # Standardize the log entity written to the Azure Table storage
-    return {
-        "PartitionKey": partition_key,
-        "RowKey": exec_id,
-        "ExecId": exec_id,
-        "Status": status,
-        "RequestedAt": requested_at,
-        "Name": name,
-        "Id": schema_id,
-        "Url": url,
-        "Runbook": runbook,
-        "Log": log,
-        "OnCall": oncall,
-    }
-
-
-def receiver_log_entity(
     *,
     status: str,
     partition_key: str,
@@ -202,7 +191,6 @@ def extract_schema_id_from_req(req: func.HttpRequest) -> Optional[str]:
         body = req.get_json()
     except ValueError:
         body = None
-
     if isinstance(body, dict):
         alert_id = body.get("data", {}).get("essentials", {}).get(
             "alertId"
@@ -339,12 +327,13 @@ def Trigger(
             status=status_label,
             partition_key=partition_key,
             exec_id=exec_id,
+            row_key=exec_id,
             requested_at=requested_at,
             name=schema.name or "",
             schema_id=schema.id,
             url=schema.url,
             runbook=schema.runbook,
-            log=api_body,
+            log_msg=api_body,
             oncall=schema.oncall,
         )
         log_table.set(json.dumps(start_log, ensure_ascii=False))
@@ -377,12 +366,13 @@ def Trigger(
             status="error",
             partition_key=partition_key,
             exec_id=exec_id,
+            row_key=exec_id,
             requested_at=requested_at,
             name=schema.name or "",
             schema_id=schema.id,
             url=schema.url,
             runbook=schema.runbook,
-            log=str(e),
+            log_msg=str(e),
             oncall=schema.oncall,
         )
         log_table.set(json.dumps(error_log, ensure_ascii=False))
@@ -429,7 +419,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
     status_label = resolve_status(get_header(req, "Status"))
 
     # Build and write the log entity
-    log_entity = receiver_log_entity(
+    log_entity = build_log_entry(
         status=status_label,
         partition_key=partition_key,
         row_key=row_key,
