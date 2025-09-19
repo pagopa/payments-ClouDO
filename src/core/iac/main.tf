@@ -18,14 +18,16 @@ resource "azurerm_linux_function_app" "orchestrator" {
   service_plan_id            = azurerm_service_plan.this.id
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
+  https_only                 = true
 
   identity {
     type = "SystemAssigned"
   }
 
   site_config {
-    application_stack {
-      python_version = "3.12"
+    app_service_logs {
+      disk_quota_mb         = 35
+      retention_period_days = 0
     }
     application_insights_connection_string = data.azurerm_application_insights.this.connection_string
     application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
@@ -56,14 +58,16 @@ resource "azurerm_linux_function_app" "worker" {
   service_plan_id            = azurerm_service_plan.this.id
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
+  https_only                 = true
 
   identity {
     type = "SystemAssigned"
   }
 
   site_config {
-    application_stack {
-      python_version = "3.12"
+    app_service_logs {
+      disk_quota_mb         = 35
+      retention_period_days = 0
     }
     application_insights_connection_string = data.azurerm_application_insights.this.connection_string
     application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
