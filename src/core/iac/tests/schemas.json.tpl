@@ -7,7 +7,7 @@
       "name": "pippo",
       "description": "Hello Pippo V1!",
       "runbook": "check_sys.sh",
-      "worker": "RunbookTest",
+      "worker": "Runbook",
       "oncall": "true"
     },
     {
@@ -15,7 +15,7 @@
       "name": "pippo",
       "description": "Hello Pippo V2!",
       "runbook": "check_sys.sh",
-      "worker": "RunbookTest",
+      "worker": "Runbook",
       "oncall": "true"
     }]
   },
@@ -27,7 +27,7 @@
       "name": "infra-pippo",
       "description": "Hello Pippo INFRA!",
       "runbook": "check_sys.sh",
-      "worker": "RunbookTest",
+      "worker": "Runbook",
       "oncall": "true"
     }]
   }
