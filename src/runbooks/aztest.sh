@@ -1,5 +1,7 @@
 #!/bin/bash
 
+kubectl -h
+
 # Log in using managed identity
 echo "Logging in with managed identity..."
 if ! az login --identity; then
