@@ -18,18 +18,21 @@ resource "azurerm_linux_function_app" "orchestrator" {
   service_plan_id            = azurerm_service_plan.this.id
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
+  https_only                 = true
 
   identity {
     type = "SystemAssigned"
   }
 
   site_config {
-    application_stack {
-      python_version = "3.12"
+    app_service_logs {
+      disk_quota_mb         = 35
+      retention_period_days = 0
     }
     application_insights_connection_string = data.azurerm_application_insights.this.connection_string
     application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
     always_on                              = true
+    http2_enabled                          = true
 
     # health_check_eviction_time_in_min = 2
     # health_check_path = "/healthz"
@@ -55,30 +58,37 @@ resource "azurerm_linux_function_app" "worker" {
   service_plan_id            = azurerm_service_plan.this.id
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
+  https_only                 = true
 
   identity {
     type = "SystemAssigned"
   }
 
   site_config {
-    application_stack {
-      python_version = "3.12"
+    app_service_logs {
+      disk_quota_mb         = 35
+      retention_period_days = 0
     }
     application_insights_connection_string = data.azurerm_application_insights.this.connection_string
     application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
     always_on                              = true
+    http2_enabled                          = true
     # health_check_eviction_time_in_min = 2
     # health_check_path = "/healthz"
   }
   app_settings = {
-    "QUEUE_NAME"        = azurerm_storage_queue.this.name
-    "TABLE_SCHEMA_NAME" = azurerm_storage_table.runbook_schemas.name
-    "TABLE_LOGGER_NAME" = azurerm_storage_table.runbook_logger.name
-    "RECEIVER_URL"      = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/Receiver?code=${data.azurerm_function_app_host_keys.orchestrator.default_function_key}"
+    "QUEUE_NAME"         = azurerm_storage_queue.this.name
+    "TABLE_SCHEMA_NAME"  = azurerm_storage_table.runbook_schemas.name
+    "TABLE_LOGGER_NAME"  = azurerm_storage_table.runbook_logger.name
+    "RECEIVER_URL"       = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/Receiver?code=${data.azurerm_function_app_host_keys.orchestrator.default_function_key}"
+    "GITHUB_REPO"        = var.github_repo_info.repo_name
+    "GITHUB_BRANCH"      = var.github_repo_info.repo_branch
+    "GITHUB_TOKEN"       = var.github_repo_info.repo_token
+    "GITHUB_PATH_PREFIX" = var.github_repo_info.runbook_path
   }
 
   lifecycle {
-    ignore_changes = [app_settings, tags]
+    ignore_changes = [tags]
   }
 
   tags = var.tags
