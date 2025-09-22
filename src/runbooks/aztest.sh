@@ -2,7 +2,7 @@
 
 # Log in using managed identity
 echo "Logging in with managed identity..."
-if ! az login --identity; then
+if ! az login --identity --subscription "$AZURE_SUBSCRIPTION_ID"; then
     echo "Failed to login with managed identity"
     exit 1
 fi
