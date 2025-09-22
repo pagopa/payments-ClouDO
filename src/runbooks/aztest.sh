@@ -3,7 +3,7 @@
 # Log in using managed identity
 echo "Logging in with managed identity..."
 if [[ -n "${AZURE_CLIENT_ID:-}" ]]; then
-  if ! az login --identity --username "$AZURE_CLIENT_ID"; then
+  if ! az login --identity --client-id "$AZURE_CLIENT_ID"; then
     echo "1 Failed to login with managed identity"
     exit 1
   fi
