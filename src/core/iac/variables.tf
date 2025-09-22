@@ -28,6 +28,22 @@ variable "schemas" {
   type        = string
 }
 
+variable "github_repo_info" {
+  type = object({
+    repo_name    = string
+    repo_branch  = string
+    repo_token   = string
+    runbook_path = string
+  })
+  description = "A map containing GitHub repository information such as repo, branch, token."
+  default = {
+    repo_name    = "pagopa/payments-cloudo"
+    repo_branch  = "main"
+    repo_token   = ""
+    runbook_path = "src/runbooks"
+  }
+}
+
 variable "tags" {
   description = "A mapping of tags to assign to the Function App."
   type        = map(string)
