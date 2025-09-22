@@ -30,5 +30,17 @@
       "worker": "Runbook",
       "oncall": "true"
     }]
+  },
+  {
+    "partition_key": "alert",
+    "entity": [
+    {
+      "id": "12345678-1234-1234-1234-1234567890ab",
+      "name": "smart-alert",
+      "description": "SMART!",
+      "runbook": "check_sys.sh",
+      "worker": "Runbook",
+      "oncall": "true"
+    }]
   }
 ]

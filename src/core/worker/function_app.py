@@ -1,18 +1,30 @@
+import base64
 import json
 import logging
 import os
+import stat
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from threading import Lock
+from zoneinfo import ZoneInfo
 
 import azure.functions as func
 import requests
 
 # Configuration constants
-RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7072/api/Receiver")
-QUEUE_NAME = os.environ.get("QUEUE-NAME", "runbooktest-work")
+RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7071/api/Receiver")
+QUEUE_NAME = os.environ.get("QUEUE_NAME", "runbooktest-work")
 STORAGE_CONNECTION = "AzureWebJobsStorage"
+SCRIPTS_CONTAINER = os.environ.get("SCRIPTS_CONTAINER", "cloudo-runbooks")
+
+# GitHub fallback configuration
+GITHUB_REPO = os.environ.get("GITHUB_REPO")
+GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+GITHUB_PATH_PREFIX = os.environ.get("GITHUB_PATH_PREFIX", "src/runbooks")
+
 
 app = func.FunctionApp()
 
@@ -23,7 +35,21 @@ _ACTIVE_LOCK = Lock()
 
 def _utc_now_iso() -> str:
     """Return the current UTC timestamp in ISO 8601 format without microseconds."""
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return (
+        datetime.now(timezone.utc)
+        .astimezone(ZoneInfo("Europe/Rome"))
+        .replace(microsecond=0)
+        .isoformat()
+    )
+
+
+def _format_requested_at() -> str:
+    # Human-readable UTC timestamp for logs (e.g., 2025-09-15 12:34:56)
+    return (
+        datetime.now(timezone.utc)
+        .astimezone(ZoneInfo("Europe/Rome"))
+        .strftime("%Y-%m-%d %H:%M:%S")
+    )
 
 
 def _sanitize_header_value(value: str | None, max_len: int = 4000) -> str:
@@ -66,28 +92,132 @@ def _post_status(payload: dict, status: str, log_message: str) -> requests.Respo
         raise
 
 
+def _download_from_github(script_name: str) -> str:
+    """
+    Download a script from GitHub using the Contents API.
+    - Supports private repos when GITHUB_TOKEN is provided.
+    - Uses GITHUB_REPO, GITHUB_BRANCH, and optional GITHUB_PATH_PREFIX.
+    Returns the local temporary file path.
+    """
+    if not GITHUB_REPO:
+        raise RuntimeError("GITHUB_REPO is not configured")
+
+    # Compose the path inside the repository
+    path_parts = [p for p in [GITHUB_PATH_PREFIX.strip("/"), script_name] if p]
+    repo_path = "/".join(path_parts)
+
+    # GitHub Contents API endpoint
+    api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{repo_path}"
+    params = {"ref": GITHUB_BRANCH}
+    headers = {"Accept": "application/vnd.github+json"}
+    if GITHUB_TOKEN:
+        # Both 'token' and 'Bearer' are accepted by GitHub; prefer Bearer per modern guidance
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
+    resp = requests.get(api_url, headers=headers, params=params, timeout=30)
+    if resp.status_code == 404:
+        raise FileNotFoundError(
+            f"GitHub file not found: {GITHUB_REPO}/{repo_path}@{GITHUB_BRANCH}"
+        )
+    if not resp.ok:
+        raise RuntimeError(f"GitHub API error ({resp.status_code}): {resp.text[:500]}")
+
+    data = resp.json()
+    content_bytes: bytes | None = None
+
+    # Case 1: API returns base64 'content'
+    if (
+        isinstance(data, dict)
+        and data.get("encoding") == "base64"
+        and "content" in data
+    ):
+        try:
+            # GitHub may include line breaks in 'content'
+            b64 = data["content"].replace("\n", "")
+            content_bytes = base64.b64decode(b64)
+        except Exception as e:
+            raise RuntimeError(f"Failed to decode GitHub content: {e}") from e
+
+    # Case 2: Fallback to 'download_url'
+    if content_bytes is None:
+        download_url = data.get("download_url")
+        if not download_url:
+            raise RuntimeError(
+                "GitHub response missing both 'content' and 'download_url'"
+            )
+        # Use headers for auth when downloading raw content (works for private repos)
+        raw_headers = {}
+        if GITHUB_TOKEN:
+            raw_headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+        raw_resp = requests.get(download_url, headers=raw_headers, timeout=30)
+        if not raw_resp.ok:
+            raise RuntimeError(
+                f"GitHub raw download error ({raw_resp.status_code}): {raw_resp.text[:500]}"
+            )
+        content_bytes = raw_resp.content
+
+    # Write to a temporary file
+    suffix = ".py" if script_name.lower().endswith(".py") else ""
+    fd, tmp_path = tempfile.mkstemp(prefix="runbook_", suffix=suffix)
+    with os.fdopen(fd, "wb") as f:
+        f.write(content_bytes)
+
+    # Make it executable (useful for shell scripts)
+    try:
+        st = os.stat(tmp_path)
+        os.chmod(tmp_path, st.st_mode | stat.S_IEXEC)
+    except Exception:
+        pass
+
+    return tmp_path
+
+
 def _run_script(script_name: str) -> subprocess.CompletedProcess:
-    """Run the requested script and return the subprocess result"""
-    script_path = os.path.join("scripts", script_name)
+    """Run the requested script fetching it from Blob Storage (with local fallback)."""
+    # 1) Try Blob Storage
+    tmp_path = None
+    blob_error = None
+    script_path = None
+    try:
+        tmp_path = _download_from_github(script_name)
+        script_path = tmp_path
+    except Exception as e:
+        blob_error = e
+        logging.warning(f"Failed to fetch script: {e}")
+
     if not os.path.exists(script_path):
+        # If we have a blob error, include it for diagnosis
+        if blob_error:
+            raise FileNotFoundError(
+                f"Script not found on Blob ({SCRIPTS_CONTAINER}/{script_name}) nor locally ({script_path}). "
+                f"Blob details: {type(blob_error).__name__}: {blob_error}"
+            )
         raise FileNotFoundError(f"Script not found: {script_path}")
 
-    # If it's a Python script, run it with the current interpreter; otherwise run it directly
+    # If it's a Python script, run with current interpreter; otherwise execute directly
     if script_path.lower().endswith(".py"):
         cmd = [sys.executable, script_path]
     else:
         cmd = [script_path]
 
-    return subprocess.run(cmd, capture_output=True, text=True, check=True)
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, check=True)
+    finally:
+        # Clean up temporary file if created
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
 
 
-@app.route(route="RunbookTest", auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="Runbook", auth_level=func.AuthLevel.FUNCTION)
 @app.queue_output(
     arg_name="out_msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION
 )
-def runbook_test(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
+def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
     payload = {
-        "requestedAt": _utc_now_iso(),
+        "requestedAt": _format_requested_at(),
         "id": req.headers.get("Id"),
         "name": req.headers.get("Name"),
         "runbook": req.headers.get("runbook"),
@@ -102,12 +232,21 @@ def runbook_test(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResp
 
 
 @app.queue_trigger(arg_name="msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION)
-def process_runbooktest(msg: func.QueueMessage) -> None:
+def process_runbook(msg: func.QueueMessage) -> None:
     payload = json.loads(msg.get_body().decode("utf-8"))
     logging.info("Job started: %s", payload)
 
-    started_at = _utc_now_iso()
+    started_at = _format_requested_at()
     exec_id = payload.get("exec_id") or ""
+
+    # Check if this execution is already running
+    with _ACTIVE_LOCK:
+        items = list(_ACTIVE_RUNS.values())
+        if any(item["id"] == payload.get("id") for item in items):
+            log_msg = f"Execution {exec_id} already in progress, skipping"
+            logging.info(log_msg)
+            _post_status(payload, status="skipped", log_message=log_msg)
+            return
 
     # Register the execution as "in progress"
     with _ACTIVE_LOCK:
@@ -124,7 +263,7 @@ def process_runbooktest(msg: func.QueueMessage) -> None:
     try:
         result = _run_script(payload.get("runbook"))
         log_msg = f"Script succeeded. stdout: {result.stdout.strip()}"
-        logging.debug(log_msg)
+        logging.info(log_msg)
         response = _post_status(payload, status="completed", log_message=log_msg)
         logging.info("Receiver response: %s", getattr(response, "text", ""))
     except subprocess.CalledProcessError as e:
@@ -145,13 +284,13 @@ def process_runbooktest(msg: func.QueueMessage) -> None:
             logging.error("Unexpected error: %s", err_msg)
     finally:
         # Remove from the registry: no longer "in progress"
-        with _ACTIVE_LOCK:
-            _ACTIVE_RUNS.pop(exec_id, None)
         logging.info(
             "[%s] Job complete (requested at %s)",
-            payload.get("id"),
+            payload.get("exec_id"),
             payload.get("requestedAt"),
         )
+        with _ACTIVE_LOCK:
+            _ACTIVE_RUNS.pop(exec_id, None)
 
 
 # =========================
