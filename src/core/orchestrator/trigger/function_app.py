@@ -236,7 +236,7 @@ class Schema:
 
 
 # =========================
-# HTTP Function: trigger
+# HTTP Function: Trigger
 # =========================
 
 

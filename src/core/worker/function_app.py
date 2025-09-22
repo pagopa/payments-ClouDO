@@ -17,7 +17,6 @@ import requests
 RECEIVER_URL = os.environ.get("RECEIVER_URL")
 QUEUE_NAME = os.environ.get("QUEUE_NAME", "runbooktest-work")
 STORAGE_CONNECTION = "AzureWebJobsStorage"
-SCRIPTS_CONTAINER = os.environ.get("SCRIPTS_CONTAINER", "cloudo-runbooks")
 
 # GitHub fallback configuration
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "pagopa/payments-cloudo")

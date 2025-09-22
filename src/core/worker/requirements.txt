@@ -4,3 +4,10 @@
 
 azure-functions
 requests
+azure-mgmt-compute
+azure-mgmt-storage
+azure-mgmt-resource
+azure-keyvault-secrets
+azure-storage-blob
+azure-cli
+azure-identity
