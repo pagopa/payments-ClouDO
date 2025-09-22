@@ -11,9 +11,19 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
 
 # (Optional but recommended) Install tzdata to ensure proper zoneinfo behavior
 USER root
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata && \
-    rm -rf /var/lib/apt/lists/*
+RUN curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null && \
+    AZ_REPO=$(lsb_release -cs) && \
+    echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | tee /etc/apt/sources.list.d/azure-cli.list && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    tzdata \
+    azure-cli \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    && curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl \
+    && rm -rf /var/lib/apt/lists/* kubectl
 
 # Copy only requirements first to leverage Docker layer cache
 COPY ${APP_PATH}/requirements.txt /tmp/requirements.txt

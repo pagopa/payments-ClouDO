@@ -240,7 +240,7 @@ class Schema:
 # =========================
 
 
-@app.route(route="Trigger/{id?}", auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="Trigger", auth_level=func.AuthLevel.FUNCTION)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
