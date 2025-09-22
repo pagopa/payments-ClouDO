@@ -30,4 +30,6 @@ if ! az account list --query "[].name" -o tsv; then
   exit 1
 fi
 
+az account list --query "[].name" -o tsv
+
 echo "Login successful and verified"
