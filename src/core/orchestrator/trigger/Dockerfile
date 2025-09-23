@@ -26,8 +26,7 @@ COPY ${APP_PATH}/requirements.txt /tmp/requirements.txt
 
 # Install Python dependencies into the Functions runtime folder to avoid permission issues
 RUN python -m pip install --no-cache-dir --upgrade pip && \
-    python -m pip install --no-cache-dir -r /tmp/requirements.txt \
-      --target /home/site/wwwroot/.python_packages/lib/site-packages
+    python -m pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Copy the Function App code into the script root
 COPY ${APP_PATH}/ /home/site/wwwroot/
