@@ -24,6 +24,10 @@ GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_PATH_PREFIX = os.environ.get("GITHUB_PATH_PREFIX", "src/runbooks")
 
+if os.getenv("FEATURE_DEV", "false").lower() != "true":
+    AUTH = func.AuthLevel.FUNCTION
+else:
+    AUTH = func.AuthLevel.ANONYMOUS
 
 app = func.FunctionApp()
 
@@ -210,14 +214,15 @@ def _download_from_github(script_name: str) -> str:
     return tmp_path
 
 
-def _run_script(script_name: str) -> subprocess.CompletedProcess:
+def _run_script(
+    script_name: str, script_path: str | None = None
+) -> subprocess.CompletedProcess:
     """Run the requested script fetching it from Blob Storage, falling back to local folder, then GitHub."""
-    script_path: str | None = None
     tmp_path: str | None = None
     github_tmp_path: str | None = None
     github_error: Exception | None = None
 
-    # 3) GitHub if not found locally
+    # GitHub if not found locally
     if script_path is None:
         try:
             github_tmp_path = _download_from_github(script_name)
@@ -225,6 +230,8 @@ def _run_script(script_name: str) -> subprocess.CompletedProcess:
             script_path = github_tmp_path
         except Exception as e:
             github_error = e
+    else:
+        script_path = script_path + script_name
 
     if script_path is None or not os.path.exists(script_path):
         details = []
@@ -241,6 +248,7 @@ def _run_script(script_name: str) -> subprocess.CompletedProcess:
         if script_path.lower().endswith(".py")
         else [script_path]
     )
+    logging.info("Running script: %s", cmd)
     try:
         return subprocess.run(cmd, capture_output=True, text=True, check=True)
     finally:
@@ -303,7 +311,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
         }
 
     try:
-        result = _run_script(payload.get("runbook"))
+        result = _run_script(script_name=payload.get("runbook"))
         log_msg = f"Script succeeded. stdout: {result.stdout.strip()}"
         logging.info(log_msg)
         response = _post_status(payload, status="completed", log_message=log_msg)
@@ -403,3 +411,74 @@ def list_processes(req: func.HttpRequest) -> func.HttpResponse:
         mimetype="application/json",
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
     )
+
+
+@app.route(route="dev/runScript", auth_level=AUTH)
+def dev_run_script(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Development endpoint to test _run_script.
+    Optionally enabled via FEATURE_DEV=true.
+    Parameters:
+      - name (or 'script') query string, or 'runbook' header with the file name.
+    Response: JSON with stdout/stderr/returncode.
+    """
+    # Feature flag for test and develop of runbooks
+    if os.getenv("FEATURE_DEV", "false").lower() != "true":
+        return func.HttpResponse("Not found", status_code=404)
+    elif os.getenv("DEV_SCRIPT_PATH"):
+        script_path = os.getenv("DEV_SCRIPT_PATH", "/work/runbooks/")
+    else:
+        script_path = None
+
+    logging.info(f"Running _run_script on {script_path}")
+    script_name = (
+        req.params.get("name")
+        or req.params.get("script")
+        or req.headers.get("runbook")
+        or ""
+    ).strip()
+    if not script_name:
+        return func.HttpResponse(
+            json.dumps(
+                {"error": "missing script name (use ?name= or header runbook)"},
+                ensure_ascii=False,
+            ),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    try:
+        result = _run_script(script_name=script_name, script_path=script_path)
+        body = json.dumps(
+            {
+                "status": "ok",
+                "script": script_name,
+                "returncode": result.returncode,
+                "stdout": (result.stdout or "").strip(),
+                "stderr": (result.stderr or "").strip(),
+            },
+            ensure_ascii=False,
+        )
+        return func.HttpResponse(body, status_code=200, mimetype="application/json")
+    except subprocess.CalledProcessError as e:
+        body = json.dumps(
+            {
+                "status": "failed",
+                "script": script_name,
+                "returncode": e.returncode,
+                "stdout": (e.stdout or "").strip(),
+                "stderr": (e.stderr or "").strip(),
+            },
+            ensure_ascii=False,
+        )
+        return func.HttpResponse(body, status_code=500, mimetype="application/json")
+    except Exception as e:
+        body = json.dumps(
+            {
+                "status": "error",
+                "script": script_name,
+                "error": f"{type(e).__name__}: {str(e)}",
+            },
+            ensure_ascii=False,
+        )
+        return func.HttpResponse(body, status_code=500, mimetype="application/json")
