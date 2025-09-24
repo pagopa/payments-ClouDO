@@ -20,8 +20,27 @@ DEPLOYMENT_NAME=$4
 
 # Login to Azure and get AKS credentials
 echo "Logging into Azure and connecting to AKS cluster..."
-az login --identity --client-id "$AZURE_CLIENT_ID"
-az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+# Log in using managed identity
+echo "Logging in with managed identity..."
+if [[ -n "${AZURE_CLIENT_ID:-}" ]]; then
+  if ! az login --identity --client-id "$AZURE_CLIENT_ID"; then
+    echo "1 Failed to login with managed identity"
+    exit 1
+  fi
+else
+  if ! az login --identity; then
+    echo "2 Failed to login with managed identity"
+    exit 1
+  fi
+fi
+# Optionally set the subscription if provided
+if [[ -n "${AZURE_SUBSCRIPTION_ID:-}" ]]; then
+  echo "Setting subscription..."
+  if ! az account set --subscription "$AZURE_SUBSCRIPTION_ID"; then
+    echo "Failed to set subscription"
+    exit 1
+  fi
+fi
 az aks get-credentials --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME --overwrite-existing
 
 # Perform deployment rollout
