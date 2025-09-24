@@ -41,12 +41,14 @@ if [[ -n "${AZURE_SUBSCRIPTION_ID:-}" ]]; then
     exit 1
   fi
 fi
+
 az aks get-credentials --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME --overwrite-existing
+kubelogin convert-kubeconfig -l azurecli
 
-# Perform deployment rollout
-echo "Performing rollout for deployment $DEPLOYMENT_NAME in namespace $NAMESPACE..."
-kubectl rollout restart deployment/$DEPLOYMENT_NAME -n $NAMESPACE
-
-# Check rollout status
-echo "Checking rollout status..."
-kubectl rollout status deployment/$DEPLOYMENT_NAME -n $NAMESPACE
+## Perform deployment rollout
+#echo "Performing rollout for deployment $DEPLOYMENT_NAME in namespace $NAMESPACE..."
+#kubectl rollout restart deployment/$DEPLOYMENT_NAME -n $NAMESPACE
+#
+## Check rollout status
+#echo "Checking rollout status..."
+#kubectl rollout status deployment/$DEPLOYMENT_NAME -n $NAMESPACE
