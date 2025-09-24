@@ -20,7 +20,8 @@ DEPLOYMENT_NAME=$4
 
 # Login to Azure and get AKS credentials
 echo "Logging into Azure and connecting to AKS cluster..."
-az login --identity --client-id "$AZURE_CLIENT_ID" --subscription "$AZURE_SUBSCRIPTION_ID"
+az login --identity --client-id "$AZURE_CLIENT_ID"
+az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 az aks get-credentials --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME --overwrite-existing
 
 # Perform deployment rollout
