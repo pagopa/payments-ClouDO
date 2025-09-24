@@ -26,7 +26,8 @@
       "id": "000-0000-0e0e00ww-wasdsa",
       "name": "infra-pippo",
       "description": "Hello Pippo INFRA!",
-      "runbook": "check_sys.sh",
+      "runbook": "test.py",
+      "run_args": "-n 1000 --repeats 1000",
       "worker": "Runbook",
       "oncall": "true"
     }]

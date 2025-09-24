@@ -31,8 +31,8 @@ services:
   trigger:
     platform: linux/amd64
     build:
-      context: ./src/core/orchestrator/trigger
-      dockerfile: src/core/orchestrator/Dockerfile
+      context: ./src/core/orchestrator
+      dockerfile: Dockerfile
     ports:
       - "7071:80"
     environment:
