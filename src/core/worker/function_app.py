@@ -31,6 +31,7 @@ if os.getenv("FEATURE_DEV", "false").lower() != "true":
 else:
     AUTH = func.AuthLevel.ANONYMOUS
 
+
 app = func.FunctionApp()
 
 # In-memory registry of ongoing executions (per instance)
@@ -283,7 +284,7 @@ def _run_script(
                 pass
 
 
-@app.route(route="Runbook", auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="Runbook", auth_level=AUTH)
 @app.queue_output(
     arg_name="out_msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION
 )
@@ -393,7 +394,7 @@ def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-@app.route(route="processes", auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="processes", auth_level=AUTH)
 def list_processes(req: func.HttpRequest) -> func.HttpResponse:
     """
     Lists the "in progress" runs of the RunbookTest endpoint (jobs not yet completed).

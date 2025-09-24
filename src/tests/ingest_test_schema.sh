@@ -23,7 +23,7 @@ az storage entity insert \
     description='Hello Test!' \
     runbook=test.py \
     run_args="-n 5000 --repeats 100" \
-    url="http://localhost:7072/api/Runbook" \
+    url="http://worker/api/Runbook" \
     oncall=true \
   --if-exists merge \
   --connection-string "${CONN_STR}" \
@@ -39,7 +39,7 @@ az storage entity insert \
     name=test-entity-2 \
     description='Hello Test 2!' \
     runbook=test.py \
-    url="http://localhost:7072/api/Runbook" \
+    url="http://worker/api/Runbook" \
     oncall=true \
   --if-exists merge \
   --connection-string "${CONN_STR}" \

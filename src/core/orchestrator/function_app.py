@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -20,6 +21,11 @@ app = func.FunctionApp()
 TABLE_NAME = "RunbookLogs"
 TABLE_SCHEMAS = "RunbookSchemas"
 STORAGE_CONN = "AzureWebJobsStorage"
+
+if os.getenv("FEATURE_DEV", "false").lower() != "true":
+    AUTH = func.AuthLevel.FUNCTION
+else:
+    AUTH = func.AuthLevel.ANONYMOUS
 
 
 def format_requested_at() -> str:
@@ -247,7 +253,7 @@ class Schema:
 # =========================
 
 
-@app.route(route="Trigger", auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="Trigger", auth_level=AUTH)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
@@ -394,7 +400,7 @@ def Trigger(
 # =========================
 
 
-@app.route(route="Receiver", auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="Receiver", auth_level=AUTH)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
@@ -462,7 +468,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
 # =========================
 
 
-@app.route(route="healthz", auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="healthz", auth_level=AUTH)
 def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
     now_utc = utc_now_iso()
     body = json.dumps(
@@ -486,7 +492,7 @@ def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
 # =========================
 
 
-@app.route(route="logs/{partitionKey}/{execId}", auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="logs/{partitionKey}/{execId}", auth_level=AUTH)
 @app.table_input(
     arg_name="log_entity",
     table_name="RunbookLogs",
