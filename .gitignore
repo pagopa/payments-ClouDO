@@ -6,6 +6,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.env.local
 
 # vscode
 .vscode
@@ -250,6 +251,3 @@ override.tf.json
 terraform.rc
 
 # End of https://www.toptal.com/developers/gitignore/api/python,zsh
-
-# Local .terraform directories
-**/.terraform/*
