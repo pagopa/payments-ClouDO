@@ -2,19 +2,21 @@ import base64
 import json
 import logging
 import os
+import shlex
 import stat
 import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
 from threading import Lock
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 import azure.functions as func
 import requests
 
 # Configuration constants
-RECEIVER_URL = os.environ.get("RECEIVER_URL")
+RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7071/api/Receiver")
 QUEUE_NAME = os.environ.get("QUEUE_NAME", "runbooktest-work")
 STORAGE_CONNECTION = "AzureWebJobsStorage"
 
@@ -75,6 +77,7 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
     """Build headers for the Receiver call from payload and execution status."""
     return {
         "runbook": payload.get("runbook"),
+        "run_args": payload.get("run_args"),
         "Id": payload.get("id"),
         "Name": payload.get("name"),
         "ExecId": payload.get("exec_id"),
@@ -214,8 +217,19 @@ def _download_from_github(script_name: str) -> str:
     return tmp_path
 
 
+def _clean_path(p: str | None) -> str | None:
+    if p is None:
+        return None
+    s = str(p).strip().strip('"').strip("'")
+    if not s:
+        return None
+    s = os.path.expanduser(s)
+    s = os.path.normpath(s)
+    return s
+
+
 def _run_script(
-    script_name: str, script_path: str | None = None
+    script_name: str, run_args: Optional[str], script_path: str | None = None
 ) -> subprocess.CompletedProcess:
     """Run the requested script fetching it from Blob Storage, falling back to local folder, then GitHub."""
     tmp_path: str | None = None
@@ -231,7 +245,12 @@ def _run_script(
         except Exception as e:
             github_error = e
     else:
-        script_path = script_path + script_name
+        base = (_clean_path(script_path) or "").strip()
+        name = _clean_path(script_name) or script_name
+        if os.path.isabs(name):
+            script_path = name
+        else:
+            script_path = os.path.join(base, name)
 
     if script_path is None or not os.path.exists(script_path):
         details = []
@@ -248,8 +267,11 @@ def _run_script(
         if script_path.lower().endswith(".py")
         else [script_path]
     )
-    logging.info("Running script: %s", cmd)
     try:
+        if run_args is not None:
+            cmd = cmd + shlex.split(run_args)
+
+        logging.info("Running script: %s", cmd)
         return subprocess.run(cmd, capture_output=True, text=True, check=True)
     finally:
         # Clean up only if paths are valid files
@@ -271,6 +293,7 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
         "id": req.headers.get("Id"),
         "name": req.headers.get("Name"),
         "runbook": req.headers.get("runbook"),
+        "run_args": req.headers.get("run_args"),
         "exec_id": req.headers.get("ExecId"),
         "oncall": req.headers.get("OnCall"),
     }
@@ -305,13 +328,16 @@ def process_runbook(msg: func.QueueMessage) -> None:
             "id": payload.get("id"),
             "name": payload.get("name"),
             "runbook": payload.get("runbook"),
+            "run_args": payload.get("run_args"),
             "requestedAt": payload.get("requestedAt"),
             "startedAt": started_at,
             "status": "running",
         }
 
     try:
-        result = _run_script(script_name=payload.get("runbook"))
+        result = _run_script(
+            script_name=payload.get("runbook"), run_args=payload.get("run_args")
+        )
         log_msg = f"Script succeeded. stdout: {result.stdout.strip()}"
         logging.info(log_msg)
         response = _post_status(payload, status="completed", log_message=log_msg)
@@ -437,6 +463,7 @@ def dev_run_script(req: func.HttpRequest) -> func.HttpResponse:
         or req.headers.get("runbook")
         or ""
     ).strip()
+    run_args = req.headers.get("run_args") or None
     if not script_name:
         return func.HttpResponse(
             json.dumps(
@@ -448,11 +475,14 @@ def dev_run_script(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     try:
-        result = _run_script(script_name=script_name, script_path=script_path)
+        result = _run_script(
+            script_name=script_name, script_path=script_path, run_args=run_args
+        )
         body = json.dumps(
             {
                 "status": "ok",
                 "script": script_name,
+                "run_args": run_args,
                 "returncode": result.returncode,
                 "stdout": (result.stdout or "").strip(),
                 "stderr": (result.stderr or "").strip(),
@@ -465,6 +495,7 @@ def dev_run_script(req: func.HttpRequest) -> func.HttpResponse:
             {
                 "status": "failed",
                 "script": script_name,
+                "run_args": run_args,
                 "returncode": e.returncode,
                 "stdout": (e.stdout or "").strip(),
                 "stderr": (e.stderr or "").strip(),

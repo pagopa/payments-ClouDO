@@ -110,6 +110,7 @@ def build_headers(schema: "Schema", exec_id: str) -> dict:
     # Standardize request headers sent to the downstream runbook endpoint
     return {
         "runbook": f"{schema.runbook}",
+        "run_args": f"{schema.run_args}",
         "Id": schema.id,
         "Name": schema.name or "",
         "ExecId": exec_id,
@@ -135,6 +136,8 @@ def build_response_body(
                 "description": schema.description,
                 "url": schema.url,
                 "oncall": schema.oncall,
+                "runbook": schema.runbook,
+                "run_args": schema.run_args,
             },
             "response": api_json,
             "log": {"partitionKey": partition_key, "exec_id": exec_id},
@@ -154,6 +157,7 @@ def build_log_entry(
     schema_id: Optional[str],
     url: Optional[str],
     runbook: Optional[str],
+    run_args: Optional[str],
     log_msg: Optional[str],
     oncall: Optional[str],
 ) -> dict[str, Any]:
@@ -168,6 +172,7 @@ def build_log_entry(
         "Id": schema_id,
         "Url": url,
         "Runbook": runbook,
+        "Run_Args": run_args,
         "Log": log_msg,
         "OnCall": oncall,
     }
@@ -214,6 +219,7 @@ class Schema:
     description: str | None = None
     url: str | None = None
     runbook: str | None = None
+    run_args: str | None = None
     oncall: str | None = "false"
 
     def __post_init__(self):
@@ -226,10 +232,11 @@ class Schema:
             )
 
         e = self.entity
-        self.name = e.get("name") or e.get("name") or ""
-        self.description = e.get("description") or e.get("description")
-        self.url = e.get("url") or e.get("url")
-        self.runbook = e.get("runbook") or e.get("runbook")
+        self.name = (e.get("name") or "").strip()
+        self.description = (e.get("description") or "").strip() or None
+        self.url = (e.get("url") or "").strip() or None
+        self.runbook = (e.get("runbook") or "").strip() or None
+        self.run_args = (e.get("run_args") or "").strip() or ""
         self.oncall = (
             str(e.get("oncall", e.get("oncall", "false"))).strip().lower() or "false"
         )
@@ -329,6 +336,7 @@ def Trigger(
             schema_id=schema.id,
             url=schema.url,
             runbook=schema.runbook,
+            run_args=schema.run_args,
             log_msg=api_body,
             oncall=schema.oncall,
         )
@@ -368,6 +376,7 @@ def Trigger(
             schema_id=schema.id,
             url=schema.url,
             runbook=schema.runbook,
+            run_args=schema.run_args,
             log_msg=str(e),
             oncall=schema.oncall,
         )
@@ -402,6 +411,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                 "Name": get_header(req, "Name"),
                 "Id": get_header(req, "Id"),
                 "Runbook": get_header(req, "runbook"),
+                "Run_Args": get_header(req, "run_args"),
                 "OnCall": get_header(req, "OnCall"),
             }
         },
@@ -425,6 +435,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
         schema_id=get_header(req, "Id"),
         url=request_origin_url,
         runbook=get_header(req, "runbook"),
+        run_args=get_header(req, "run_args"),
         log_msg=get_header(req, "Log"),
         oncall=get_header(req, "OnCall"),
     )
