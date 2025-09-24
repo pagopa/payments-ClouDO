@@ -1,3 +1,6 @@
+# Azure Subscription
+data "azurerm_subscription" "current" {}
+
 # Service Plan
 resource "azurerm_service_plan" "this" {
   name                = "${var.prefix}-cloudo-service-plan"
@@ -43,6 +46,7 @@ resource "azurerm_linux_function_app" "orchestrator" {
     "TABLE_LOGGER_NAME" = azurerm_storage_table.runbook_logger.name
   }
 
+  virtual_network_subnet_id = var.subnet_id
 
   lifecycle {
     ignore_changes = [app_settings, tags]
@@ -61,7 +65,8 @@ resource "azurerm_linux_function_app" "worker" {
   https_only                 = true
 
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.identity.id]
   }
 
   site_config {
@@ -77,15 +82,20 @@ resource "azurerm_linux_function_app" "worker" {
     # health_check_path = "/healthz"
   }
   app_settings = {
-    "QUEUE_NAME"         = azurerm_storage_queue.this.name
-    "TABLE_SCHEMA_NAME"  = azurerm_storage_table.runbook_schemas.name
-    "TABLE_LOGGER_NAME"  = azurerm_storage_table.runbook_logger.name
-    "RECEIVER_URL"       = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/Receiver?code=${data.azurerm_function_app_host_keys.orchestrator.default_function_key}"
-    "GITHUB_REPO"        = var.github_repo_info.repo_name
-    "GITHUB_BRANCH"      = var.github_repo_info.repo_branch
-    "GITHUB_TOKEN"       = var.github_repo_info.repo_token
-    "GITHUB_PATH_PREFIX" = var.github_repo_info.runbook_path
+    "QUEUE_NAME"            = azurerm_storage_queue.this.name
+    "TABLE_SCHEMA_NAME"     = azurerm_storage_table.runbook_schemas.name
+    "TABLE_LOGGER_NAME"     = azurerm_storage_table.runbook_logger.name
+    "RECEIVER_URL"          = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/Receiver?code=${data.azurerm_function_app_host_keys.orchestrator.default_function_key}"
+    "GITHUB_REPO"           = var.github_repo_info.repo_name
+    "GITHUB_BRANCH"         = var.github_repo_info.repo_branch
+    "GITHUB_TOKEN"          = var.github_repo_info.repo_token
+    "GITHUB_PATH_PREFIX"    = var.github_repo_info.runbook_path
+    "AZURE_TENANT_ID"       = azurerm_user_assigned_identity.identity.tenant_id
+    "AZURE_CLIENT_ID"       = azurerm_user_assigned_identity.identity.client_id
+    "AZURE_SUBSCRIPTION_ID" = data.azurerm_subscription.current.subscription_id
   }
+
+  virtual_network_subnet_id = var.subnet_id
 
   lifecycle {
     ignore_changes = [tags]
@@ -124,9 +134,6 @@ resource "azurerm_storage_table" "runbook_schemas" {
   storage_account_name = module.storage_account.name
 }
 
-
-
-
 resource "azurerm_storage_table_entity" "schemas" {
   for_each = {
     for i in local.entity_executor : i.entity.id => i
@@ -143,4 +150,18 @@ resource "azurerm_storage_table_entity" "schemas" {
       "url" : "https://${azurerm_linux_function_app.worker.default_hostname}/api/${each.value.entity.worker}?code=${data.azurerm_function_app_host_keys.worker.default_function_key}"
     }
   )
+}
+
+
+# Identity
+resource "azurerm_user_assigned_identity" "identity" {
+  location            = var.location
+  name                = "${var.prefix}-cloudo-identity"
+  resource_group_name = var.resource_group_name
+}
+
+resource "azurerm_role_assignment" "role_assignment" {
+  scope                = data.azurerm_subscription.current.id
+  role_definition_name = "Contributor"
+  principal_id         = azurerm_user_assigned_identity.identity.principal_id
 }

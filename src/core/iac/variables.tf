@@ -44,6 +44,11 @@ variable "github_repo_info" {
   }
 }
 
+variable "subnet_id" {
+  description = "The ID of the Subnet to which the Function App worker should be connected."
+  type        = string
+}
+
 variable "tags" {
   description = "A mapping of tags to assign to the Function App."
   type        = map(string)
