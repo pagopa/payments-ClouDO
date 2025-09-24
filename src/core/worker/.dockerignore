@@ -1,0 +1,57 @@
+# Python environments and caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.python_packages/
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+dist/
+build/
+
+# Node-related (if any JS tooling is present)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# VCS and project meta
+.git/
+../../../.gitignore
+.gitattributes
+.github/
+
+# Documentation and examples (exclude if not needed in image)
+docs/
+README.md
+
+# Local settings and development-only files
+local.settings.json
+.env
+*.env
+
+# Terraform artifacts (often large and not needed in the image)
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+
+# Azurite local storage files (not needed inside the image)
+__azurite_db_*__
+AzuriteConfig/
+
+# Local scripts or runbooks (exclude only if not required in the image)
+runbooks/
+
+# CI/CD artifacts
+*.log
+tmp/
+.cache/

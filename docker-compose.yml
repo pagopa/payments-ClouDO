@@ -18,6 +18,8 @@ services:
     environment:
       - AzureWebJobsStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
       - FEATURE_DEV=true
+      - DEV_SCRIPT_PATH=/work/runbooks/
+      - RECEIVER_URL=http://orchestrator/api/Receiver
     volumes:
       - ./src/runbooks:/work/runbooks:ro
     ports:
@@ -27,15 +29,16 @@ services:
     networks:
       - azure-functions
 
-  trigger:
+  orchestrator:
     platform: linux/amd64
     build:
-      context: ./src/core/orchestrator/trigger
+      context: ./src/core/orchestrator
       dockerfile: Dockerfile
     ports:
       - "7071:80"
     environment:
       - AzureWebJobsStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
+      - FEATURE_DEV=true
     depends_on:
       - azurite
     networks:
