@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 import azure.functions as func
+import utils
 from requests import request
 
 app = func.FunctionApp()
@@ -194,34 +195,6 @@ def build_log_entry(
     }
 
 
-def extract_schema_id_from_req(req: func.HttpRequest) -> Optional[str]:
-    """
-    Resolve schema_id from the incoming request:
-    1) Prefer query string (?id=...)
-    2) Fallback to JSON body: data.essentials.alertId (or schemaId if available)
-    Returns the alertId as-is. If you want only the trailing GUID, enable the split below.
-    """
-    q_id = req.params.get("id")
-    if q_id:
-        return q_id
-    logging.info("Resolving schema_id: %s", req.params.get("id"))
-    try:
-        body = req.get_json()
-    except ValueError:
-        body = None
-    if isinstance(body, dict):
-        alert_id = body.get("data", {}).get("essentials", {}).get(
-            "alertId"
-        ) or body.get("schemaId")
-        if alert_id:
-            aid = str(alert_id).strip()
-            if "/" in aid:
-                last = aid.strip("/").split("/")[-1]
-                return last or aid
-            return aid
-    return None
-
-
 # =========================
 # Domain Model
 # =========================
@@ -277,13 +250,17 @@ class Schema:
 def Trigger(
     req: func.HttpRequest, log_table: func.Out[str], entities: str
 ) -> func.HttpResponse:
-    # Route params (optional): available via req.route_params
-    route_params = getattr(req, "route_params", {}) or {}
+    # Init payload variables to None
+    resource_name = resource_group = resource_id = schema_id = None
 
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
-    schema_id = (route_params.get("id") or "").strip() or extract_schema_id_from_req(
-        req
-    )
+    if (req.params.get("id")) is not None:
+        schema_id = utils.extract_schema_id_from_req(req)
+    else:
+        resource_name, resource_group, resource_id, schema_id, namespace = (
+            utils.parse_resource_fields(req).values()
+        )
+
     if not schema_id:
         return func.HttpResponse(
             json.dumps(
