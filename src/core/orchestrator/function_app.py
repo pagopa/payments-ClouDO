@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -67,6 +68,15 @@ def utc_now_iso_seconds() -> str:
 def utc_partition_key() -> str:
     # Generate a compact UTC date for PartitionKey (e.g., 20250915)
     return datetime.now(timezone.utc).strftime("%Y%m%d")
+
+
+def decode_base64(data: str) -> str:
+    """Decode base64 encoded string to utf-8 string"""
+    try:
+        return base64.b64decode(data).decode("utf-8")
+    except Exception as e:
+        logging.warning(f"Failed to decode base64 encoded string: {e}")
+        return data
 
 
 def get_header(
@@ -429,7 +439,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
     row_key = str(uuid.uuid4())  # stable hex representation for RowKey
     request_origin_url = resolve_caller_url(req)
     status_label = resolve_status(get_header(req, "Status"))
-
+    logging.info(get_header(req, "Log"))
     # Build and write the log entity
     log_entity = build_log_entry(
         status=status_label,
@@ -442,7 +452,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
         url=request_origin_url,
         runbook=get_header(req, "runbook"),
         run_args=get_header(req, "run_args"),
-        log_msg=get_header(req, "Log"),
+        log_msg=decode_base64(get_header(req, "Log")),
         oncall=get_header(req, "OnCall"),
     )
     log_table.set(json.dumps(log_entity, ensure_ascii=False))
