@@ -58,20 +58,14 @@ def _format_requested_at() -> str:
     )
 
 
-def _sanitize_header_value(value: str | None, max_len: int = 4000) -> str:
-    """Make a string safe for HTTP headers: remove CR/LF and control chars, collapse spaces, and truncate."""
+def encode_logs(value: str | None) -> bytes:
+    """
+    Encode a string value to base64 bytes.
+    If value is None or empty, returns empty bytes.
+    """
     if not value:
-        return ""
-    v = value.replace("\r", " ").replace("\n", " ")
-    v = " ".join(v.split())  # collapse whitespace
-    try:
-        # Keep only latin-1 representable chars to avoid encoding issues in headers
-        v = v.encode("latin-1", "ignore").decode("latin-1")
-    except Exception:
-        v = v.encode("ascii", "ignore").decode("ascii")
-    if len(v) > max_len:
-        v = v[: max_len - 3] + "..."
-    return v
+        return b""
+    return base64.b64encode(value.encode("utf-8"))
 
 
 def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
@@ -84,7 +78,7 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
         "ExecId": payload.get("exec_id"),
         "Content-Type": "application/json",
         "Status": status,
-        "Log": _sanitize_header_value(log_message),
+        "Log": encode_logs(log_message),
         "OnCall": payload.get("oncall"),
     }
 
