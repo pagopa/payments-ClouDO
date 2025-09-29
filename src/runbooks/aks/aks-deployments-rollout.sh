@@ -13,10 +13,9 @@ if [ $# -ne 4 ]; then
     exit 1
 fi
 
-NAMESPACE=$3
-DEPLOYMENT_NAME=$4
+NAMESPACE=$1
+DEPLOYMENT_NAME=$2
 
-### CUSTOM
 # Perform deployment rollout
 echo "Performing rollout for deployment $DEPLOYMENT_NAME in namespace $NAMESPACE..."
 kubectl rollout restart deployment/$DEPLOYMENT_NAME -n $NAMESPACE
