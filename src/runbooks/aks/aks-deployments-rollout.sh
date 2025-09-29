@@ -7,6 +7,8 @@
 # - Namespace
 # - Deployment name
 
+echo $#
+
 # Check if required parameters are provided
 if [ $# -ne 2 ]; then
     echo "Usage: $0 <namespace> <deployment-name>"
