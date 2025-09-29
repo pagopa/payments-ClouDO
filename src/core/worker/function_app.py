@@ -267,7 +267,7 @@ def _run_script(
     tmp_path: str | None = None
     github_tmp_path: str | None = None
     github_error: Exception | None = None
-    logging.warning(run_args)
+
     # GitHub if not found locally
     if script_path is None:
         try:
@@ -372,7 +372,15 @@ def process_runbook(msg: func.QueueMessage) -> None:
 
     try:
         if payload.get("aks_resource_info"):
-            _run_aks_login(payload["aks_resource_info"])
+            try:
+                _run_aks_login(payload["aks_resource_info"])
+                logging.info("AKS login completed successfully")
+            except Exception as e:
+                # Report error and stop processing
+                err_msg = f"AKS login failed: {type(e).__name__}: {e}"
+                _post_status(payload, status="error", log_message=err_msg)
+                logging.error(err_msg)
+                return
 
         result = _run_script(
             script_name=payload.get("runbook"), run_args=payload.get("run_args")
@@ -382,9 +390,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
         response = _post_status(payload, status="completed", log_message=log_msg)
         logging.info("Receiver response: %s", getattr(response, "text", ""))
     except subprocess.CalledProcessError as e:
-        error_message = (
-            f"Script failed. returncode={e.returncode} stderr={e.stderr.strip()}"
-        )
+        error_message = f"Script failed. returncode={e.returncode} stderr={e.stderr.strip()} stdout={e.stdout.strip()}"
         try:
             response = _post_status(payload, status="failed", log_message=error_message)
             logging.error("Receiver response: %s", getattr(response, "text", ""))
