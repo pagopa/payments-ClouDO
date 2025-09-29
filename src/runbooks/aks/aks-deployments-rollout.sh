@@ -8,8 +8,8 @@
 # - Deployment name
 
 # Check if required parameters are provided
-if [ $# -ne 4 ]; then
-    echo "Usage: $0 <resource-group> <cluster-name> <namespace> <deployment-name>"
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <namespace> <deployment-name>"
     exit 1
 fi
 
