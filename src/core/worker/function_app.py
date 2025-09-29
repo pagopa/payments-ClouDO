@@ -223,6 +223,43 @@ def _clean_path(p: str | None) -> str | None:
     return s
 
 
+def _run_aks_login(aks_resource_info: dict | str) -> None:
+    """
+    Runs the local AKS login script:
+      src/core/worker/utils/aks-login.sh <rg> <name> <namespace>
+    Accepts aks_resource_info as dict or JSON string.
+    """
+    if isinstance(aks_resource_info, str):
+        try:
+            aks_resource_info = json.loads(aks_resource_info)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"aks_resource_info is not valid JSON: {e}") from e
+    if not isinstance(aks_resource_info, dict):
+        raise RuntimeError("aks_resource_info must be a dict")
+
+    rg = (aks_resource_info.get("aks_rg") or "").strip()
+    name = (aks_resource_info.get("aks_name") or "").strip()
+    ns = (aks_resource_info.get("aks_namespace") or "").strip()
+
+    if not rg or not name:
+        raise RuntimeError(
+            "aks_resource_info requires non-empty 'aks_rg' and 'aks_name'"
+        )
+
+    script_path = os.path.normpath("utils/aks-login.sh")
+    if not os.path.exists(script_path):
+        raise FileNotFoundError(f"AKS login script not found: {script_path}")
+
+    cmd = [script_path, rg, name, ns] if ns else [script_path, rg, name]
+    logging.info("Running AKS login: %s", " ".join(cmd))
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"AKS login failed: {e.stderr.strip() or e.stdout.strip()}"
+        ) from e
+
+
 def _run_script(
     script_name: str, run_args: Optional[str], script_path: str | None = None
 ) -> subprocess.CompletedProcess:
@@ -230,7 +267,7 @@ def _run_script(
     tmp_path: str | None = None
     github_tmp_path: str | None = None
     github_error: Exception | None = None
-
+    logging.warning(run_args)
     # GitHub if not found locally
     if script_path is None:
         try:
@@ -292,6 +329,10 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
         "exec_id": req.headers.get("ExecId"),
         "oncall": req.headers.get("OnCall"),
     }
+    if "aks_resource_info" in req.headers:
+        aks_info = req.headers.get("aks_resource_info")
+        if aks_info is not None:
+            payload["aks_resource_info"] = aks_info
     out_msg.set(json.dumps(payload, ensure_ascii=False))
     body = json.dumps(
         {"status": "accepted", "message": "processing scheduled"}, ensure_ascii=False
@@ -330,6 +371,9 @@ def process_runbook(msg: func.QueueMessage) -> None:
         }
 
     try:
+        if payload.get("aks_resource_info"):
+            _run_aks_login(payload["aks_resource_info"])
+
         result = _run_script(
             script_name=payload.get("runbook"), run_args=payload.get("run_args")
         )

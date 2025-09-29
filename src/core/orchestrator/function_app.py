@@ -123,9 +123,11 @@ def safe_json(response) -> dict | str | None:
             return None
 
 
-def build_headers(schema: "Schema", exec_id: str) -> dict:
+def build_headers(
+    schema: "Schema", exec_id: str, aks_resource_info: dict | None
+) -> dict:
     # Standardize request headers sent to the downstream runbook endpoint
-    return {
+    headers = {
         "runbook": f"{schema.runbook}",
         "run_args": f"{schema.run_args}",
         "Id": schema.id,
@@ -134,6 +136,9 @@ def build_headers(schema: "Schema", exec_id: str) -> dict:
         "OnCall": schema.oncall,
         "Content-Type": "application/json",
     }
+    if aks_resource_info is not None:
+        headers["aks_resource_info"] = json.dumps(aks_resource_info, ensure_ascii=False)
+    return headers
 
 
 def build_response_body(
@@ -256,9 +261,20 @@ def Trigger(
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
         schema_id = utils.extract_schema_id_from_req(req)
+        aks_resource_info = None
     else:
         resource_name, resource_group, resource_id, schema_id, namespace = (
             utils.parse_resource_fields(req).values()
+        )
+        aks_resource_info = (
+            {
+                "aks_name": resource_name,
+                "aks_rg": resource_group,
+                "aks_id": resource_id,
+                "aks_namespace": namespace,
+            }
+            if resource_name
+            else None
         )
 
     if not schema_id:
@@ -312,7 +328,11 @@ def Trigger(
 
     try:
         # Call downstream runbook endpoint
-        response = request("POST", schema.url, headers=build_headers(schema, exec_id))
+        response = request(
+            "POST",
+            schema.url,
+            headers=build_headers(schema, exec_id, aks_resource_info),
+        )
         api_body = safe_json(response)
 
         # Status label for logs

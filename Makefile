@@ -88,6 +88,18 @@ clean:
 	$(DOCKER) rmi $(ORCH_IMAGE) || true
 	$(DOCKER) rmi $(WORKER_IMAGE) || true
 
+.PHONY: dev
+dev:
+	@echo "Starting dev environment"
+	$(DOCKER) compose up -d azurite
+	bash src/tests/ingest_test_schema.sh localhost:7072
+	@set -euo pipefail; \
+	trap 'echo "Stopping dev processes..."; kill -9 -P $$; exit 0' INT TERM; \
+	( cd $(ORCH_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ exec func start ) & \
+	( cd $(WORKER_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ exec func start -p 7072 ) & \
+	wait
+
+
 .PHONY: test-env-start
 test-env-start:
 	docker-compose build && docker-compose up -d && sleep 2 && bash src/tests/ingest_test_schema.sh
