@@ -30,6 +30,9 @@ help:
 	@echo "  make push-orchestrator             - Push the orchestrator image"
 	@echo "  make push-worker                   - Push the worker image"
 	@echo "  make clean                         - Remove local images (matching tags only)"
+	@echo "  make test-env-start                - Start local dev test environment"
+	@echo "  make test-env-stop                 - Stop local dev test environment"
+	@echo "  make test-env-restart              - Restart local dev test environment"
 	@echo ""
 	@echo "Overridable variables:"
 	@echo "  VERSION=<tag>                      (default: latest)"
@@ -84,3 +87,27 @@ push-worker:
 clean:
 	$(DOCKER) rmi $(ORCH_IMAGE) || true
 	$(DOCKER) rmi $(WORKER_IMAGE) || true
+
+.PHONY: dev
+dev:
+	@echo "Starting dev environment"
+	$(DOCKER) compose up -d azurite
+	bash src/tests/ingest_test_schema.sh localhost:7072
+	@set -euo pipefail; \
+	trap 'echo "Stopping dev processes..."; kill -9 -P $$; exit 0' INT TERM; \
+	( cd $(ORCH_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ exec func start ) & \
+	( cd $(WORKER_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ exec func start -p 7072 ) & \
+	wait
+
+
+.PHONY: test-env-start
+test-env-start:
+	docker-compose build && docker-compose up -d && sleep 2 && bash src/tests/ingest_test_schema.sh
+	@echo "Test with -> http://localhost:7071/api/Trigger?id=test"
+
+.PHONY: test-env-stop
+test-env-stop:
+	docker-compose down
+
+.PHONY: test-env-restart
+test-env-restart: test-env-stop test-env-start

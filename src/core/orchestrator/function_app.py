@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 import azure.functions as func
+import utils
 from requests import request
 
 app = func.FunctionApp()
@@ -122,9 +123,11 @@ def safe_json(response) -> dict | str | None:
             return None
 
 
-def build_headers(schema: "Schema", exec_id: str) -> dict:
+def build_headers(
+    schema: "Schema", exec_id: str, aks_resource_info: dict | None
+) -> dict:
     # Standardize request headers sent to the downstream runbook endpoint
-    return {
+    headers = {
         "runbook": f"{schema.runbook}",
         "run_args": f"{schema.run_args}",
         "Id": schema.id,
@@ -133,6 +136,9 @@ def build_headers(schema: "Schema", exec_id: str) -> dict:
         "OnCall": schema.oncall,
         "Content-Type": "application/json",
     }
+    if aks_resource_info is not None:
+        headers["aks_resource_info"] = json.dumps(aks_resource_info, ensure_ascii=False)
+    return headers
 
 
 def build_response_body(
@@ -194,34 +200,6 @@ def build_log_entry(
     }
 
 
-def extract_schema_id_from_req(req: func.HttpRequest) -> Optional[str]:
-    """
-    Resolve schema_id from the incoming request:
-    1) Prefer query string (?id=...)
-    2) Fallback to JSON body: data.essentials.alertId (or schemaId if available)
-    Returns the alertId as-is. If you want only the trailing GUID, enable the split below.
-    """
-    q_id = req.params.get("id")
-    if q_id:
-        return q_id
-    logging.info("Resolving schema_id: %s", req.params.get("id"))
-    try:
-        body = req.get_json()
-    except ValueError:
-        body = None
-    if isinstance(body, dict):
-        alert_id = body.get("data", {}).get("essentials", {}).get(
-            "alertId"
-        ) or body.get("schemaId")
-        if alert_id:
-            aid = str(alert_id).strip()
-            if "/" in aid:
-                last = aid.strip("/").split("/")[-1]
-                return last or aid
-            return aid
-    return None
-
-
 # =========================
 # Domain Model
 # =========================
@@ -277,13 +255,28 @@ class Schema:
 def Trigger(
     req: func.HttpRequest, log_table: func.Out[str], entities: str
 ) -> func.HttpResponse:
-    # Route params (optional): available via req.route_params
-    route_params = getattr(req, "route_params", {}) or {}
+    # Init payload variables to None
+    resource_name = resource_group = resource_id = schema_id = None
 
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
-    schema_id = (route_params.get("id") or "").strip() or extract_schema_id_from_req(
-        req
-    )
+    if (req.params.get("id")) is not None:
+        schema_id = utils.extract_schema_id_from_req(req)
+        aks_resource_info = None
+    else:
+        resource_name, resource_group, resource_id, schema_id, namespace = (
+            utils.parse_resource_fields(req).values()
+        )
+        aks_resource_info = (
+            {
+                "aks_name": resource_name,
+                "aks_rg": resource_group,
+                "aks_id": resource_id,
+                "aks_namespace": namespace,
+            }
+            if resource_name
+            else None
+        )
+
     if not schema_id:
         return func.HttpResponse(
             json.dumps(
@@ -335,7 +328,11 @@ def Trigger(
 
     try:
         # Call downstream runbook endpoint
-        response = request("POST", schema.url, headers=build_headers(schema, exec_id))
+        response = request(
+            "POST",
+            schema.url,
+            headers=build_headers(schema, exec_id, aks_resource_info),
+        )
         api_body = safe_json(response)
 
         # Status label for logs
