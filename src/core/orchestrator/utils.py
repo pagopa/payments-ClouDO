@@ -73,29 +73,47 @@ def parse_resource_fields(payload: func.HttpRequest):
     }
 
 
-def extract_schema_id_from_req(req: func.HttpRequest) -> Optional[str]:
+def extract_schema_id_from_req(req: func.HttpRequest) -> Optional[list]:
     """
     Resolve schema_id from the incoming request:
     1) Prefer query string (?id=...)
     2) Fallback to JSON body: data.essentials.alertId (or schemaId if available)
     Returns the alertId as-is. If you want only the trailing GUID, enable the split below.
     """
+
+    def normalize(val) -> str:
+        s = str(val).strip()
+        if "/" in s:
+            last = s.strip("/").split("/")[-1]
+            return last or s
+        return s
+
+    candidates: list[str] = []
+
     q_id = req.params.get("id")
     if q_id:
-        return q_id
+        candidates.append(normalize(q_id))
     logging.info("Resolving schema_id: %s", req.params.get("id"))
     try:
         body = req.get_json()
+        logging.info("body: %s", body)
     except ValueError:
         body = None
     if isinstance(body, dict):
-        alert_id = body.get("data", {}).get("essentials", {}).get(
-            "alertId"
-        ) or body.get("schemaId")
-        if alert_id:
-            aid = str(alert_id).strip()
-            if "/" in aid:
-                last = aid.strip("/").split("/")[-1]
-                return last or aid
-            return aid
-    return None
+        essentials = body.get("data", {}).get("essentials", {}) or {}
+        raw_candidates = [
+            essentials.get("alertId"),
+            essentials.get("alertRule"),
+        ]
+        for c in raw_candidates:
+            if c:
+                candidates.append(normalize(c))
+
+    seen = set()
+    unique_candidates = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            unique_candidates.append(c)
+
+    return unique_candidates

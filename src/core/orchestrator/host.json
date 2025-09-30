@@ -1,12 +1,35 @@
 {
   "version": "2.0",
   "logging": {
+    "logLevel": {
+      "Default": "Warning",
+      "Function": "Information",
+      "Host": "Error",
+      "Host.Results": "Error",
+      "Microsoft": "Error",
+      "Azure": "Error",
+      "Azure.Core": "Error",
+      "Azure.Storage": "Error",
+      "Azure.Storage.Blobs": "Error"
+    },
     "applicationInsights": {
       "samplingSettings": {
         "isEnabled": true,
-        "excludedTypes": "Request"
+        "maxTelemetryItemsPerSecond": 5
       }
     }
+  },
+  "extensions": {
+    "http": {
+      "routePrefix": "api",
+      "maxOutstandingRequests": 200,
+      "maxConcurrentRequests": 100,
+      "dynamicThrottlesEnabled": true
+    }
+  },
+  "aggregator": {
+    "batchSize": 100,
+    "flushTimeout": "00:00:30"
   },
   "extensionBundle": {
     "id": "Microsoft.Azure.Functions.ExtensionBundle",

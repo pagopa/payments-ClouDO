@@ -218,7 +218,7 @@ class Schema:
 
     def __post_init__(self):
         if not self.id or not isinstance(self.id, str):
-            raise ValueError("Schema id must be a non-empty string")
+            raise ValueError("Schema id must be a non-empty str")
 
         if not self.entity:
             raise ValueError(
@@ -306,7 +306,7 @@ def Trigger(
     def get_id(e: dict) -> str:
         return str(e.get("Id") or e.get("id") or "").strip()
 
-    schema_entity = next((e for e in parsed if get_id(e) == schema_id), None)
+    schema_entity = next((e for e in parsed if get_id(e) in schema_id), None)
 
     if not schema_entity:
         return func.HttpResponse(
@@ -317,9 +317,10 @@ def Trigger(
             status_code=404,
             mimetype="application/json",
         )
-
+    logging.info(f"Getting schema entity id '{schema_id}'")
+    logging.info(f"Getting schema entity id '{schema_entity}'")
     # Build domain model
-    schema = Schema(id=schema_id, entity=schema_entity)
+    schema = Schema(id=schema_entity.get("id"), entity=schema_entity)
 
     # Pre-compute logging fields
     requested_at = format_requested_at()
