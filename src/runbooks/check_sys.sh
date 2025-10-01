@@ -37,3 +37,4 @@ echo
 
 check_processes
 echo
+exit 1

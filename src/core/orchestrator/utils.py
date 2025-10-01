@@ -175,8 +175,9 @@ def extract_schema_id_from_req(req: func.HttpRequest) -> Optional[list[str]]:
 
     q_id = req.params.get("id")
     if q_id:
+        logging.info("Resolving schema_id: %s", q_id)
         candidates.append(normalize(q_id))
-    logging.info("Resolving schema_id: %s", q_id)
+        return candidates
 
     try:
         body = req.get_json()

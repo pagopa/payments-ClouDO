@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 import azure.functions as func
 import utils
+from escalation import send_opsgenie_alert
 from requests import request
 
 app = func.FunctionApp()
@@ -262,7 +263,7 @@ def Trigger(
     req: func.HttpRequest, log_table: func.Out[str], entities: str
 ) -> func.HttpResponse:
     # Init payload variables to None
-    resource_name = resource_group = resource_id = schema_id = monitor_condition = None
+    resource_name = resource_group = resource_id = schema_id = monitor_condition = ""
 
     # Pre-compute logging fields
     requested_at = format_requested_at()
@@ -461,7 +462,6 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
     row_key = str(uuid.uuid4())  # stable hex representation for RowKey
     request_origin_url = resolve_caller_url(req)
     status_label = resolve_status(get_header(req, "Status"))
-    logging.info(f"[{get_header(req, 'ExecId')}] {get_header(req, 'Log')}")
 
     # Build and write the log entity
     log_entity = build_log_entry(
@@ -480,7 +480,37 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
     )
     log_table.set(json.dumps(log_entity, ensure_ascii=False))
 
-    if req.headers.get("OnCall") == "true" and status_label == "failed":
+    if req.headers.get("OnCall") == "true" and status_label != "succeeded":
+        api_key = (os.environ.get("OPSGENIE_API_KEY") or "").strip()
+        if api_key:
+            try:
+                send_opsgenie_alert(
+                    api_key=api_key,
+                    message=f"[{get_header(req, 'Id')}] {get_header(req, 'Name')}",
+                    priority="P5",
+                    alias=get_header(req, "ExecId"),
+                    details={
+                        "Name": get_header(req, "Name"),
+                        "Id": get_header(req, "Id"),
+                        "ExecId": get_header(req, "ExecId"),
+                        "Status": get_header(req, "Status"),
+                        "Runbook": get_header(req, "runbook"),
+                        "Run_Args": get_header(req, "run_args"),
+                        "OnCall": get_header(req, "OnCall"),
+                    },
+                    description=f"Execution failed for {get_header(req, 'ExecId')}:\n\n{decode_base64(get_header(req, 'Log') or '')}",
+                )
+            except Exception as e:
+                logging.error(
+                    f"[{get_header(req, 'ExecId')}] escalation to OPSGENIE failed: {e}"
+                )
+                log_table.set(
+                    json.dumps({"status": "escalation_failed", "message": str(e)})
+                )
+        else:
+            logging.warning(
+                f"OPSGENIE API key not set: {os.environ.get('OPSGENIE_API_KEY')}"
+            )
         # Return a coherent JSON response
         return func.HttpResponse(
             json.dumps({"message": "Chiamo il reperibile!"}, ensure_ascii=False),
