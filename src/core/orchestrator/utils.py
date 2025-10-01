@@ -134,7 +134,7 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
         or annotations.get("job_name")
     )
 
-    monitor_condition = essentials.get("monitorcondition")
+    monitor_condition = essentials.get("monitorcondition") or ""
     if not job:
         cand = labels.get("job") or annotations.get("job")
         if cand and cand != "kube-state-metrics":

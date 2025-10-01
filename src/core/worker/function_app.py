@@ -267,7 +267,7 @@ def _run_script(
     run_args: Optional[str],
     script_path: str | None = None,
     aks_resource_info: dict | None = None,
-    monitor_condition: str | None = None,
+    monitor_condition: Optional[str] = "",
 ) -> subprocess.CompletedProcess:
     """Run the requested script fetching it from Blob Storage, falling back to local folder, then GitHub."""
     tmp_path: str | None = None
@@ -291,16 +291,19 @@ def _run_script(
                     logging.warning("AKS info string non JSON: %r", val)
             return {}
 
+        def to_str(x) -> str:
+            return "" if x is None else str(x)
+
         aks_info = normalize_aks_info(aks_resource_info)
         logging.info(f"AKS info: {aks_info}")
 
-        os.environ["AKS_NAME"] = aks_info.get("aks_name", "")
-        os.environ["AKS_RG"] = aks_info.get("aks_rg", "")
-        os.environ["AKS_ID"] = aks_info.get("aks_id", "")
-        os.environ["AKS_NAMESPACE"] = aks_info.get("aks_namespace", "")
-        os.environ["AKS_POD"] = aks_info.get("aks_pod", "")
-        os.environ["AKS_DEPLOYMENT"] = aks_info.get("aks_deployment", "")
-        os.environ["AKS_JOB"] = aks_info.get("aks_job", "")
+        os.environ["AKS_NAME"] = to_str(aks_info.get("aks_name"))
+        os.environ["AKS_RG"] = to_str(aks_info.get("aks_rg"))
+        os.environ["AKS_ID"] = to_str(aks_info.get("aks_id"))
+        os.environ["AKS_NAMESPACE"] = to_str(aks_info.get("aks_namespace"))
+        os.environ["AKS_POD"] = to_str(aks_info.get("aks_pod"))
+        os.environ["AKS_DEPLOYMENT"] = to_str(aks_info.get("aks_deployment"))
+        os.environ["AKS_JOB"] = to_str(aks_info.get("aks_job"))
     except Exception as e:
         logging.warning("AKS set env failed: %s", e)
 
