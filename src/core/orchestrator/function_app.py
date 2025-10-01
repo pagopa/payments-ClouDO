@@ -130,6 +130,7 @@ def build_headers(
     exec_id: str,
     aks_resource_info: dict | None,
     monitor_condition: str | None,
+    severity: str | None,
 ) -> dict:
     # Standardize request headers sent to the downstream runbook endpoint
     headers = {
@@ -141,6 +142,7 @@ def build_headers(
         "OnCall": schema.oncall,
         "Content-Type": "application/json",
         "MonitorCondition": monitor_condition,
+        "Severity": severity,
     }
     if aks_resource_info is not None:
         headers["aks_resource_info"] = json.dumps(aks_resource_info, ensure_ascii=False)
@@ -188,6 +190,8 @@ def build_log_entry(
     run_args: Optional[str],
     log_msg: Optional[str],
     oncall: Optional[str],
+    monitor_condition: Optional[str],
+    severity: Optional[str],
 ) -> dict[str, Any]:
     # Build a normalized log entity for Azure Table Storage
     return {
@@ -203,6 +207,8 @@ def build_log_entry(
         "Run_Args": run_args,
         "Log": log_msg,
         "OnCall": oncall,
+        "MonitorCondition": monitor_condition,
+        "Severity": severity,
     }
 
 
@@ -222,6 +228,7 @@ class Schema:
     run_args: str | None = None
     oncall: str | None = "false"
     monitor_condition: str | None = None
+    severity: str | None = None
 
     def __post_init__(self):
         if not self.id or not isinstance(self.id, str):
@@ -263,7 +270,9 @@ def Trigger(
     req: func.HttpRequest, log_table: func.Out[str], entities: str
 ) -> func.HttpResponse:
     # Init payload variables to None
-    resource_name = resource_group = resource_id = schema_id = monitor_condition = ""
+    resource_name = resource_group = resource_id = schema_id = monitor_condition = (
+        severity
+    ) = ""
 
     # Pre-compute logging fields
     requested_at = format_requested_at()
@@ -285,6 +294,7 @@ def Trigger(
             deployment,
             job,
             monitor_condition,
+            severity,
         ) = utils.parse_resource_fields(req).values()
         aks_resource_info = (
             {
@@ -348,6 +358,7 @@ def Trigger(
         id=schema_entity.get("id"),
         entity=schema_entity,
         monitor_condition=monitor_condition,
+        severity=severity,
     )
     logging.info(f"[{exec_id}] Set schema: '{schema}'")
     try:
@@ -356,7 +367,7 @@ def Trigger(
             "POST",
             schema.url,
             headers=build_headers(
-                schema, exec_id, aks_resource_info, monitor_condition
+                schema, exec_id, aks_resource_info, monitor_condition, severity
             ),
         )
         api_body = safe_json(response)
@@ -378,6 +389,8 @@ def Trigger(
             run_args=schema.run_args,
             log_msg=api_body,
             oncall=schema.oncall,
+            monitor_condition=monitor_condition,
+            severity=severity,
         )
         log_table.set(json.dumps(start_log, ensure_ascii=False))
 
@@ -418,6 +431,8 @@ def Trigger(
             run_args=schema.run_args,
             log_msg=str(e),
             oncall=schema.oncall,
+            monitor_condition=monitor_condition,
+            severity=severity,
         )
         log_table.set(json.dumps(error_log, ensure_ascii=False))
 
@@ -452,6 +467,8 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                 "Runbook": get_header(req, "runbook"),
                 "Run_Args": get_header(req, "run_args"),
                 "OnCall": get_header(req, "OnCall"),
+                "MonitorCondition": get_header(req, "MonitorCondition"),
+                "Severity": get_header(req, "Severity"),
             }
         },
     )
@@ -477,6 +494,8 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
         run_args=get_header(req, "run_args"),
         log_msg=decode_base64(get_header(req, "Log")),
         oncall=get_header(req, "OnCall"),
+        monitor_condition=get_header(req, "MonitorCondition"),
+        severity=get_header(req, "Severity"),
     )
     log_table.set(json.dumps(log_entity, ensure_ascii=False))
 
@@ -486,8 +505,8 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
             try:
                 send_opsgenie_alert(
                     api_key=api_key,
-                    message=f"[{get_header(req, 'Id')}] {get_header(req, 'Name')}",
-                    priority="P5",
+                    message=f"[{get_header(req, 'Id')}] [{get_header(req, 'Severity')}] {get_header(req, 'Name')}",
+                    priority=f"P{int(str(get_header(req, 'Severity')).strip().lower().replace('sev', ''))+1}",
                     alias=get_header(req, "ExecId"),
                     details={
                         "Name": get_header(req, "Name"),
@@ -497,6 +516,8 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                         "Runbook": get_header(req, "runbook"),
                         "Run_Args": get_header(req, "run_args"),
                         "OnCall": get_header(req, "OnCall"),
+                        "MonitorCondition": get_header(req, "MonitorCondition"),
+                        "Severity": get_header(req, "Severity"),
                     },
                     description=f"Execution failed for {get_header(req, 'ExecId')}:\n\n{decode_base64(get_header(req, 'Log') or '')}",
                 )
