@@ -161,7 +161,12 @@ resource "azurerm_user_assigned_identity" "identity" {
 }
 
 resource "azurerm_role_assignment" "role_assignment" {
+  for_each = toset([
+    "Contributor",
+    "Azure Kubernetes Service Cluster User Role",
+    "Azure Kubernetes Service RBAC Writer"
+  ])
   scope                = data.azurerm_subscription.current.id
-  role_definition_name = "Contributor"
+  role_definition_name = each.key
   principal_id         = azurerm_user_assigned_identity.identity.principal_id
 }
