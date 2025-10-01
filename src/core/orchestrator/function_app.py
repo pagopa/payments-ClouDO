@@ -15,6 +15,7 @@ from requests import request
 
 app = func.FunctionApp()
 
+
 # =========================
 # Constants and Utilities
 # =========================
@@ -124,7 +125,10 @@ def safe_json(response) -> dict | str | None:
 
 
 def build_headers(
-    schema: "Schema", exec_id: str, aks_resource_info: dict | None
+    schema: "Schema",
+    exec_id: str,
+    aks_resource_info: dict | None,
+    monitor_condition: str | None,
 ) -> dict:
     # Standardize request headers sent to the downstream runbook endpoint
     headers = {
@@ -135,6 +139,7 @@ def build_headers(
         "ExecId": exec_id,
         "OnCall": schema.oncall,
         "Content-Type": "application/json",
+        "MonitorCondition": monitor_condition,
     }
     if aks_resource_info is not None:
         headers["aks_resource_info"] = json.dumps(aks_resource_info, ensure_ascii=False)
@@ -215,10 +220,11 @@ class Schema:
     runbook: str | None = None
     run_args: str | None = None
     oncall: str | None = "false"
+    monitor_condition: str | None = None
 
     def __post_init__(self):
         if not self.id or not isinstance(self.id, str):
-            raise ValueError("Schema id must be a non-empty string")
+            raise ValueError("Schema id must be a non-empty str")
 
         if not self.entity:
             raise ValueError(
@@ -256,26 +262,43 @@ def Trigger(
     req: func.HttpRequest, log_table: func.Out[str], entities: str
 ) -> func.HttpResponse:
     # Init payload variables to None
-    resource_name = resource_group = resource_id = schema_id = None
+    resource_name = resource_group = resource_id = schema_id = monitor_condition = None
+
+    # Pre-compute logging fields
+    requested_at = format_requested_at()
+    partition_key = today_partition_key()
+    exec_id = str(uuid.uuid4())
 
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
         schema_id = utils.extract_schema_id_from_req(req)
         aks_resource_info = None
     else:
-        resource_name, resource_group, resource_id, schema_id, namespace = (
-            utils.parse_resource_fields(req).values()
-        )
+        (
+            resource_name,
+            resource_group,
+            resource_id,
+            schema_id,
+            namespace,
+            pod,
+            deployment,
+            job,
+            monitor_condition,
+        ) = utils.parse_resource_fields(req).values()
         aks_resource_info = (
             {
                 "aks_name": resource_name,
                 "aks_rg": resource_group,
                 "aks_id": resource_id,
                 "aks_namespace": namespace,
+                "aks_pod": pod,
+                "aks_deployment": deployment,
+                "aks_job": job,
             }
             if resource_name
             else None
         )
+        logging.info(f"[{exec_id}] Resource info: %s", aks_resource_info)
 
     if not schema_id:
         return func.HttpResponse(
@@ -306,7 +329,7 @@ def Trigger(
     def get_id(e: dict) -> str:
         return str(e.get("Id") or e.get("id") or "").strip()
 
-    schema_entity = next((e for e in parsed if get_id(e) == schema_id), None)
+    schema_entity = next((e for e in parsed if get_id(e) in schema_id), None)
 
     if not schema_entity:
         return func.HttpResponse(
@@ -317,21 +340,23 @@ def Trigger(
             status_code=404,
             mimetype="application/json",
         )
-
+    logging.info(f"[{exec_id}] Getting schema entity id '{schema_id}'")
+    logging.info(f"[{exec_id}] Getting schema entity id '{schema_entity}'")
     # Build domain model
-    schema = Schema(id=schema_id, entity=schema_entity)
-
-    # Pre-compute logging fields
-    requested_at = format_requested_at()
-    partition_key = today_partition_key()
-    exec_id = str(uuid.uuid4())
-
+    schema = Schema(
+        id=schema_entity.get("id"),
+        entity=schema_entity,
+        monitor_condition=monitor_condition,
+    )
+    logging.info(f"[{exec_id}] Set schema: '{schema}'")
     try:
         # Call downstream runbook endpoint
         response = request(
             "POST",
             schema.url,
-            headers=build_headers(schema, exec_id, aks_resource_info),
+            headers=build_headers(
+                schema, exec_id, aks_resource_info, monitor_condition
+            ),
         )
         api_body = safe_json(response)
 
@@ -416,7 +441,7 @@ def Trigger(
 def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpResponse:
     # Log only relevant and serializable headers for observability
     logging.info(
-        "Receiver invoked",
+        f"[{get_header(req, 'ExecId')}] Receiver invoked",
         extra={
             "headers": {
                 "ExecId": get_header(req, "ExecId"),
@@ -430,13 +455,14 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
         },
     )
 
-    # Precompute keys and timestamps for logging
+    # Precompute keys and timestamps for log
     requested_at_utc = format_requested_at()
     partition_key = utc_partition_key()
     row_key = str(uuid.uuid4())  # stable hex representation for RowKey
     request_origin_url = resolve_caller_url(req)
     status_label = resolve_status(get_header(req, "Status"))
-    logging.info(get_header(req, "Log"))
+    logging.info(f"[{get_header(req, 'ExecId')}] {get_header(req, 'Log')}")
+
     # Build and write the log entity
     log_entity = build_log_entry(
         status=status_label,

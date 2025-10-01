@@ -7,15 +7,11 @@
 # - Namespace
 # - Deployment name
 
-# Check if required parameters are provided
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <namespace> <deployment-name>"
-    >&2 echo "error: $#"
-    exit 1
-fi
 
-NAMESPACE=$1
-DEPLOYMENT_NAME=$2
+NAMESPACE=$AKS_NAMESPACE
+DEPLOYMENT_NAME=$AKS_DEPLOYMENT
+
+echo $(env | grep AKS)
 
 # Perform deployment rollout
 echo "Performing rollout for deployment $DEPLOYMENT_NAME in namespace $NAMESPACE..."
