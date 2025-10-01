@@ -7,12 +7,6 @@
 # - Namespace
 # - Deployment name
 
-# Check if required parameters are provided
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <namespace> <deployment-name>"
-    >&2 echo "error: $#"
-    exit 1
-fi
 
 NAMESPACE=$AKS_NAMESPACE
 DEPLOYMENT_NAME=$AKS_DEPLOYMENT

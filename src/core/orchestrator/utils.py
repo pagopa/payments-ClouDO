@@ -4,6 +4,15 @@ from typing import Any, Optional
 import azure.functions as func
 
 
+def lower_keys(obj: Any) -> Any:
+    """Recursively lower-case dict keys."""
+    if isinstance(obj, dict):
+        return {str(k).lower(): lower_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [lower_keys(x) for x in obj]
+    return obj
+
+
 def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
     """
     Extract resource info from an Azure Monitor alert (Common Alert Schema).
@@ -34,12 +43,13 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
     # Parse body defensively
     try:
         data = req.get_json() or {}
+        lower = lower_keys(data)
     except ValueError:
-        data = {}
+        lower = {}
 
-    e = data.get("data", {}) or {}
+    e = lower.get("data", {}) or {}
     essentials = e.get("essentials", {}) or {}
-    ctx = e.get("alertContext", {}) or {}
+    ctx = e.get("alertcontext", {}) or {}
     labels = ctx.get("labels") or {}
     annotations = ctx.get("annotations") or {}
 
@@ -47,7 +57,7 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
     candidates: list[str] = []
 
     # 1) essentials.alertTargetIDs (list of ARM IDs)
-    alert_target_ids = essentials.get("alertTargetIDs") or []
+    alert_target_ids = essentials.get("alerttargetids") or []
     candidates.extend(x for x in alert_target_ids if isinstance(x, str))
 
     # 2) alertContext.labels["microsoft.resourceid"]
@@ -56,7 +66,7 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
         candidates.append(mrid)
 
     # 3) alertContext.resourceId
-    rid = ctx.get("resourceId")
+    rid = ctx.get("resourceid")
     if isinstance(rid, str):
         candidates.append(rid)
 
@@ -78,19 +88,20 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
 
     if resource_id:
         parts = resource_id.strip("/").split("/")
+        parts_l = [p.lower() for p in parts]
         try:
-            rg_index = parts.index("resourceGroups") + 1
-            resource_group = parts[rg_index]
+            rg_index = parts_l.index("resourcegroups") + 1
+            resource_group = parts_l[rg_index]
         except Exception:
             resource_group = None
-        resource_name = parts[-1] if parts else None
+        resource_name = parts_l[-1] if parts_l else None
     else:
-        config_items = essentials.get("configurationItems") or []
+        config_items = essentials.get("configurationitems") or []
         if config_items and isinstance(config_items, list):
             resource_name = config_items[0]
-        resource_name = resource_name or ctx.get("resourceName")
-        resource_group = ctx.get("resourceGroup")
-        resource_id = ctx.get("resourceId")
+        resource_name = resource_name or ctx.get("resourcename")
+        resource_group = ctx.get("resourcegroup")
+        resource_id = ctx.get("resourceid")
 
     # Kubernetes fields
     namespace = (
@@ -123,7 +134,7 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
         or annotations.get("job_name")
     )
 
-    monitor_condition = essentials.get("monitorCondition")
+    monitor_condition = essentials.get("monitorcondition")
     if not job:
         cand = labels.get("job") or annotations.get("job")
         if cand and cand != "kube-state-metrics":
