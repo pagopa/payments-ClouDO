@@ -11,6 +11,8 @@
 NAMESPACE=$AKS_NAMESPACE
 DEPLOYMENT_NAME=$AKS_DEPLOYMENT
 
+echo $(env | grep AKS)
+
 # Perform deployment rollout
 echo "Performing rollout for deployment $DEPLOYMENT_NAME in namespace $NAMESPACE..."
 kubectl rollout restart deployment/$DEPLOYMENT_NAME -n $NAMESPACE
