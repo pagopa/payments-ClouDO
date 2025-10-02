@@ -11,14 +11,6 @@ categories:
     labels: ['chore', 'ci', 'docs', 'refactor']
 change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
 template: |
-  ## 💥 Breaking Changes
-  $CHANGES_WITH_LABELS:breaking change,breaking,major,BREAKING CHANGE
+  ## What’s Changed
 
-  ## 🚀 Features
-  $CHANGES_WITH_LABELS:feat,feature
-
-  ## 🐛 Fixes
-  $CHANGES_WITH_LABELS:fix,bugfix,bug
-
-  ## 🧰 Chores
-  $CHANGES_WITH_LABELS:chore,ci,docs,refactor
+  $CHANGES
