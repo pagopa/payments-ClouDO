@@ -786,6 +786,16 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
       el('info').textContent = (data.items || []).length + ' risultato/i';
     }}
     el('run').addEventListener('click', runQuery);
+    function setDefaultPartitionKey(){{
+      const d = new Date();
+      const pad = n => String(n).padStart(2,'0');
+      const yyyy = d.getFullYear();
+      const mm = pad(d.getMonth()+1);
+      const dd = pad(d.getDate());
+      const today = `${{yyyy}}${{mm}}${{dd}}`;
+      const input = document.getElementById('partitionKey');
+      if (input && !input.value) input.value = today;
+    }};
     el('clear').addEventListener('click', ()=>{{
       ['partitionKey','execId','q','from','to'].forEach(id=>el(id).value='');
       el('status').value='';
@@ -794,7 +804,9 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
       el('tbl').querySelector('tbody').innerHTML='';
       el('raw').textContent='';
       el('info').textContent='';
+      setDefaultPartitionKey();
     }});
+    setDefaultPartitionKey();
   </script>
  </body>
 </html>
