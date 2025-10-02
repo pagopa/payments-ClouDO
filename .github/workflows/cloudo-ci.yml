@@ -62,7 +62,7 @@ jobs:
         id: orchestrator-ver
         uses: paulhatch/semantic-version@v5.4.0
         with:
-          change_path: "services/orchestrator"
+          change_path: "src/core/orchestrator"
           namespace: orchestrator
           major_pattern: "BREAKING CHANGE"
           minor_pattern: "feat"
@@ -72,7 +72,7 @@ jobs:
         id: worker-ver
         uses: paulhatch/semantic-version@v5.4.0
         with:
-          change_path: "services/worker"
+          change_path: "src/core/worker"
           namespace: worker
           major_pattern: "BREAKING CHANGE"
           minor_pattern: "feat"
