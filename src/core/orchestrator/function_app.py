@@ -691,7 +691,10 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
     </div>
     <div class="row">
         <button id="run" class="primary">
-          <span style="display:inline-block;width:0;height:0;border-left:8px solid currentColor;border-top:6px solid transparent;border-bottom:6px solid transparent;margin-right:6px;vertical-align:middle;"></span>
+          <span style="display:inline-block;width:0;height:0;border-left:8px solid currentColor;
+            border-top:6px solid transparent;border-bottom:6px solid transparent;margin-right:6px;
+            vertical-align:middle;">
+          </span>
           Run
         </button>
         <button id="clear">Reset</button>
