@@ -48,17 +48,17 @@ jobs:
     needs: [check]
     runs-on: ubuntu-latest
     outputs:
-      orchestrator_version: ${{ steps.orchestrator-ver.outputs.clean_version }}
-      orchestrator_changed: ${{ steps.orchestrator-ver.outputs.changed }}
-      worker_version: ${{ steps.worker-ver.outputs.clean_version }}
-      worker_changed: ${{ steps.worker-ver.outputs.changed }}
+      orchestrator_version: ${{ steps.set-outputs.outputs.orchestrator_version }}
+      orchestrator_changed: ${{ steps.set-outputs.outputs.orchestrator_changed }}
+      worker_version: ${{ steps.set-outputs.outputs.worker_version }}
+      worker_changed: ${{ steps.set-outputs.outputs.worker_changed }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Ensure tags and full history are available
 
-      - name: Orchetrator Version
+      - name: Orchestrator Version
         id: orchestrator-ver
         uses: paulhatch/semantic-version@v5.4.0
         with:
@@ -77,6 +77,45 @@ jobs:
           major_pattern: "BREAKING CHANGE"
           minor_pattern: "feat"
           tag_prefix: "v"
+
+      - name: Set composite outputs
+        id: set-outputs
+        run: |
+          # Normalize versions (strip leading 'v') and expose "changed" flags
+          echo "orchestrator_version=${{ steps.orchestrator-ver.outputs.clean_version }}" >> "$GITHUB_OUTPUT"
+          echo "orchestrator_changed=${{ steps.orchestrator-ver.outputs.changed }}" >> "$GITHUB_OUTPUT"
+          echo "worker_version=${{ steps.worker-ver.outputs.clean_version }}" >> "$GITHUB_OUTPUT"
+          echo "worker_changed=${{ steps.worker-ver.outputs.changed }}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push orchestrator tag (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.orchestrator-ver.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.orchestrator-ver.outputs.version }}
+        run: |
+          # Create and push vX.Y.Z-orchestrator tag if it doesn't already exist
+          TAG="v${VERSION}-orchestrator"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Create and push worker tag (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.worker-ver.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.worker-ver.outputs.version }}
+        run: |
+          # Create and push vX.Y.Z-worker tag if it doesn't already exist
+          TAG="v${VERSION}-worker"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
   docker:
     name: Build & Push via Makefile
     needs: [versioning]
