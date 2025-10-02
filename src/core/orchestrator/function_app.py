@@ -528,7 +528,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                 logging.error(f"status: escalation_failed: {str(e)}")
 
         else:
-            logging.warning(f"OPSGENIE API key not set")
+            logging.warning("OPSGENIE API key not set")
         # Return a coherent JSON response
         return func.HttpResponse(
             json.dumps({"message": "Chiamo il reperibile!"}, ensure_ascii=False),
