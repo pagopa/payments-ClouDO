@@ -503,6 +503,11 @@ def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
+# =========================
+# HTTPS: Running Process
+# =========================
+
+
 @app.route(route="processes", auth_level=AUTH)
 def list_processes(req: func.HttpRequest) -> func.HttpResponse:
     """
