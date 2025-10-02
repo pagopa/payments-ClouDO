@@ -120,7 +120,7 @@ jobs:
       - name: Generate semantic release notes (main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: relnotes
-        uses: release-drafter/release-drafter@v6
+        uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5
         with:
           disable-autolabeler: true
         env:
@@ -128,7 +128,7 @@ jobs:
 
       - name: Create GitHub Release for orchestrator
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.orchestrator-ver.outputs.changed == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@97d42c1b50f585f357413698aa1b779307aa0d52
         with:
           tag_name: v${{ steps.orchestrator-ver.outputs.version }}-orchestrator
           name: Orchestrator v${{ steps.orchestrator-ver.outputs.version }}
@@ -139,7 +139,7 @@ jobs:
 
       - name: Create GitHub Release for worker
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.worker-ver.outputs.changed == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@97d42c1b50f585f357413698aa1b779307aa0d52
         with:
           tag_name: v${{ steps.worker-ver.outputs.version }}-worker
           name: Worker v${{ steps.worker-ver.outputs.version }}
