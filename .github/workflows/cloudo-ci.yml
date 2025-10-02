@@ -116,6 +116,37 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
+
+      - name: Generate semantic release notes (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: relnotes
+        uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5
+        with:
+          disable-autolabeler: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release for orchestrator
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.orchestrator-ver.outputs.changed == 'true'
+        uses: softprops/action-gh-release@97d42c1b50f585f357413698aa1b779307aa0d52
+        with:
+          tag_name: v${{ steps.orchestrator-ver.outputs.version }}-orchestrator
+          name: Orchestrator v${{ steps.orchestrator-ver.outputs.version }}
+          body: ${{ steps.relnotes.outputs.body || 'Automated semantic release for Orchestrator.' }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release for worker
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.worker-ver.outputs.changed == 'true'
+        uses: softprops/action-gh-release@97d42c1b50f585f357413698aa1b779307aa0d52
+        with:
+          tag_name: v${{ steps.worker-ver.outputs.version }}-worker
+          name: Worker v${{ steps.worker-ver.outputs.version }}
+          body: ${{ steps.relnotes.outputs.body || 'Automated semantic release for Worker.' }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   docker:
     name: Build & Push via Makefile
     needs: [versioning]
@@ -147,19 +178,19 @@ jobs:
       - name: Build & Push orchestrator (SHA + semver)
         if: env.ORCHESTRATOR_CHANGED == 'true'
         run: |
-          make build DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
-          make build DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
+          make build-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
           if [ "${IS_MAIN_PUSH}" = "true" ]; then
-            make push DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
-            make push DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
+            make build-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
+            make push-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+            make push-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
           fi
 
       - name: Build & Push worker (SHA + semver)
         if: env.WORKER_CHANGED == 'true'
         run: |
-          make build DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
-          make build DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
+          make build-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
           if [ "${IS_MAIN_PUSH}" = "true" ]; then
-            make push DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
-            make push DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
+            make build-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
+            make push-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+            make push-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
           fi

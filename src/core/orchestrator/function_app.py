@@ -602,6 +602,11 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
     )
 
 
+# =========================
+# HTTP Function: Logs UI
+# =========================
+
+
 @app.route(route="logs", auth_level=AUTH)
 # fmt: off
 # ruff: noqa

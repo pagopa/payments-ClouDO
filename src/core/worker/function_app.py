@@ -15,6 +15,10 @@ from zoneinfo import ZoneInfo
 import azure.functions as func
 import requests
 
+# =========================
+# Constants and Utilities
+# =========================
+
 # Configuration constants
 RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7071/api/Receiver")
 QUEUE_NAME = os.environ.get("QUEUE_NAME", "runbooktest-work")
