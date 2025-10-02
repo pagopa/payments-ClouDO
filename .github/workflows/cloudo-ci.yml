@@ -178,19 +178,19 @@ jobs:
       - name: Build & Push orchestrator (SHA + semver)
         if: env.ORCHESTRATOR_CHANGED == 'true'
         run: |
-          make build DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+          make build-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
           if [ "${IS_MAIN_PUSH}" = "true" ]; then
-            make build DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
-            make push DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
-            make push DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
+            make build-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
+            make push-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+            make push-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
           fi
 
       - name: Build & Push worker (SHA + semver)
         if: env.WORKER_CHANGED == 'true'
         run: |
-          make build DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+          make build-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
           if [ "${IS_MAIN_PUSH}" = "true" ]; then
-            make build DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
-            make push DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
-            make push DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
+            make build-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
+            make push-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+            make push-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
           fi
