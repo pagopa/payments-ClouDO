@@ -3,6 +3,10 @@ from typing import Any, Optional
 
 import azure.functions as func
 
+# =========================
+# UTILS Functions
+# =========================
+
 
 def lower_keys(obj: Any) -> Any:
     """Recursively lower-case dict keys."""

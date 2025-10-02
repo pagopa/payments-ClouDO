@@ -81,10 +81,10 @@ jobs:
       - name: Set composite outputs
         id: set-outputs
         run: |
-          # Normalize versions (strip leading 'v') and expose "changed" flags
-          echo "orchestrator_version=${{ steps.orchestrator-ver.outputs.clean_version }}" >> "$GITHUB_OUTPUT"
+          # Use "version" (X.Y.Z). It is present even when "clean_version" may be empty.
+          echo "orchestrator_version=${{ steps.orchestrator-ver.outputs.version }}" >> "$GITHUB_OUTPUT"
           echo "orchestrator_changed=${{ steps.orchestrator-ver.outputs.changed }}" >> "$GITHUB_OUTPUT"
-          echo "worker_version=${{ steps.worker-ver.outputs.clean_version }}" >> "$GITHUB_OUTPUT"
+          echo "worker_version=${{ steps.worker-ver.outputs.version }}" >> "$GITHUB_OUTPUT"
           echo "worker_changed=${{ steps.worker-ver.outputs.changed }}" >> "$GITHUB_OUTPUT"
 
       - name: Create and push orchestrator tag (main only)
@@ -134,7 +134,7 @@ jobs:
           tag_name: v${{ steps.orchestrator-ver.outputs.version }}-orchestrator
           name: Orchestrator v${{ steps.orchestrator-ver.outputs.version }}
           body: ${{ steps.relnotes.outputs.body || 'Automated semantic release for Orchestrator.' }}
-          generate_release_notes: true
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -145,7 +145,7 @@ jobs:
           tag_name: v${{ steps.worker-ver.outputs.version }}-worker
           name: Worker v${{ steps.worker-ver.outputs.version }}
           body: ${{ steps.relnotes.outputs.body || 'Automated semantic release for Worker.' }}
-          generate_release_notes: true
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   docker:
@@ -176,11 +176,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Debug computed versions
+        run: |
+          echo "ORCHESTRATOR_CHANGED=${ORCHESTRATOR_CHANGED}"
+          echo "ORCHESTRATOR_VER='${ORCHESTRATOR_VER}'"
+          echo "WORKER_CHANGED=${WORKER_CHANGED}"
+          echo "WORKER_VER='${WORKER_VER}'"
+
       - name: Build & Push orchestrator (SHA + semver)
         if: env.ORCHESTRATOR_CHANGED == 'true'
         run: |
           make build-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
           if [ "${IS_MAIN_PUSH}" = "true" ]; then
+            [ -n "${ORCHESTRATOR_VER}" ] || (echo "ORCHESTRATOR_VER is empty" && exit 1)
             make build-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
             make push-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
             make push-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
@@ -191,6 +199,7 @@ jobs:
         run: |
           make build-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
           if [ "${IS_MAIN_PUSH}" = "true" ]; then
+            [ -n "${WORKER_VER}" ] || (echo "WORKER_VER is empty" && exit 1)
             make build-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
             make push-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
             make push-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
