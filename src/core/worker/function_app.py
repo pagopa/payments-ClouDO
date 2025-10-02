@@ -80,6 +80,8 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
         "Status": status,
         "Log": encode_logs(log_message),
         "OnCall": payload.get("oncall"),
+        "MonitorCondition": payload.get("monitor_condition"),
+        "Severity": payload.get("severity"),
     }
 
 
@@ -368,6 +370,7 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
         "exec_id": req.headers.get("ExecId"),
         "oncall": req.headers.get("OnCall"),
         "monitor_condition": req.headers.get("MonitorCondition"),
+        "severity": req.headers.get("Severity"),
     }
     if "aks_resource_info" in req.headers:
         aks_info = req.headers.get("aks_resource_info")

@@ -135,6 +135,7 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
     )
 
     monitor_condition = essentials.get("monitorcondition") or ""
+    severity = essentials.get("severity") or ""
     if not job:
         cand = labels.get("job") or annotations.get("job")
         if cand and cand != "kube-state-metrics":
@@ -150,6 +151,7 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
         "deployment": deployment,
         "job": job,
         "monitorCondition": monitor_condition,
+        "severity": severity,
     }
 
 
@@ -175,8 +177,9 @@ def extract_schema_id_from_req(req: func.HttpRequest) -> Optional[list[str]]:
 
     q_id = req.params.get("id")
     if q_id:
+        logging.info("Resolving schema_id: %s", q_id)
         candidates.append(normalize(q_id))
-    logging.info("Resolving schema_id: %s", q_id)
+        return candidates
 
     try:
         body = req.get_json()

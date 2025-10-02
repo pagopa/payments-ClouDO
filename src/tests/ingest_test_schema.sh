@@ -25,7 +25,7 @@ az storage entity insert \
     runbook=check_sys.sh \
     run_args="-n 5000 --repeats 100" \
     url="http://$WORKER/api/Runbook" \
-    oncall=true \
+    oncall=false \
   --if-exists merge \
   --connection-string "${CONN_STR}" \
   --only-show-errors >/dev/null
@@ -41,7 +41,7 @@ az storage entity insert \
     description='Hello Test 2!' \
     runbook=test.py \
     url="http://$WORKER/api/Runbook" \
-    oncall=true \
+    oncall=false \
   --if-exists merge \
   --connection-string "${CONN_STR}" \
   --only-show-errors >/dev/null
@@ -57,7 +57,7 @@ az storage entity insert \
     description='Hello Test 3!' \
     runbook=check_sys.sh \
     url="http://$WORKER/api/Runbook" \
-    oncall=true \
+    oncall=false \
   --if-exists merge \
   --connection-string "${CONN_STR}" \
   --only-show-errors >/dev/null
