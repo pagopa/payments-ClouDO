@@ -116,6 +116,37 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
+
+      - name: Generate semantic release notes (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: relnotes
+        uses: release-drafter/release-drafter@v6
+        with:
+          disable-autolabeler: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release for orchestrator
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.orchestrator-ver.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.orchestrator-ver.outputs.version }}-orchestrator
+          name: Orchestrator v${{ steps.orchestrator-ver.outputs.version }}
+          body: ${{ steps.relnotes.outputs.body || 'Automated semantic release for Orchestrator.' }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release for worker
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.worker-ver.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.worker-ver.outputs.version }}-worker
+          name: Worker v${{ steps.worker-ver.outputs.version }}
+          body: ${{ steps.relnotes.outputs.body || 'Automated semantic release for Worker.' }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   docker:
     name: Build & Push via Makefile
     needs: [versioning]
