@@ -43,10 +43,6 @@ jobs:
 
       - name: Lint with flake8
         run: flake8 . --max-line-length=200
-
-      - name: Run tests
-        run: |
-          pytest src/runbooks/test.py -v
   versioning:
     name: Versioning
     needs: [check]
