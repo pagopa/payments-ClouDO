@@ -509,11 +509,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
     slack_channel = (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip()
     if slack_bot_token:
         try:
-            status_emoji = (
-                "✅"
-                if status_label == "succeeded"
-                else ("⏩️" if status_label == "running" else "❌")
-            )
+            status_emoji = "✅" if status_label == "succeeded" else "❌"
             send_slack_execution(
                 token=slack_bot_token,
                 channel=slack_channel,
