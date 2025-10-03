@@ -1,6 +1,8 @@
 import logging
 
 from opsgenie_sdk import AlertApi, ApiClient, Configuration, CreateAlertPayload
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 # =========================
 # ESCALATIONS Functions
@@ -52,4 +54,32 @@ def send_opsgenie_alert(
 
     except Exception as e:
         logging.error(f"Error sending OpsGenie alert: {str(e)}")
+        return False
+
+
+def send_slack_execution(
+    token: str, channel: str, message: str, blocks: list = None
+) -> bool:
+    """
+    Send an alert to a Slack channel using the Slack SDK.
+
+    Args:
+        token (str): Slack Bot User OAuth Token
+        channel (str): Channel ID or name to send the message to
+        message (str): Message text to send
+        blocks (list, optional): Slack blocks for advanced message formatting
+
+    Returns:
+        bool: True if message was sent successfully, False otherwise
+    """
+    try:
+        client = WebClient(token=token)
+        response = client.chat_postMessage(channel=channel, text=message, blocks=blocks)
+        return True if response["ok"] else False
+
+    except SlackApiError as e:
+        logging.error(f"Error sending Slack alert: {str(e.response['error'])}")
+        return False
+    except Exception as e:
+        logging.error(f"Error sending Slack alert: {str(e)}")
         return False
