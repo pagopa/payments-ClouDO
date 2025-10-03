@@ -499,6 +499,12 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
     )
     log_table.set(json.dumps(log_entity, ensure_ascii=False))
 
+    if status_label == "running":
+        return func.HttpResponse(
+            json.dumps({"message": "Annotation completed"}, ensure_ascii=False),
+            status_code=200,
+            mimetype="application/json",
+        )
     if req.headers.get("OnCall") == "true" and status_label != "succeeded":
         api_key = (os.environ.get("OPSGENIE_API_KEY") or "").strip()
         if api_key:
@@ -641,9 +647,18 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
     .ok{{background:#ecfdf5;color:#15803d;border-color:#bbf7d0}}
     .warn{{background:#fffbeb;color:#b45309;border-color:#fde68a}}
     .err{{background:#fef2f2;color:#b91c1c;border-color:#fecaca}}
+    .info{{background:#e6f0ff;color:#1e40af;border-color:#bfdbfe}}
     details>summary{{cursor:pointer;user-select:none;font-weight:600;margin:12px 0}}
     pre{{background:#0b1220;color:#eef2ff;padding:12px;border-radius:10px;overflow:auto}}
     .nowrap{{white-space:nowrap}}
+    .modal{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1000}}
+    .modal-content{{background:#fff;max-width:80vw;max-height:80vh;overflow:auto;padding:16px;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.2)}}
+    .close{{float:right;border:0;background:transparent;font-size:1.5rem;cursor:pointer;line-height:1}}
+    .btn{{padding:6px 10px;border:1px solid var(--border,#ddd);background:#f7f7f7;border-radius:6px;cursor:pointer}}
+    .btn:hover{{background:#eee}}
+    #logModal{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1000}}
+    #logModal .modal-content{{background:#fff;max-width:80vw;width:80vw;max-height:80vh;overflow:auto;padding:16px;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.2)}}
+    #logContent{{white-space:pre-wrap;margin:0;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}}
   </style>
 </head>
 <body>
@@ -665,6 +680,8 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
           <option value="">All</option>
           <option value="accepted">accepted</option>
           <option value="succeeded">succeeded</option>
+          <option value="running">running</option>
+          <option value="failed">failed</option>
           <option value="error">error</option>
         </select>
       </div>
@@ -703,7 +720,12 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
         <button id="clear">Reset</button>
       <span id="info" class="muted" aria-live="polite"></span>
     </div>
-
+    <div id="logModal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <button class="close" onclick="closeLogModal()" aria-label="Chiudi">&times;</button>
+        <pre id="logContent" style="white-space:pre-wrap;margin:0;"></pre>
+      </div>
+    </div>
     <details open>
       <summary>Risultati</summary>
       <table id="tbl">
@@ -735,12 +757,56 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
       let cls = 'badge';
       if (st==='succeeded') cls+=' ok';
       else if (st==='accepted') cls+=' warn';
+      else if (st === 'running') cls+= ' info';
       else cls+=' err';
       return '<span class="'+cls+'">'+(st||'')+'</span>';
     }}
     function esc(s){{
       return (''+s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
     }}
+    function openLogModal(btn){{
+      const url = btn.getAttribute('data-url');
+      const modal = document.getElementById('logModal');
+      const pre = document.getElementById('logContent');
+      pre.textContent = 'Caricamento...';
+      modal.style.setProperty('display','flex','important');
+      fetch(url, {{ cache: 'no-store' }})
+        .then(r => r.text())
+        .then(txt => {{
+          try {{
+            const data = JSON.parse(txt);
+            if (Array.isArray(data)) {{
+              data.sort((a,b) => (b.RequestedAt || '').localeCompare(a.RequestedAt || ''));
+              pre.textContent = JSON.stringify(data, null, 2);
+            }} else {{
+              pre.textContent = JSON.stringify(data, null, 2);
+            }}
+          }} catch(_){{
+            pre.textContent = txt; // fallback se non è JSON valido
+          }}
+        }})
+        .catch(err => {{ pre.textContent = 'Errore: ' + err.message; }});
+    }}
+    function closeLogModal(){{ document.getElementById('logModal').style.display = 'none'; }}
+    document.addEventListener('keydown', e => {{ if(e.key==='Escape') closeLogModal(); }});
+    document.addEventListener('click', e => {{
+      const m = document.getElementById('logModal');
+      if (m.style.display !== 'none' && e.target === m) closeLogModal();
+    }});
+
+    function closeLogModal(){{
+      const modal = document.getElementById('logModal');
+      modal.style.display = 'none';
+    }}
+
+    // chiusura con ESC e click fuori
+    document.addEventListener('keydown', (e) => {{
+      if (e.key === 'Escape') closeLogModal();
+    }});
+    document.addEventListener('click', (e) => {{
+      const modal = document.getElementById('logModal');
+      if (modal.style.display !== 'none' && e.target === modal) closeLogModal();
+    }});
     async function runQuery(){{
       const params = new URLSearchParams();
       const pk = el('partitionKey').value.trim();
@@ -780,7 +846,7 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
           '<td>' + esc(item.Name || '') + '</td>' +
           '<td>' + esc(item.Id || '') + '</td>' +
           '<td>' + esc(item.Runbook || '') + '</td>' +
-          '<td><a href="' + urlWithCode + '" target="_blank">Apri</a></td>';
+          '<td><button class="btn" data-url="' + urlWithCode + '" onclick="openLogModal(this)">Vedi log</button></td>'
         tbody.appendChild(tr);
       }});
       el('info').textContent = (data.items || []).length + ' risultato/i';
