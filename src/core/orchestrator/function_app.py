@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 import azure.functions as func
 import utils
-from escalation import send_opsgenie_alert
+from escalation import send_opsgenie_alert, send_slack_execution
 from requests import request
 
 app = func.FunctionApp()
@@ -505,12 +505,109 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
             status_code=200,
             mimetype="application/json",
         )
+    slack_bot_token = (os.environ.get("SLACK_TOKEN") or "").strip()
+    slack_channel = (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip()
+    if slack_bot_token:
+        try:
+            status_emoji = "✅" if status_label == "succeeded" else "❌"
+            send_slack_execution(
+                token=slack_bot_token,
+                channel=slack_channel,
+                message=f"[{get_header(req, 'ExecId')}] Status: {status_label}: {get_header(req, 'Name')}",
+                blocks=[
+                    {
+                        "type": "header",
+                        "text": {
+                            "type": "plain_text",
+                            "text": f"Worker Notification {status_emoji}",
+                            "emoji": True,
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Name:*\n{get_header(req, 'Name')}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Id:*\n{get_header(req, 'Id')}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*ExecId:*\n{get_header(req, 'ExecId')}",
+                            },
+                            {"type": "mrkdwn", "text": f"*Status:*\n{status_label}"},
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Severity:*\n{get_header(req, 'Severity')}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*OnCall:*\n{get_header(req, 'OnCall')}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*MonitorCondition:*\n{get_header(req, 'MonitorCondition')}",
+                            },
+                        ],
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Runbook:*\n{get_header(req, 'Runbook')}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*MonitorCondition:*\n{get_header(req, 'MonitorCondition')}",
+                            },
+                        ],
+                    },
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Run Args:*\n```{get_header(req, 'run_args')}```",
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Logs (truncated):*\n```{decode_base64(get_header(req, 'Log'))[:1500]}```",
+                        },
+                    },
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Severity:*\n{get_header(req, 'Severity')}",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"Timestamp: <!date^{int(__import__('time').time())}^{{date_short}} {{time}}|now>",
+                            },
+                        ],
+                    },
+                    {"type": "divider"},
+                ],
+            )
+        except Exception as e:
+            logging.error(
+                f"[{get_header(req, 'ExecId')}] escalation to SLACK failed: {e}"
+            )
+            logging.error(f"status: escalation_failed: {str(e)}")
+
     if req.headers.get("OnCall") == "true" and status_label != "succeeded":
-        api_key = (os.environ.get("OPSGENIE_API_KEY") or "").strip()
-        if api_key:
+        opsgenie_api_key = (os.environ.get("OPSGENIE_API_KEY") or "").strip()
+        if opsgenie_api_key:
             try:
                 send_opsgenie_alert(
-                    api_key=api_key,
+                    api_key=opsgenie_api_key,
                     message=f"[{get_header(req, 'Id')}] [{get_header(req, 'Severity')}] {get_header(req, 'Name')}",
                     priority=f"P{int(str(get_header(req, 'Severity')).strip().lower().replace('sev', '')) + 1}",
                     alias=get_header(req, "ExecId"),
