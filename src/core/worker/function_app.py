@@ -418,6 +418,11 @@ def process_runbook(msg: func.QueueMessage) -> None:
         }
 
     try:
+        _post_status(
+            payload,
+            status="running",
+            log_message=f"Start execution: {payload.get('exec_id') or ''} for '{payload.get('runbook')}' at {started_at}",
+        )
         if payload.get("aks_resource_info"):
             try:
                 _run_aks_login(payload["aks_resource_info"])
