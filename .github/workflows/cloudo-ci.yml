@@ -1,0 +1,206 @@
+name: CloudDO CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ "3.11", "3.12" ]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort pytest
+          pip install -r src/core/orchestrator/requirements.txt
+
+      - name: Check code formatting with Black
+        run: black --check .
+
+      - name: Check imports with isort
+        run: isort --check-only .
+
+      - name: Lint with flake8
+        run: flake8 . --max-line-length=200
+  versioning:
+    name: Versioning
+    needs: [check]
+    runs-on: ubuntu-latest
+    outputs:
+      orchestrator_version: ${{ steps.set-outputs.outputs.orchestrator_version }}
+      orchestrator_changed: ${{ steps.set-outputs.outputs.orchestrator_changed }}
+      worker_version: ${{ steps.set-outputs.outputs.worker_version }}
+      worker_changed: ${{ steps.set-outputs.outputs.worker_changed }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Ensure tags and full history are available
+
+      - name: Orchestrator Version
+        id: orchestrator-ver
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          change_path: "src/core/orchestrator"
+          namespace: orchestrator
+          major_pattern: "BREAKING CHANGE"
+          minor_pattern: "feat"
+          tag_prefix: "v"
+
+      - name: Worker Version
+        id: worker-ver
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          change_path: "src/core/worker"
+          namespace: worker
+          major_pattern: "BREAKING CHANGE"
+          minor_pattern: "feat"
+          tag_prefix: "v"
+
+      - name: Set composite outputs
+        id: set-outputs
+        run: |
+          # Use "version" (X.Y.Z). It is present even when "clean_version" may be empty.
+          echo "orchestrator_version=${{ steps.orchestrator-ver.outputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "orchestrator_changed=${{ steps.orchestrator-ver.outputs.changed }}" >> "$GITHUB_OUTPUT"
+          echo "worker_version=${{ steps.worker-ver.outputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "worker_changed=${{ steps.worker-ver.outputs.changed }}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push orchestrator tag (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.orchestrator-ver.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.orchestrator-ver.outputs.version }}
+        run: |
+          # Create and push vX.Y.Z-orchestrator tag if it doesn't already exist
+          TAG="v${VERSION}-orchestrator"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Create and push worker tag (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.worker-ver.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.worker-ver.outputs.version }}
+        run: |
+          # Create and push vX.Y.Z-worker tag if it doesn't already exist
+          TAG="v${VERSION}-worker"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Generate semantic release notes (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: relnotes
+        uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5
+        with:
+          config-name: release-drafter.yml
+          disable-autolabeler: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release for orchestrator
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.orchestrator-ver.outputs.changed == 'true'
+        uses: softprops/action-gh-release@97d42c1b50f585f357413698aa1b779307aa0d52
+        with:
+          tag_name: v${{ steps.orchestrator-ver.outputs.version }}-orchestrator
+          name: Orchestrator v${{ steps.orchestrator-ver.outputs.version }}
+          body: ${{ steps.relnotes.outputs.body || 'Automated semantic release for Orchestrator.' }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release for worker
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.worker-ver.outputs.changed == 'true'
+        uses: softprops/action-gh-release@97d42c1b50f585f357413698aa1b779307aa0d52
+        with:
+          tag_name: v${{ steps.worker-ver.outputs.version }}-worker
+          name: Worker v${{ steps.worker-ver.outputs.version }}
+          body: ${{ steps.relnotes.outputs.body || 'Automated semantic release for Worker.' }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  docker:
+    name: Build & Push via Makefile
+    needs: [versioning]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io/${{ github.repository_owner }}
+      IMAGE_PREFIX: cloudo
+      SHA_VERSION: ${{ github.sha }}
+      IS_MAIN_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      ORCHESTRATOR_VER: ${{ needs.versioning.outputs.orchestrator_version }}
+      ORCHESTRATOR_CHANGED: ${{ needs.versioning.outputs.orchestrator_changed }}
+      WORKER_VER: ${{ needs.versioning.outputs.worker_version }}
+      WORKER_CHANGED: ${{ needs.versioning.outputs.worker_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Login to GHCR
+        if: env.IS_MAIN_PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Debug computed versions
+        run: |
+          echo "ORCHESTRATOR_CHANGED=${ORCHESTRATOR_CHANGED}"
+          echo "ORCHESTRATOR_VER='${ORCHESTRATOR_VER}'"
+          echo "WORKER_CHANGED=${WORKER_CHANGED}"
+          echo "WORKER_VER='${WORKER_VER}'"
+
+      - name: Build & Push orchestrator (SHA + semver)
+        if: env.ORCHESTRATOR_CHANGED == 'true'
+        run: |
+          make build-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+          if [ "${IS_MAIN_PUSH}" = "true" ]; then
+            [ -n "${ORCHESTRATOR_VER}" ] || (echo "ORCHESTRATOR_VER is empty" && exit 1)
+            make build-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
+            make push-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+            make push-orchestrator DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${ORCHESTRATOR_VER}"
+          fi
+
+      - name: Build & Push worker (SHA + semver)
+        if: env.WORKER_CHANGED == 'true'
+        run: |
+          make build-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+          if [ "${IS_MAIN_PUSH}" = "true" ]; then
+            [ -n "${WORKER_VER}" ] || (echo "WORKER_VER is empty" && exit 1)
+            make build-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
+            make push-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+            make push-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
+          fi

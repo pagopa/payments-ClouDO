@@ -9,11 +9,15 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from threading import Lock
-from typing import Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import azure.functions as func
 import requests
+
+# =========================
+# Constants and Utilities
+# =========================
 
 # Configuration constants
 RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7071/api/Receiver")
@@ -58,20 +62,14 @@ def _format_requested_at() -> str:
     )
 
 
-def _sanitize_header_value(value: str | None, max_len: int = 4000) -> str:
-    """Make a string safe for HTTP headers: remove CR/LF and control chars, collapse spaces, and truncate."""
+def encode_logs(value: str | None) -> bytes:
+    """
+    Encode a string value to base64 bytes.
+    If value is None or empty, returns empty bytes.
+    """
     if not value:
-        return ""
-    v = value.replace("\r", " ").replace("\n", " ")
-    v = " ".join(v.split())  # collapse whitespace
-    try:
-        # Keep only latin-1 representable chars to avoid encoding issues in headers
-        v = v.encode("latin-1", "ignore").decode("latin-1")
-    except Exception:
-        v = v.encode("ascii", "ignore").decode("ascii")
-    if len(v) > max_len:
-        v = v[: max_len - 3] + "..."
-    return v
+        return b""
+    return base64.b64encode(value.encode("utf-8"))
 
 
 def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
@@ -84,8 +82,10 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
         "ExecId": payload.get("exec_id"),
         "Content-Type": "application/json",
         "Status": status,
-        "Log": _sanitize_header_value(log_message),
+        "Log": encode_logs(log_message),
         "OnCall": payload.get("oncall"),
+        "MonitorCondition": payload.get("monitor_condition"),
+        "Severity": payload.get("severity"),
     }
 
 
@@ -95,7 +95,9 @@ def _post_status(payload: dict, status: str, log_message: str) -> requests.Respo
     try:
         return requests.post(RECEIVER_URL, headers=headers, timeout=10)
     except requests.RequestException as err:
-        logging.error("Failed to send status to Receiver: %s", err)
+        logging.error(
+            f"[{payload.get('id')}] Failed to send status to Receiver: %s", err
+        )
         raise
 
 
@@ -229,13 +231,87 @@ def _clean_path(p: str | None) -> str | None:
     return s
 
 
+def _run_aks_login(aks_resource_info: dict | str) -> None:
+    """
+    Runs the local AKS login script:
+      src/core/worker/utils/aks-login.sh <rg> <name> <namespace>
+    Accepts aks_resource_info as dict or JSON string.
+    """
+    if isinstance(aks_resource_info, str):
+        try:
+            aks_resource_info = json.loads(aks_resource_info)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"aks_resource_info is not valid JSON: {e}") from e
+    if not isinstance(aks_resource_info, dict):
+        raise RuntimeError("aks_resource_info must be a dict")
+
+    rg = (aks_resource_info.get("aks_rg") or "").strip()
+    name = (aks_resource_info.get("aks_name") or "").strip()
+    ns = (aks_resource_info.get("aks_namespace") or "").strip()
+
+    if not rg or not name:
+        raise RuntimeError(
+            "aks_resource_info requires non-empty 'aks_rg' and 'aks_name'"
+        )
+
+    script_path = os.path.normpath("utils/aks-login.sh")
+    if not os.path.exists(script_path):
+        raise FileNotFoundError(f"AKS login script not found: {script_path}")
+
+    cmd = [script_path, rg, name, ns] if ns else [script_path, rg, name]
+    logging.info("Running AKS login: %s", " ".join(cmd))
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"AKS login failed: {e.stderr.strip() or e.stdout.strip()}"
+        ) from e
+
+
 def _run_script(
-    script_name: str, run_args: Optional[str], script_path: str | None = None
+    script_name: str,
+    run_args: Optional[str],
+    script_path: str | None = None,
+    aks_resource_info: dict | None = None,
+    monitor_condition: Optional[str] = "",
 ) -> subprocess.CompletedProcess:
     """Run the requested script fetching it from Blob Storage, falling back to local folder, then GitHub."""
     tmp_path: str | None = None
     github_tmp_path: str | None = None
     github_error: Exception | None = None
+
+    # Setting MONITOR_CONDITION env VAR
+    os.environ["MONITOR_CONDITION"] = monitor_condition
+
+    try:
+
+        def normalize_aks_info(val) -> dict[str, Any]:
+            if isinstance(val, dict):
+                return val
+            if isinstance(val, str):
+                try:
+                    parsed = json.loads(val)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except json.JSONDecodeError:
+                    logging.warning("AKS info string non JSON: %r", val)
+            return {}
+
+        def to_str(x) -> str:
+            return "" if x is None else str(x)
+
+        aks_info = normalize_aks_info(aks_resource_info)
+        logging.info(f"AKS info: {aks_info}")
+
+        os.environ["AKS_NAME"] = to_str(aks_info.get("aks_name"))
+        os.environ["AKS_RG"] = to_str(aks_info.get("aks_rg"))
+        os.environ["AKS_ID"] = to_str(aks_info.get("aks_id"))
+        os.environ["AKS_NAMESPACE"] = to_str(aks_info.get("aks_namespace"))
+        os.environ["AKS_POD"] = to_str(aks_info.get("aks_pod"))
+        os.environ["AKS_DEPLOYMENT"] = to_str(aks_info.get("aks_deployment"))
+        os.environ["AKS_JOB"] = to_str(aks_info.get("aks_job"))
+    except Exception as e:
+        logging.warning("AKS set env failed: %s", e)
 
     # GitHub if not found locally
     if script_path is None:
@@ -297,7 +373,13 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
         "run_args": req.headers.get("run_args"),
         "exec_id": req.headers.get("ExecId"),
         "oncall": req.headers.get("OnCall"),
+        "monitor_condition": req.headers.get("MonitorCondition"),
+        "severity": req.headers.get("Severity"),
     }
+    if "aks_resource_info" in req.headers:
+        aks_info = req.headers.get("aks_resource_info")
+        if aks_info is not None:
+            payload["aks_resource_info"] = aks_info
     out_msg.set(json.dumps(payload, ensure_ascii=False))
     body = json.dumps(
         {"status": "accepted", "message": "processing scheduled"}, ensure_ascii=False
@@ -308,7 +390,7 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
 @app.queue_trigger(arg_name="msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION)
 def process_runbook(msg: func.QueueMessage) -> None:
     payload = json.loads(msg.get_body().decode("utf-8"))
-    logging.info("Job started: %s", payload)
+    logging.info(f"[{payload.get('id')}] Job started: %s", payload)
 
     started_at = _format_requested_at()
     exec_id = payload.get("exec_id") or ""
@@ -318,7 +400,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
         items = list(_ACTIVE_RUNS.values())
         if any(item["id"] == payload.get("id") for item in items):
             log_msg = f"Execution {exec_id} already in progress, skipping"
-            logging.info(log_msg)
+            logging.info(f"[{payload.get('id')}] {log_msg}")
             _post_status(payload, status="skipped", log_message=log_msg)
             return
 
@@ -336,29 +418,56 @@ def process_runbook(msg: func.QueueMessage) -> None:
         }
 
     try:
+        if payload.get("aks_resource_info"):
+            try:
+                _run_aks_login(payload["aks_resource_info"])
+                logging.info(f"[{payload.get('id')}] AKS login completed successfully")
+            except Exception as e:
+                # Report error and stop processing
+                err_msg = f"AKS login failed: {type(e).__name__}: {e}"
+                _post_status(payload, status="error", log_message=err_msg)
+                logging.error(f"[{payload.get('id')}] {err_msg}")
+                return
+
+        if os.getenv("DEV_SCRIPT_PATH"):
+            script_path = os.getenv("DEV_SCRIPT_PATH", "/work/runbooks/")
+        else:
+            script_path = None
+
         result = _run_script(
-            script_name=payload.get("runbook"), run_args=payload.get("run_args")
+            script_name=payload.get("runbook"),
+            script_path=script_path,
+            run_args=payload.get("run_args"),
+            aks_resource_info=payload.get("aks_resource_info"),
+            monitor_condition=payload.get("monitor_condition"),
         )
         log_msg = f"Script succeeded. stdout: {result.stdout.strip()}"
-        logging.info(log_msg)
+        logging.info(f"[{payload.get('id')}] {log_msg}")
         response = _post_status(payload, status="completed", log_message=log_msg)
-        logging.info("Receiver response: %s", getattr(response, "text", ""))
-    except subprocess.CalledProcessError as e:
-        error_message = (
-            f"Script failed. returncode={e.returncode} stderr={e.stderr.strip()}"
+        logging.info(
+            f"[{payload.get('id')}] Receiver response: %s",
+            getattr(response, "text", ""),
         )
+    except subprocess.CalledProcessError as e:
+        error_message = f"Script failed. returncode={e.returncode} stderr={e.stderr.strip()} stdout={e.stdout.strip()}"
         try:
             response = _post_status(payload, status="failed", log_message=error_message)
-            logging.error("Receiver response: %s", getattr(response, "text", ""))
+            logging.error(
+                f"[{payload.get('id')}] Receiver response: %s",
+                getattr(response, "text", ""),
+            )
         finally:
-            logging.error(error_message)
+            logging.error(f"[{payload.get('id')}] {error_message}")
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
         try:
             response = _post_status(payload, status="error", log_message=err_msg)
-            logging.error("Receiver response: %s", getattr(response, "text", ""))
+            logging.error(
+                f"[{payload.get('id')}] Receiver response: %s",
+                getattr(response, "text", ""),
+            )
         finally:
-            logging.error("Unexpected error: %s", err_msg)
+            logging.error(f"[{payload.get('id')}] Unexpected error: %s", err_msg)
     finally:
         # Remove from the registry: no longer "in progress"
         logging.info(
@@ -392,6 +501,11 @@ def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
         mimetype="application/json",
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
     )
+
+
+# =========================
+# HTTPS: Running Process
+# =========================
 
 
 @app.route(route="processes", auth_level=AUTH)
@@ -438,6 +552,11 @@ def list_processes(req: func.HttpRequest) -> func.HttpResponse:
         mimetype="application/json",
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
     )
+
+
+# =========================
+# DEV: Test runbook
+# =========================
 
 
 @app.route(route="dev/runScript", auth_level=AUTH)

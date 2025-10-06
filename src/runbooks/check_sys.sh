@@ -23,6 +23,9 @@ check_processes() {
 
 # Main execution
 echo "=== System Health Check ==="
+echo $(env | grep AKS)
+echo $(env | grep MONITOR_CONDITION)
+
 echo "Date: $(date)"
 echo
 
@@ -34,3 +37,4 @@ echo
 
 check_processes
 echo
+exit 1
