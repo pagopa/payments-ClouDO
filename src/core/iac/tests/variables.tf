@@ -1,7 +1,7 @@
 variable "prefix" {
   description = "Resorce prefix"
   type        = string
-  default     = "devops"
+  default     = "dvopla"
 }
 
 variable "location" {
@@ -15,6 +15,6 @@ variable "tags" {
   description = "Azurerm test tags"
   default = {
     CreatedBy = "Terraform"
-    Source    = "https://github.com/pagopa/terraform-azurerm-v3"
+    Source    = "https://github.com/pagopa/payments-ClouDO"
   }
 }

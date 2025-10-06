@@ -16,7 +16,8 @@
       "description": "Hello Pippo V2!",
       "runbook": "check_sys.sh",
       "worker": "Runbook",
-      "oncall": "true"
+      "oncall": "true",
+      "run_args": ""
     }]
   },
   {
