@@ -714,8 +714,10 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
 # fmt: off
 # ruff: noqa
 def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
-    # Pagina HTML per interrogare i log dal browser
-    func_key = os.environ.get("FRONTEND_LOGS_QUERY_CODE", "")
+    key = req.headers.get("x-functions-key") or req.params.get("code")
+    if not key:
+        logging.warning("Missing key")
+    func_key = key
     code_js = json.dumps(func_key or "")
 
     html: str = f"""
