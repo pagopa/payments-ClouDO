@@ -28,7 +28,7 @@ resource "azurerm_service_plan" "this" {
   resource_group_name = var.resource_group_name
   os_type             = "Linux"
 
-  sku_name = "B1"
+  sku_name = var.service_plan_sku
   tags     = var.tags
 }
 
@@ -70,20 +70,20 @@ resource "azurerm_linux_function_app" "orchestrator" {
     # health_check_path = "/healthz"
   }
   app_settings = {
-    "QUEUE_NAME"                        = azurerm_storage_queue.this.name
-    "TABLE_SCHEMA_NAME"                 = azurerm_storage_table.runbook_schemas.name
-    "TABLE_LOGGER_NAME"                 = azurerm_storage_table.runbook_logger.name
-    SLACK_TOKEN                         = ""
-    SLACK_CHANNEL                       = "#cloudo-test"
-    OPSGENIE_API_KEY                    = ""
-    GITHUB_TOKEN                        = var.orchestrator_image.registry_password
-    WEBSITES_ENABLE_APP_SERVICE_STORAGE = false
+    "QUEUE_NAME"                          = azurerm_storage_queue.this.name
+    "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
+    "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
+    "SLACK_TOKEN"                         = var.slack_integration.token
+    "SLACK_CHANNEL"                       = var.slack_integration.channel
+    "OPSGENIE_API_KEY"                    = var.opsgenie_api_key
+    "GITHUB_TOKEN"                        = var.orchestrator_image.registry_password
+    "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
   }
 
   virtual_network_subnet_id = try(module.function_snet.id, null)
 
   lifecycle {
-    ignore_changes = [app_settings, tags]
+    ignore_changes = [tags]
   }
   tags = var.tags
 }
@@ -105,8 +105,8 @@ resource "azurerm_linux_function_app" "worker" {
 
   site_config {
     app_service_logs {
-      disk_quota_mb         = 35
-      retention_period_days = 0
+      disk_quota_mb         = var.app_service_logs.disk_quota_mb
+      retention_period_days = var.app_service_logs.retention_period_days
     }
     application_stack {
       docker {
@@ -125,22 +125,22 @@ resource "azurerm_linux_function_app" "worker" {
     # health_check_path = "/healthz"
   }
   app_settings = {
-    "QUEUE_NAME"                        = azurerm_storage_queue.this.name
-    "TABLE_SCHEMA_NAME"                 = azurerm_storage_table.runbook_schemas.name
-    "TABLE_LOGGER_NAME"                 = azurerm_storage_table.runbook_logger.name
-    "RECEIVER_URL"                      = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/Receiver?code=${data.azurerm_function_app_host_keys.orchestrator.default_function_key}"
-    "GITHUB_REPO"                       = var.github_repo_info.repo_name
-    "GITHUB_BRANCH"                     = var.github_repo_info.repo_branch
-    GITHUB_TOKEN                        = var.worker_image.registry_password
-    "GITHUB_PATH_PREFIX"                = var.github_repo_info.runbook_path
-    "AZURE_TENANT_ID"                   = azurerm_user_assigned_identity.identity.tenant_id
-    "AZURE_CLIENT_ID"                   = azurerm_user_assigned_identity.identity.client_id
-    "AZURE_SUBSCRIPTION_ID"             = data.azurerm_subscription.current.subscription_id
-    "AzureWebJobsFeatureFlags"          = "EnableWorkerIndexing"
-    "FUNCTIONS_WORKER_PROCESS_COUNT"    = 1
-    "FUNCTIONS_WORKER_RUNTIME"          = "python"
-    "DOTNET_RUNNING_IN_CONTAINER"       = true
-    WEBSITES_ENABLE_APP_SERVICE_STORAGE = false
+    "QUEUE_NAME"                          = azurerm_storage_queue.this.name
+    "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
+    "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
+    "RECEIVER_URL"                        = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/Receiver?code=${data.azurerm_function_app_host_keys.orchestrator.default_function_key}"
+    "GITHUB_REPO"                         = var.github_repo_info.repo_name
+    "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
+    GITHUB_TOKEN                          = var.worker_image.registry_password
+    "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
+    "AZURE_TENANT_ID"                     = azurerm_user_assigned_identity.identity.tenant_id
+    "AZURE_CLIENT_ID"                     = azurerm_user_assigned_identity.identity.client_id
+    "AZURE_SUBSCRIPTION_ID"               = data.azurerm_subscription.current.subscription_id
+    "AzureWebJobsFeatureFlags"            = "EnableWorkerIndexing"
+    "FUNCTIONS_WORKER_PROCESS_COUNT"      = 1
+    "FUNCTIONS_WORKER_RUNTIME"            = "python"
+    "DOTNET_RUNNING_IN_CONTAINER"         = true
+    "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
   }
 
   virtual_network_subnet_id = try(module.function_snet.id, null)
@@ -155,7 +155,6 @@ resource "azurerm_linux_function_app" "worker" {
 module "storage_account" {
   source = "git::https://github.com/pagopa/terraform-azurerm-v4.git//storage_account?ref=8265f125b07251a5efe7b9ff57707109de8b46ba"
 
-  #name                          = replace("${var.name}cloudosa", "-", "")
   name                          = replace("${var.prefix}cloudosa", "-", "")
   location                      = var.location
   resource_group_name           = var.resource_group_name

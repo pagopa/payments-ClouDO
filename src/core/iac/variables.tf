@@ -83,6 +83,42 @@ variable "worker_image" {
   })
 }
 
+variable "service_plan_sku" {
+  type        = string
+  default     = "B1"
+  description = "(Required) The SKU for the plan. (Default: B1)"
+}
+
+variable "slack_integration" {
+  description = "(Optional) Configuration for Slack integration including the authentication token and target channel. If not provided, Slack integration will be disabled."
+  type = object({
+    token   = string
+    channel = optional(string)
+  })
+  default = {
+    token   = ""
+    channel = "#cloudo-test"
+  }
+}
+
+variable "opsgenie_api_key" {
+  description = "(Optional) The API key used for OpsGenie integration to create and manage alerts. If not provided, OpsGenie integration will be disabled."
+  type        = string
+  default     = ""
+}
+
+variable "app_service_logs" {
+  description = "(Optional) Configuration for App Service file system logs including disk quota and retention period."
+  type = object({
+    disk_quota_mb         = number
+    retention_period_days = number
+  })
+  default = {
+    disk_quota_mb         = 35
+    retention_period_days = 3
+  }
+}
+
 variable "tags" {
   description = "A mapping of tags to assign to the Function App."
   type        = map(string)
