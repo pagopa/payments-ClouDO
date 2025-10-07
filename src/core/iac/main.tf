@@ -34,8 +34,7 @@ resource "azurerm_service_plan" "this" {
 
 # Function Orchestrator and Executor
 resource "azurerm_linux_function_app" "orchestrator" {
-  name = "${var.prefix}-cloudo"
-  #name                       = var.name
+  name                       = "${var.prefix}-cloudo"
   location                   = var.location
   resource_group_name        = var.resource_group_name
   service_plan_id            = azurerm_service_plan.this.id

@@ -23,7 +23,7 @@ module "function_app" {
   source = "../"
 
   prefix                    = var.prefix
-  env                       = "dev"
+  env                       = var.env
   location                  = var.location
   resource_group_name       = azurerm_resource_group.rg.name
   application_insights_name = "dvopla-d-itn-appinsights"

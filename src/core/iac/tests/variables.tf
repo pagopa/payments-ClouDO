@@ -4,6 +4,12 @@ variable "prefix" {
   default     = "dvopla"
 }
 
+variable "env" {
+  type        = string
+  description = "Environment"
+  default     = "dev"
+}
+
 variable "location" {
   description = "Resorce location"
   type        = string
