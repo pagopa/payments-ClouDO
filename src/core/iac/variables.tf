@@ -3,6 +3,11 @@ variable "prefix" {
   description = "(Required) The prefix of resources. Changing this forces a new resource to be created."
 }
 
+variable "env" {
+  type        = string
+  description = "Environment"
+}
+
 variable "location" {
   type        = string
   description = "(Required) Specifies the supported Azure location where the resource exists. Changing this forces a new resource to be created."
@@ -41,6 +46,76 @@ variable "github_repo_info" {
     repo_branch  = "main"
     repo_token   = ""
     runbook_path = "src/runbooks"
+  }
+}
+
+variable "vnet_name" {
+  description = "The name of the VNet in which the Subnet exists."
+  type        = string
+  default     = null
+}
+
+variable "vnet_rg" {
+  description = "The name of the Resource Group in which the VNet exists."
+  type        = string
+  default     = null
+}
+
+variable "orchestrator_image" {
+  description = ""
+  type = object({
+    image_name        = string
+    image_tag         = string
+    registry_url      = string
+    registry_username = optional(string)
+    registry_password = optional(string)
+  })
+}
+
+variable "worker_image" {
+  description = ""
+  type = object({
+    image_name        = string
+    image_tag         = string
+    registry_url      = string
+    registry_username = optional(string)
+    registry_password = optional(string)
+  })
+}
+
+variable "service_plan_sku" {
+  type        = string
+  default     = "B1"
+  description = "(Required) The SKU for the plan. (Default: B1)"
+}
+
+variable "slack_integration" {
+  description = "(Optional) Configuration for Slack integration including the authentication token and target channel. If not provided, Slack integration will be disabled."
+  type = object({
+    token   = string
+    channel = optional(string)
+  })
+  default = {
+    token   = ""
+    channel = "#cloudo-test"
+  }
+}
+
+variable "opsgenie_api_key" {
+  description = "(Optional) The API key used for OpsGenie integration to create and manage alerts. If not provided, OpsGenie integration will be disabled."
+  type        = string
+  default     = ""
+}
+
+variable "app_service_logs" {
+  description = "(Optional) Configuration for App Service file system logs including disk quota and retention period."
+  type = object({
+    disk_quota_mb         = number
+    retention_period_days = number
+  })
+  default = {
+    disk_quota_mb         = 35
+    retention_period_days = 3
   }
 }
 

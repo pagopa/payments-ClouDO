@@ -1,2 +1,0 @@
-prefix = "devops"
-tags   = {}

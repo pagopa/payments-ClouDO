@@ -20,3 +20,9 @@ provider "azurerm" {
     }
   }
 }
+
+provider "azurerm" {
+  alias           = "dev_pagopa"
+  subscription_id = "bbe47ad4-08b3-4925-94c5-1278e5819b86"
+  features {}
+}
