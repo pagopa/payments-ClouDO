@@ -99,7 +99,7 @@ resource "azurerm_linux_function_app" "worker" {
 
   identity {
     type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.identity.id]
+    identity_ids = [azurerm_user_assigned_identity.identity[one(keys(var.aks_integration))].id]
   }
 
   site_config {
@@ -132,8 +132,8 @@ resource "azurerm_linux_function_app" "worker" {
     "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
     GITHUB_TOKEN                          = var.worker_image.registry_password
     "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
-    "AZURE_TENANT_ID"                     = azurerm_user_assigned_identity.identity.tenant_id
-    "AZURE_CLIENT_ID"                     = azurerm_user_assigned_identity.identity.client_id
+    "AZURE_TENANT_ID"                     = azurerm_user_assigned_identity.identity[one(keys(var.aks_integration))].tenant_id
+    "AZURE_CLIENT_ID"                     = azurerm_user_assigned_identity.identity[one(keys(var.aks_integration))].client_id
     "AZURE_SUBSCRIPTION_ID"               = data.azurerm_subscription.current.subscription_id
     "AzureWebJobsFeatureFlags"            = "EnableWorkerIndexing"
     "FUNCTIONS_WORKER_PROCESS_COUNT"      = 1
@@ -201,7 +201,8 @@ resource "azurerm_storage_table_entity" "schemas" {
 
 # Identity
 resource "azurerm_user_assigned_identity" "identity" {
-  location            = var.location
+  for_each            = var.aks_integration
+  location            = each.value.location
   name                = "${var.prefix}-cloudo-identity"
   resource_group_name = var.resource_group_name
 }
@@ -214,5 +215,5 @@ resource "azurerm_role_assignment" "role_assignment" {
   ])
   scope                = data.azurerm_subscription.current.id
   role_definition_name = each.key
-  principal_id         = azurerm_user_assigned_identity.identity.principal_id
+  principal_id         = azurerm_user_assigned_identity.identity[one(keys(var.aks_integration))].principal_id
 }

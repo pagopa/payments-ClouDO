@@ -77,6 +77,7 @@ variable "aks_integration" {
   type = map(object({
     name           = string
     resource_group = string
+    location       = string
   }))
   description = "Map of AKS cluster configurations including name, resource group, and subnet name for each cluster."
   default     = {}
