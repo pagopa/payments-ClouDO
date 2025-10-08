@@ -33,18 +33,6 @@ variable "schemas" {
   type        = string
 }
 
-# variable "key_vault" {
-#   description = "(Optional) Configuration for Azure Key Vault integration, including the vault name and resource group."
-#   type = object({
-#     name           = string
-#     resource_group = string
-#   })
-#   default = {
-#     name           = null
-#     resource_group = null
-#   }
-# }
-
 variable "github_repo_info" {
   type = object({
     repo_name    = string
