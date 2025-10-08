@@ -203,7 +203,7 @@ resource "azurerm_storage_table_entity" "schemas" {
 resource "azurerm_user_assigned_identity" "identity" {
   for_each            = var.aks_integration
   location            = each.value.location
-  name                = "${var.prefix}-cloudo-identity"
+  name                = "${var.prefix}-${each.value.location}-cloudo-identity"
   resource_group_name = var.resource_group_name
 }
 
