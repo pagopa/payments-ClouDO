@@ -1,8 +1,8 @@
 # Key vault
-data "azurerm_key_vault" "kv" {
-  name                = var.key_vault.name
-  resource_group_name = var.key_vault.resource_group
-}
+# data "azurerm_key_vault" "kv" {
+#   name                = var.key_vault.name
+#   resource_group_name = var.key_vault.resource_group
+# }
 
 # App Insights
 data "azurerm_application_insights" "this" {
