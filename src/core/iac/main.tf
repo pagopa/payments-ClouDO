@@ -99,7 +99,7 @@ resource "azurerm_linux_function_app" "worker" {
 
   identity {
     type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.identity[one(keys(var.aks_integration))].id]
+    identity_ids = [for k, v in azurerm_user_assigned_identity.identity : v.id]
   }
 
   site_config {
@@ -132,8 +132,8 @@ resource "azurerm_linux_function_app" "worker" {
     "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
     GITHUB_TOKEN                          = var.worker_image.registry_password
     "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
-    "AZURE_TENANT_ID"                     = azurerm_user_assigned_identity.identity[one(keys(var.aks_integration))].tenant_id
-    "AZURE_CLIENT_ID"                     = azurerm_user_assigned_identity.identity[one(keys(var.aks_integration))].client_id
+    "AZURE_TENANT_ID"                     = one([for k, v in azurerm_user_assigned_identity.identity : v.tenant_id])
+    "AZURE_CLIENT_ID"                     = one([for k, v in azurerm_user_assigned_identity.identity : v.client_id])
     "AZURE_SUBSCRIPTION_ID"               = data.azurerm_subscription.current.subscription_id
     "AzureWebJobsFeatureFlags"            = "EnableWorkerIndexing"
     "FUNCTIONS_WORKER_PROCESS_COUNT"      = 1
@@ -208,12 +208,13 @@ resource "azurerm_user_assigned_identity" "identity" {
 }
 
 resource "azurerm_role_assignment" "role_assignment" {
-  for_each = toset([
-    "Contributor",
-    "Azure Kubernetes Service Cluster User Role",
-    "Azure Kubernetes Service RBAC Writer"
-  ])
+  for_each = merge(
+    { for aks_key, _ in var.aks_integration : "${aks_key}:Contributor" => { role = "Contributor", key = aks_key } },
+    { for aks_key, _ in var.aks_integration : "${aks_key}:AKSClusterUser" => { role = "Azure Kubernetes Service Cluster User Role", key = aks_key } },
+    { for aks_key, _ in var.aks_integration : "${aks_key}:AKSRBACWriter" => { role = "Azure Kubernetes Service RBAC Writer", key = aks_key } }
+  )
+
   scope                = data.azurerm_subscription.current.id
-  role_definition_name = each.key
-  principal_id         = azurerm_user_assigned_identity.identity[one(keys(var.aks_integration))].principal_id
+  role_definition_name = each.value.role
+  principal_id         = azurerm_user_assigned_identity.identity[each.value.key].principal_id
 }
