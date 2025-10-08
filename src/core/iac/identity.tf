@@ -1,8 +1,7 @@
 # Identity
 resource "azurerm_user_assigned_identity" "identity" {
-  for_each            = var.aks_integration
-  location            = each.value.location
-  name                = "${var.prefix}-${each.value.location}-cloudo-identity"
+  location            = var.location
+  name                = "${var.prefix}-cloudo-identity"
   resource_group_name = var.resource_group_name
 }
 
@@ -20,5 +19,5 @@ resource "azurerm_role_assignment" "role_assignment" {
 
   scope                = var.aks_integration[each.value.key].cluster_id
   role_definition_name = each.value.role
-  principal_id         = azurerm_user_assigned_identity.identity[each.value.key].principal_id
+  principal_id         = azurerm_user_assigned_identity.identity.principal_id
 }
