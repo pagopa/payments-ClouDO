@@ -33,6 +33,18 @@ variable "schemas" {
   type        = string
 }
 
+variable "key_vault" {
+  description = "(Optional) Configuration for Azure Key Vault integration, including the vault name and resource group."
+  type = object({
+    name           = string
+    resource_group = string
+  })
+  default = {
+    name           = null
+    resource_group = null
+  }
+}
+
 variable "github_repo_info" {
   type = object({
     repo_name    = string
@@ -59,6 +71,15 @@ variable "vnet_rg" {
   description = "The name of the Resource Group in which the VNet exists."
   type        = string
   default     = null
+}
+
+variable "aks_integration" {
+  type = map(object({
+    name           = string
+    resource_group = string
+  }))
+  description = "Map of AKS cluster configurations including name, resource group, and subnet name for each cluster."
+  default     = {}
 }
 
 variable "orchestrator_image" {

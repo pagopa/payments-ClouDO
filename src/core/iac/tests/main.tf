@@ -36,7 +36,7 @@ module "function_app" {
 
   orchestrator_image = {
     image_name        = "pagopa/cloudo-orchestrator"
-    image_tag         = "0.2.0"
+    image_tag         = "0.2.1"
     registry_url      = "https://ghcr.io"
     registry_username = "payments-cloud-bot"
     registry_password = data.azurerm_key_vault_secret.github_pat.value
