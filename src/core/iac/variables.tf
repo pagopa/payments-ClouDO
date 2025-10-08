@@ -66,6 +66,7 @@ variable "aks_integration" {
     name           = string
     resource_group = string
     location       = string
+    cluster_id     = string
   }))
   description = "Map of AKS cluster configurations including name, resource group, and subnet name for each cluster."
   default     = {}

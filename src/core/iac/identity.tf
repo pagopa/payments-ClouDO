@@ -18,7 +18,7 @@ resource "azurerm_role_assignment" "role_assignment" {
     }
   )
 
-  scope                = var.aks_integration[each.value.key].aks_cluster_id
+  scope                = var.aks_integration[each.value.key].cluster_id
   role_definition_name = each.value.role
   principal_id         = azurerm_user_assigned_identity.identity[each.value.key].principal_id
 }
