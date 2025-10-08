@@ -132,8 +132,8 @@ resource "azurerm_linux_function_app" "worker" {
     "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
     GITHUB_TOKEN                          = var.worker_image.registry_password
     "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
-    "AZURE_TENANT_ID"                     = one([for k, v in azurerm_user_assigned_identity.identity : v.tenant_id])
-    "AZURE_CLIENT_ID"                     = one([for k, v in azurerm_user_assigned_identity.identity : v.client_id])
+    "AZURE_TENANT_ID"                     = azurerm_user_assigned_identity.identity[sort(keys(var.aks_integration))[0]].tenant_id
+    "AZURE_CLIENT_ID"                     = azurerm_user_assigned_identity.identity[sort(keys(var.aks_integration))[0]].client_id
     "AZURE_SUBSCRIPTION_ID"               = data.azurerm_subscription.current.subscription_id
     "AzureWebJobsFeatureFlags"            = "EnableWorkerIndexing"
     "FUNCTIONS_WORKER_PROCESS_COUNT"      = 1
