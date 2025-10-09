@@ -63,12 +63,9 @@ variable "vnet_rg" {
 
 variable "aks_integration" {
   type = map(object({
-    name           = string
-    resource_group = string
-    location       = string
-    cluster_id     = string
+    cluster_id = string
   }))
-  description = "Map of AKS cluster configurations including name, resource group, and subnet name for each cluster."
+  description = "Map of AKS cluster configurations including cluster_id for each cluster."
   default     = {}
 }
 
