@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Script to login into AKS with dedicated service account
 # Required parameters:
@@ -8,47 +9,37 @@
 
 # Check if required parameters are provided
 if [ $# -ne 3 ]; then
-    echo "Usage: $0 <resource-group> <cluster-name> <namespace>"
-    exit 1
+  echo "Usage: $0 <resource-group> <cluster-name> <namespace>"
+  exit 1
 fi
 
 RESOURCE_GROUP=$1
 CLUSTER_NAME=$2
 NAMESPACE=$3
 
-# Login to Azure and get AKS credentials
-echo "Logging into Azure and connecting to AKS cluster..."
-# Log in using managed identity
-echo "Logging in with managed identity..."
+# Login to Azure using Managed Identity (non-interactive)
 if [[ -n "${AZURE_CLIENT_ID:-}" ]]; then
-  if ! az login --identity --client-id "$AZURE_CLIENT_ID"; then
-    echo "1 Failed to login with managed identity"
-    exit 1
-  fi
+  az login --identity --client-id "$AZURE_CLIENT_ID"
 else
-  if ! az login --identity; then
-    echo "2 Failed to login with managed identity"
-    exit 1
-  fi
+  az login --identity
 fi
-# Optionally set the subscription if provided
+
+# Optionally set the Azure subscription if provided
 if [[ -n "${AZURE_SUBSCRIPTION_ID:-}" ]]; then
-  echo "Setting subscription..."
-  if ! az account set --subscription "$AZURE_SUBSCRIPTION_ID"; then
-    echo "Failed to set subscription"
-    exit 1
-  fi
+  az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 fi
 
-az aks get-credentials --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME --overwrite-existing
-kubelogin convert-kubeconfig -l azurecli
+# Retrieve AKS kubeconfig for the specified cluster
+az aks get-credentials --resource-group "$RESOURCE_GROUP" --name "$CLUSTER_NAME" --overwrite-existing
 
-# Get TOKENNAME from aks cluster
-TOKENNAME=`kubectl -n $NAMESPACE get serviceaccount/default -o jsonpath='{.secrets[0].name}'`
+# Convert kubeconfig to use MSI with kubelogin to avoid interactive prompts
+if [[ -n "${AZURE_CLIENT_ID:-}" ]]; then
+  kubelogin convert-kubeconfig -l msi --client-id "$AZURE_CLIENT_ID"
+else
+  kubelogin convert-kubeconfig -l msi
+fi
 
-# Decode TOKENNAME
-TOKEN=`kubectl -n $NAMESPACE get secret $TOKENNAME -o jsonpath='{.data.token}'| base64 --decode`
+# Restrict current context to the requested namespace (no user changes, no resources created)
+kubectl config set-context --current --namespace="$NAMESPACE"
 
-# Configure credential to user default service account for selected namespace
-kubectl config set-credentials default --token=$TOKEN
-kubectl config set-context --current --user=default
+echo "AKS login ready for namespace: $NAMESPACE"
