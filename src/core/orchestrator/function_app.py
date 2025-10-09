@@ -89,6 +89,14 @@ def get_header(
     return req.headers.get(name, default)
 
 
+def get_body(
+    req: func.HttpRequest, name: str, default: Optional[str] = None
+) -> Optional[str]:
+    # Safely read a body value with a default fallback
+    body = req.get_json() or {}
+    return body.get(name, default)
+
+
 def resolve_status(header_status: Optional[str]) -> str:
     # Map incoming header status to a canonical label for logs
     normalized = (header_status or "").strip().lower()
@@ -492,7 +500,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
         url=request_origin_url,
         runbook=get_header(req, "runbook"),
         run_args=get_header(req, "run_args"),
-        log_msg=decode_base64(get_header(req, "Log")),
+        log_msg=decode_base64(get_body(req, "Log")),
         oncall=get_header(req, "OnCall"),
         monitor_condition=get_header(req, "MonitorCondition"),
         severity=get_header(req, "Severity"),
@@ -577,7 +585,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Logs (truncated):*\n```{decode_base64(get_header(req, 'Log'))[:1500]}```",
+                            "text": f"*Logs (truncated):*\n```{decode_base64(get_body(req, 'Log'))[:1500]}```",
                         },
                     },
                     {
@@ -622,7 +630,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                         "MonitorCondition": get_header(req, "MonitorCondition"),
                         "Severity": get_header(req, "Severity"),
                     },
-                    description=f"Execution failed for {get_header(req, 'ExecId')}:\n\n{decode_base64(get_header(req, 'Log') or '')}",
+                    description=f"Execution failed for {get_header(req, 'ExecId')}:\n\n{decode_base64(get_body(req, 'Log') or '')}",
                 )
             except Exception as e:
                 logging.error(

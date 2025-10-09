@@ -1,5 +1,5 @@
-# shell
 #!/bin/bash
+
 set -euo pipefail
 
 if [ $# -ne 3 ]; then
