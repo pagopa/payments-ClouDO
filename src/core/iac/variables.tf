@@ -61,6 +61,14 @@ variable "vnet_rg" {
   default     = null
 }
 
+variable "aks_integration" {
+  type = map(object({
+    cluster_id = string
+  }))
+  description = "Map of AKS cluster configurations including cluster_id for each cluster."
+  default     = {}
+}
+
 variable "orchestrator_image" {
   description = ""
   type = object({

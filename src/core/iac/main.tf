@@ -197,22 +197,3 @@ resource "azurerm_storage_table_entity" "schemas" {
     }
   )
 }
-
-
-# Identity
-resource "azurerm_user_assigned_identity" "identity" {
-  location            = var.location
-  name                = "${var.prefix}-cloudo-identity"
-  resource_group_name = var.resource_group_name
-}
-
-resource "azurerm_role_assignment" "role_assignment" {
-  for_each = toset([
-    "Contributor",
-    "Azure Kubernetes Service Cluster User Role",
-    "Azure Kubernetes Service RBAC Writer"
-  ])
-  scope                = data.azurerm_subscription.current.id
-  role_definition_name = each.key
-  principal_id         = azurerm_user_assigned_identity.identity.principal_id
-}
