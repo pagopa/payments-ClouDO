@@ -261,7 +261,8 @@ def _run_aks_login(aks_resource_info: dict | str) -> None:
     cmd = [script_path, rg, name, ns] if ns else [script_path, rg, name]
     logging.info("Running AKS login: %s", " ".join(cmd))
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        logging.info(result.stdout.strip())
     except subprocess.CalledProcessError as e:
         raise RuntimeError(
             f"AKS login failed: {e.stderr.strip() or e.stdout.strip()}"
