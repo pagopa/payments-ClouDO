@@ -1,5 +1,5 @@
-# shell
 #!/bin/bash
+
 set -euo pipefail
 
 if [ $# -ne 3 ]; then
@@ -35,9 +35,9 @@ az aks get-credentials --resource-group "$RESOURCE_GROUP" --name "$CLUSTER_NAME"
 # Convert kubeconfig to MSI with token TTL 10 minutes
 log "Converting kubeconfig to MSI via kubelogin (force, token ${TOKEN_TTL}s)..."
 if [[ -n "${AZURE_CLIENT_ID:-}" ]]; then
-  kubelogin convert-kubeconfig -l msi --client-id "$AZURE_CLIENT_ID" --token-expiry "$TOKEN_TTL" --force
+  kubelogin convert-kubeconfig -l msi --client-id "$AZURE_CLIENT_ID"
 else
-  kubelogin convert-kubeconfig -l msi --token-expiry "$TOKEN_TTL" --force
+  kubelogin convert-kubeconfig -l msi
 fi
 
 # Limit context to the target namespace
@@ -62,18 +62,14 @@ if [[ $READY_RC -ne 0 ]]; then
       --exec-arg=--login \
       --exec-arg=msi \
       --exec-arg=--client-id \
-      --exec-arg="$AZURE_CLIENT_ID" \
-      --exec-arg=--token-expiry \
-      --exec-arg="$TOKEN_TTL"
+      --exec-arg="$AZURE_CLIENT_ID"
   else
     kubectl config set-credentials "$USER_NAME" \
       --exec-command=kubelogin \
       --exec-api-version=client.authentication.k8s.io/v1beta1 \
       --exec-arg=get-token \
       --exec-arg=--login \
-      --exec-arg=msi \
-      --exec-arg=--token-expiry \
-      --exec-arg="$TOKEN_TTL"
+      --exec-arg=msi
   fi
 
   CURRENT_CONTEXT="$(kubectl config current-context)"

@@ -21,8 +21,11 @@ import requests
 
 # Configuration constants
 RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7071/api/Receiver")
-QUEUE_NAME = os.environ.get("QUEUE_NAME", "runbooktest-work")
+QUEUE_NAME = os.environ.get("QUEUE_NAME", "queue")
 STORAGE_CONNECTION = "AzureWebJobsStorage"
+MAX_LOG_BODY_BYTES = int(
+    os.environ.get("MAX_LOG_BODY_BYTES", "131072")
+)  # Max size for log body (bytes)
 
 # GitHub fallback configuration
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "pagopa/payments-cloudo")
@@ -73,7 +76,7 @@ def encode_logs(value: str | None) -> bytes:
 
 
 def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
-    """Build headers for the Receiver call from payload and execution status."""
+    """Build lightweight headers for the Receiver call; move logs into the JSON body."""
     return {
         "runbook": payload.get("runbook"),
         "run_args": payload.get("run_args"),
@@ -82,7 +85,6 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
         "ExecId": payload.get("exec_id"),
         "Content-Type": "application/json",
         "Status": status,
-        "Log": encode_logs(log_message),
         "OnCall": payload.get("oncall"),
         "MonitorCondition": payload.get("monitor_condition"),
         "Severity": payload.get("severity"),
@@ -90,10 +92,26 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
 
 
 def _post_status(payload: dict, status: str, log_message: str) -> requests.Response:
-    """Send execution status to the Receiver and return the HTTP response."""
+    """POST execution status to the Receiver with logs in the JSON body (truncated if too large)."""
     headers = _build_status_headers(payload, status, log_message)
+
+    # Prepare a JSON body with logs moved from headers to body and safe truncation
+    log_text = log_message or ""
+    log_bytes = encode_logs(log_text)
+    if len(log_bytes) > MAX_LOG_BODY_BYTES:
+        log_bytes = log_bytes[:MAX_LOG_BODY_BYTES]
+    logging.info("POST execution status: %s", log_bytes)
     try:
-        return requests.post(RECEIVER_URL, headers=headers, timeout=10)
+        headers = {**headers, "Content-Type": "text/plain; charset=utf-8"}
+        resp = requests.post(RECEIVER_URL, headers=headers, data=log_bytes, timeout=10)
+        logging.info(
+            "[%s] POST Receiver %s -> status=%s, content-length=%s",
+            payload.get("id"),
+            RECEIVER_URL,
+            getattr(resp, "status_code", "n/a"),
+            resp.headers.get("Content-Length"),
+        )
+        return resp
     except requests.RequestException as err:
         logging.error(
             f"[{payload.get('id')}] Failed to send status to Receiver: %s", err
@@ -451,7 +469,8 @@ def process_runbook(msg: func.QueueMessage) -> None:
         logging.info(f"[{payload.get('id')}] {log_msg}")
         response = _post_status(payload, status="completed", log_message=log_msg)
         logging.info(
-            f"[{payload.get('id')}] Receiver response: %s",
+            f"[{payload.get('id')}] Receiver response: status=%s body=%r",
+            getattr(response, "status_code", ""),
             getattr(response, "text", ""),
         )
     except subprocess.CalledProcessError as e:
@@ -459,7 +478,8 @@ def process_runbook(msg: func.QueueMessage) -> None:
         try:
             response = _post_status(payload, status="failed", log_message=error_message)
             logging.error(
-                f"[{payload.get('id')}] Receiver response: %s",
+                f"[{payload.get('id')}] Receiver response: status=%s body=%r",
+                getattr(response, "status_code", ""),
                 getattr(response, "text", ""),
             )
         finally:
@@ -469,7 +489,8 @@ def process_runbook(msg: func.QueueMessage) -> None:
         try:
             response = _post_status(payload, status="error", log_message=err_msg)
             logging.error(
-                f"[{payload.get('id')}] Receiver response: %s",
+                f"[{payload.get('id')}] Receiver response: status=%s body=%r",
+                getattr(response, "status_code", ""),
                 getattr(response, "text", ""),
             )
         finally:
