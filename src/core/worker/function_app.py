@@ -21,7 +21,7 @@ import requests
 
 # Configuration constants
 RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7071/api/Receiver")
-QUEUE_NAME = os.environ.get("QUEUE_NAME", "runbooktest-work")
+QUEUE_NAME = os.environ.get("QUEUE_NAME", "queue")
 STORAGE_CONNECTION = "AzureWebJobsStorage"
 MAX_LOG_BODY_BYTES = int(
     os.environ.get("MAX_LOG_BODY_BYTES", "131072")
@@ -97,26 +97,13 @@ def _post_status(payload: dict, status: str, log_message: str) -> requests.Respo
 
     # Prepare a JSON body with logs moved from headers to body and safe truncation
     log_text = log_message or ""
-    log_bytes = log_text.encode("utf-8")
-    truncated = False
+    log_bytes = encode_logs(log_text)
     if len(log_bytes) > MAX_LOG_BODY_BYTES:
         log_bytes = log_bytes[:MAX_LOG_BODY_BYTES]
-        truncated = True
-    body_obj = {
-        "status": status,
-        "runbook": payload.get("runbook"),
-        "exec_id": payload.get("exec_id"),
-        "id": payload.get("id"),
-        "name": payload.get("name"),
-        "requestedAt": payload.get("requestedAt"),
-        "oncall": payload.get("oncall"),
-        "monitor_condition": payload.get("monitor_condition"),
-        "severity": payload.get("severity"),
-        "log": log_bytes.decode("utf-8", errors="replace"),
-        "log_truncated": truncated,
-    }
+    logging.info("POST execution status: %s", log_bytes)
     try:
-        resp = requests.post(RECEIVER_URL, headers=headers, json=body_obj, timeout=10)
+        headers = {**headers, "Content-Type": "text/plain; charset=utf-8"}
+        resp = requests.post(RECEIVER_URL, headers=headers, data=log_bytes, timeout=10)
         logging.info(
             "[%s] POST Receiver %s -> status=%s, content-length=%s",
             payload.get("id"),

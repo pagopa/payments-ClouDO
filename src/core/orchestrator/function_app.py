@@ -25,6 +25,7 @@ app = func.FunctionApp()
 TABLE_NAME = "RunbookLogs"
 TABLE_SCHEMAS = "RunbookSchemas"
 STORAGE_CONN = "AzureWebJobsStorage"
+MAX_TABLE_CHARS = int(os.getenv("MAX_TABLE_LOG_CHARS", "32000"))
 
 if os.getenv("FEATURE_DEV", "false").lower() != "true":
     AUTH = func.AuthLevel.FUNCTION
@@ -73,6 +74,12 @@ def utc_partition_key() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d")
 
 
+def _truncate_for_table(s: str | None, max_chars: int) -> str:
+    if not s:
+        return "", False
+    return (s) if len(s) <= max_chars else (s[:max_chars])
+
+
 def decode_base64(data: str) -> str:
     """Decode base64 encoded string to utf-8 string"""
     try:
@@ -87,14 +94,6 @@ def get_header(
 ) -> Optional[str]:
     # Safely read a header value with a default fallback
     return req.headers.get(name, default)
-
-
-def get_body(
-    req: func.HttpRequest, name: str, default: Optional[str] = None
-) -> Optional[str]:
-    # Safely read a body value with a default fallback
-    body = req.get_json() or {}
-    return body.get(name, default)
 
 
 def resolve_status(header_status: Optional[str]) -> str:
@@ -482,8 +481,8 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
     )
 
     # Precompute keys and timestamps for log
-    requested_at_utc = format_requested_at()
-    partition_key = utc_partition_key()
+    requested_at = format_requested_at()
+    partition_key = today_partition_key()
     row_key = str(uuid.uuid4())  # stable hex representation for RowKey
     request_origin_url = resolve_caller_url(req)
     status_label = resolve_status(get_header(req, "Status"))
@@ -494,13 +493,13 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
         partition_key=partition_key,
         row_key=row_key,
         exec_id=get_header(req, "ExecId"),
-        requested_at=requested_at_utc,
+        requested_at=requested_at,
         name=get_header(req, "Name"),
         schema_id=get_header(req, "Id"),
         url=request_origin_url,
         runbook=get_header(req, "runbook"),
         run_args=get_header(req, "run_args"),
-        log_msg=decode_base64(get_body(req, "Log")),
+        log_msg=_truncate_for_table(decode_base64(req.get_body()), MAX_TABLE_CHARS),
         oncall=get_header(req, "OnCall"),
         monitor_condition=get_header(req, "MonitorCondition"),
         severity=get_header(req, "Severity"),
@@ -585,7 +584,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Logs (truncated):*\n```{decode_base64(get_body(req, 'Log'))[:1500]}```",
+                            "text": f"*Logs (truncated):*\n```{decode_base64(req.get_body())[:1500]}```",
                         },
                     },
                     {
@@ -630,7 +629,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                         "MonitorCondition": get_header(req, "MonitorCondition"),
                         "Severity": get_header(req, "Severity"),
                     },
-                    description=f"Execution failed for {get_header(req, 'ExecId')}:\n\n{decode_base64(get_body(req, 'Log') or '')}",
+                    description=f"Execution failed for {get_header(req, 'ExecId')}:\n\n{_truncate_for_table(decode_base64(req.get_body()), MAX_TABLE_CHARS or '')}",
                 )
             except Exception as e:
                 logging.error(
