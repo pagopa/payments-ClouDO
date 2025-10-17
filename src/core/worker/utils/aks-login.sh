@@ -86,4 +86,68 @@ if [[ $READY_RC -ne 0 ]]; then
   fi
 fi
 
-log "AKS login completed (non-interactive, token valid 10 minutes) for namespace: $NAMESPACE"
+# Switch context user to a dedicated ServiceAccount in the target namespace (TokenRequest TTL 10m)
+log "[aks-login] Preparing RBAC and token in namespace '$NAMESPACE'"
+
+# Ensure ServiceAccount exists (best-effort, log outcome)
+if ! kubectl -n "$NAMESPACE" get sa cloudo-sa 1>/dev/null 2>&1; then
+  if kubectl -n "$NAMESPACE" create sa cloudo-sa; then
+    log "[aks-login] ServiceAccount created: cloudo-sa"
+  else
+    log "[aks-login] WARN: cannot create ServiceAccount cloudo-sa (forbidden?). Continuing if pre-provisioned."
+  fi
+fi
+
+# Skip RBAC apply if we don't have rights on roles/rolebindings
+if kubectl auth can-i get roles -n "$NAMESPACE" 1>/dev/null 2>&1 && \
+   kubectl auth can-i create roles -n "$NAMESPACE" 1>/dev/null 2>&1 && \
+   kubectl auth can-i create rolebindings -n "$NAMESPACE" 1>/dev/null 2>&1; then
+  # Apply namespaced Role + RoleBinding
+  kubectl -n "$NAMESPACE" apply -f - <<'YAML'
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cloudo-maintainer
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments","deployments/scale","replicasets","statefulsets","statefulsets/scale","daemonsets"]
+    verbs: ["get","list","watch","create","update","patch","delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs","cronjobs"]
+    verbs: ["get","list","watch","create","update","patch","delete"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get","list","watch","create","update","patch","delete"]
+  - apiGroups: [""]
+    resources: ["pods","pods/log","pods/exec","services","configmaps","secrets","endpoints","persistentvolumeclaims","replicationcontrollers","events"]
+    verbs: ["get","list","watch","create","update","patch","delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloudo-maintainer-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cloudo-maintainer
+subjects:
+  - kind: ServiceAccount
+    name: cloudo-sa
+YAML
+  log "[aks-login] RBAC applied (namespace '$NAMESPACE')"
+else
+  log "[aks-login] No rights to manage RBAC in '$NAMESPACE'. Expecting pre-provisioned SA/Role/RoleBinding."
+fi
+
+
+# Generate short-lived token (TokenRequest) with TTL 10 minutes
+log "Trying to get token (TTL ${TOKEN_TTL}s) for SA cloudo-sa"
+if TOKEN=$(kubectl -n "$NAMESPACE" create token cloudo-sa --duration="${TOKEN_TTL}s" 2> >(tee /dev/stderr)); then
+  kubectl config set-credentials "sa-$NAMESPACE-cloudo" --token="$TOKEN"
+  kubectl config set-context --current --user="sa-$NAMESPACE-cloudo" --namespace="$NAMESPACE"
+else
+  log "TokenRequest failed; verify RBAC and permissions."
+  exit 1
+fi
+
+log "AKS login completed (non-interactive, token valid ${TOKEN_TTL}s) for namespace: $NAMESPACE"
