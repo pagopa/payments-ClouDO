@@ -8,8 +8,8 @@
 # - Deployment name
 
 
-NAMESPACE="monitoring"
-DEPLOYMENT_NAME="chckr-portal-dev-platform-pagopa-it8e194-microservice-chart"
+NAMESPACE=$AKS_NAMESPACE
+DEPLOYMENT_NAME=$AKS_DEPLOYMENT
 
 echo $(env | grep AKS)
 
