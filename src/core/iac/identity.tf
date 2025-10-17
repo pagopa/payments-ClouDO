@@ -13,7 +13,7 @@ resource "azurerm_role_assignment" "role_assignment" {
     },
     {
       for aks_key, _ in var.aks_integration : "${aks_key}:AKSServiceAccount" =>
-      { role = "Azure Kubernetes Service RBAC Reader", key = aks_key }
+      { role = "Azure Kubernetes Service RBAC Admin", key = aks_key }
     }
   )
 
