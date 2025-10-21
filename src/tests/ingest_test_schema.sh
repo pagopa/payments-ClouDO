@@ -23,7 +23,6 @@ az storage entity insert \
     name=test-entity \
     description='Hello Test!' \
     runbook=check_sys.sh \
-    run_args="-n 5000 --repeats 100" \
     url="http://$WORKER/api/Runbook" \
     oncall=false \
   --if-exists merge \
@@ -40,6 +39,7 @@ az storage entity insert \
     name=test-entity-2 \
     description='Hello Test 2!' \
     runbook=test.py \
+    run_args="-n 5000 --repeats 100" \
     url="http://$WORKER/api/Runbook" \
     oncall=false \
   --if-exists merge \

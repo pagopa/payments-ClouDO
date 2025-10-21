@@ -1,31 +1,20 @@
 # ClouDO - Centralized runbook automation for manual or event-driven execution
 
 <p align="center">
-  <img src="docs/images/cloudo_logo.png" width="500" style="border-radius: 80%;" alt="Architecture Diagram"/>
+  <img src="docs/images/cloudo_logo.png" width="500" alt="Architecture Diagram"/>
 </p>
+
 ## Overview
 ClouDO centralizes the definition, execution, and governance of operational runbooks. It supports both manual invocation and event-driven triggers, enabling consistent, repeatable responses to incidents, maintenance tasks, and routine operations.
-
-## Key Features
-- Centralized runbook catalog with versioning
-- Manual and event-driven execution modes
-- Parameterized runs with input validation
-- Idempotent and retry-safe task orchestration
-- Fine-grained RBAC and approval workflows
-- Audit trails, run logs, and artifact retention
-- Pluggable executors (local, remote, HTTP, queue-based)
-- Webhooks and scheduler for automated triggers
-- Notifications (e.g., email, chat, webhooks)
-- Extensible via hooks and custom integrations
 
 ## Architecture Overview
 At a high level, the system comprises:
 - API/Controller: Validates requests, authorizes actors, and dispatches runs.
-- Orchestrator: Resolves dependencies, handles retries, and manages run lifecycle.
+- Orchestrator: Resolves dependencies and manages run lifecycle.
 - Executors: Perform steps (scripts, HTTP calls, cloud operations, etc.).
 - Event Ingestion: Webhooks/queue listeners for event-driven runs.
-- State & Storage: Metadata, run history, artifacts, and secrets references.
-- UI/CLI: Discovery, execution, approvals, and observability.
+- State & Storage: Metadata, run history, artifacts, and secret references.
+- UI: Discovery, execution, approvals, and observability.
 
 Centralized runbook automation for manual or event-driven execution.
 
@@ -36,4 +25,18 @@ Centralized runbook automation for manual or event-driven execution.
 - Install Python dependencies as documented in the project (e.g., using pip).
 - Configure environment variables and credentials as needed.
 
+### Test environment
+
+To set up test environment with pre-compiled schemas (test, test-2, test-3) you need `docker-compose` installed
+on your machine. Then run on root folder `make test-env-start` to set up environment and test
+on http://localhost:7071/api/Trigger.
+
+```bash
+curl http://localhost:7071/api/Trigger?id=test
+```
+
+To exec the test the runbook and try the workflow, use → http://localhost:7071/api/logs to see result and process status.
+
 ### Configuration
+
+### How to write a runbook
