@@ -51,7 +51,7 @@ done
 # Ensure Azure login
 if ! az account show >/dev/null 2>&1; then
   echo "Logging into Azure..."
-  az login >/dev/null
+  az login --identity --client-id "$AZURE_CLIENT_ID" >/dev/null
 fi
 
 # Resolve Application Gateway resource ID
