@@ -39,6 +39,29 @@ variable "subscription_id" {
   default     = ""
 }
 
+// Variables for custom role assignments
+variable "custom_role_assignments" {
+  description = "List of generic role assignments. Each element: { role = <role name or role_definition_id>, scope = <full scope>, principal_id = (optional) }"
+  type = list(object({
+    role         = string
+    scope        = string
+    principal_id = optional(string)
+  }))
+  default = []
+}
+
+variable "custom_roles_per_aks" {
+  description = "Map of AKS key => list of role names (backward compatibility)"
+  type        = map(list(string))
+  default     = {}
+}
+
+variable "custom_roles_subscription" {
+  description = "List of role names at subscription level (backward compatibility)"
+  type        = list(string)
+  default     = []
+}
+
 variable "github_repo_info" {
   type = object({
     repo_name    = string
