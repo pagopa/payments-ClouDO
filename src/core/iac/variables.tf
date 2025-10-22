@@ -33,6 +33,12 @@ variable "schemas" {
   type        = string
 }
 
+variable "subscription_id" {
+  type        = string
+  description = "(Optional) The Azure subscription ID for resource permission scope."
+  default     = ""
+}
+
 variable "github_repo_info" {
   type = object({
     repo_name    = string

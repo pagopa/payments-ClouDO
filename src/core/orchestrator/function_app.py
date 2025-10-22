@@ -598,6 +598,10 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                                 "type": "mrkdwn",
                                 "text": f"Timestamp: <!date^{int(__import__('time').time())}^{{date_short}} {{time}}|now>",
                             },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Origin*:\n{request_origin_url}",
+                            },
                         ],
                     },
                     {"type": "divider"},
