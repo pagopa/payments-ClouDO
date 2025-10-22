@@ -114,7 +114,7 @@ def _post_status(payload: dict, status: str, log_message: str) -> requests.Respo
         return resp
     except requests.RequestException as err:
         logging.error(
-            f"[{payload.get('id')}] Failed to send status to Receiver: %s", err
+            f"[{payload.get('exec_id')}] Failed to send status to Receiver: %s", err
         )
         raise
 
@@ -314,8 +314,6 @@ def _run_aks_login(aks_resource_info: dict, payload: dict = None) -> None:
             raise RuntimeError(
                 f"[{payload.get('exec_id')}] AKS login error (rc={rc}): {stderr_data.strip() or stdout_data.strip()}"
             )
-        if stdout_data.strip():
-            logging.info(f"[{payload.get('exec_id')}] {stdout_data.strip()}")
     except OSError as e:
         raise RuntimeError(
             f"[{payload.get('exec_id')}] AKS login execution error: {e}"
@@ -482,7 +480,7 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
 @app.queue_trigger(arg_name="msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION)
 def process_runbook(msg: func.QueueMessage) -> None:
     payload = json.loads(msg.get_body().decode("utf-8"))
-    logging.info(f"[{payload.get('id')}] Job started: %s", payload)
+    logging.info(f"[{payload.get('exec_id')}] Job started: %s", payload)
 
     started_at = _format_requested_at()
     exec_id = payload.get("exec_id") or ""
@@ -492,7 +490,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
         items = list(_ACTIVE_RUNS.values())
         if any(item["id"] == payload.get("id") for item in items):
             log_msg = f"Execution {exec_id} already in progress, skipping"
-            logging.info(f"[{payload.get('id')}] {log_msg}")
+            logging.info(f"[{payload.get('exec_id')}] {log_msg}")
             _post_status(payload, status="skipped", log_message=log_msg)
             return
 
@@ -542,10 +540,10 @@ def process_runbook(msg: func.QueueMessage) -> None:
             payload=payload,
         )
         log_msg = f"Script succeeded. stdout: {result.stdout.strip()}"
-        logging.info(f"[{payload.get('id')}] {log_msg}")
+        logging.info(f"[{payload.get('exec_id')}] {log_msg}")
         response = _post_status(payload, status="completed", log_message=log_msg)
         logging.info(
-            f"[{payload.get('id')}] Receiver response: status=%s body=%r",
+            f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
             getattr(response, "status_code", ""),
             getattr(response, "text", ""),
         )
@@ -554,23 +552,23 @@ def process_runbook(msg: func.QueueMessage) -> None:
         try:
             response = _post_status(payload, status="failed", log_message=error_message)
             logging.error(
-                f"[{payload.get('id')}] Receiver response: status=%s body=%r",
+                f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
                 getattr(response, "status_code", ""),
                 getattr(response, "text", ""),
             )
         finally:
-            logging.error(f"[{payload.get('id')}] {error_message}")
+            logging.error(f"[{payload.get('exec_id')}] {error_message}")
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
         try:
             response = _post_status(payload, status="error", log_message=err_msg)
             logging.error(
-                f"[{payload.get('id')}] Receiver response: status=%s body=%r",
+                f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
                 getattr(response, "status_code", ""),
                 getattr(response, "text", ""),
             )
         finally:
-            logging.error(f"[{payload.get('id')}] Unexpected error: %s", err_msg)
+            logging.error(f"[{payload.get('exec_id')}] Unexpected error: %s", err_msg)
     finally:
         # Remove from the registry: no longer "in progress"
         logging.info(
