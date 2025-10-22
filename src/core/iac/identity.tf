@@ -9,17 +9,17 @@ resource "azurerm_role_assignment" "role_assignment" {
   for_each = merge(
     {
       for aks_key, _ in var.aks_integration : "${aks_key}:AKSClusterUser" =>
-      { role = "Azure Kubernetes Service Cluster User Role", key = aks_key, type = "aks" }
+      { role = "Azure Kubernetes Service Cluster User Role", key = aks_key, kind = "aks" }
     },
     {
       for aks_key, _ in var.aks_integration : "${aks_key}:AKSServiceAccount" =>
-      { role = "Azure Kubernetes Service RBAC Admin", key = aks_key, type = "aks" }
+      { role = "Azure Kubernetes Service RBAC Admin", key = aks_key, kind = "aks" }
     },
     {
       "subscription:Reader" = {
         role = "Reader"
         key  = null
-        type = "subscription"
+        kind = "subscription"
       }
     }
   )
