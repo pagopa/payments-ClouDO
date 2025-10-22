@@ -611,7 +611,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                         "elements": [
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Severity:*\n{get_header(req, 'Severity')}",
+                                "text": f"*Severity:* {get_header(req, 'Severity')}",
                             },
                             {
                                 "type": "mrkdwn",
