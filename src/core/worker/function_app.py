@@ -106,7 +106,7 @@ def _post_status(payload: dict, status: str, log_message: str) -> requests.Respo
         resp = requests.post(RECEIVER_URL, headers=headers, data=log_bytes, timeout=10)
         logging.info(
             "[%s] POST Receiver %s -> status=%s, content-length=%s",
-            payload.get("id"),
+            payload.get("exec_id"),
             RECEIVER_URL,
             getattr(resp, "status_code", "n/a"),
             resp.headers.get("Content-Length"),
@@ -114,7 +114,7 @@ def _post_status(payload: dict, status: str, log_message: str) -> requests.Respo
         return resp
     except requests.RequestException as err:
         logging.error(
-            f"[{payload.get('id')}] Failed to send status to Receiver: %s", err
+            f"[{payload.get('exec_id')}] Failed to send status to Receiver: %s", err
         )
         raise
 
@@ -249,19 +249,24 @@ def _clean_path(p: str | None) -> str | None:
     return s
 
 
-def _run_aks_login(aks_resource_info: dict | str) -> None:
+def _run_aks_login(aks_resource_info: dict, payload: dict = None) -> None:
     """
     Runs the local AKS login script:
       src/core/worker/utils/aks-login.sh <rg> <name> <namespace>
     Accepts aks_resource_info as dict or JSON string.
+    Streams stdout lines to Receiver if payload is provided.
     """
     if isinstance(aks_resource_info, str):
         try:
             aks_resource_info = json.loads(aks_resource_info)
         except json.JSONDecodeError as e:
-            raise RuntimeError(f"aks_resource_info is not valid JSON: {e}") from e
+            raise RuntimeError(
+                f"[{payload.get('exec_id')}] aks_resource_info is not valid JSON: {e}"
+            ) from e
     if not isinstance(aks_resource_info, dict):
-        raise RuntimeError("aks_resource_info must be a dict")
+        raise RuntimeError(
+            f"[{payload.get('exec_id')}] aks_resource_info must be a dict"
+        )
 
     rg = (aks_resource_info.get("aks_rg") or "").strip()
     name = (aks_resource_info.get("aks_name") or "").strip()
@@ -269,21 +274,49 @@ def _run_aks_login(aks_resource_info: dict | str) -> None:
 
     if not rg or not name:
         raise RuntimeError(
-            "aks_resource_info requires non-empty 'aks_rg' and 'aks_name'"
+            f"[{payload.get('exec_id')}] aks_resource_info requires non-empty 'aks_rg' and 'aks_name'"
         )
 
     script_path = os.path.normpath("utils/aks-login.sh")
     if not os.path.exists(script_path):
-        raise FileNotFoundError(f"AKS login script not found: {script_path}")
+        raise FileNotFoundError(
+            f"[{payload.get('exec_id')}] AKS login script not found: {script_path}"
+        )
 
     cmd = [script_path, rg, name, ns] if ns else [script_path, rg, name]
-    logging.info("Running AKS login: %s", " ".join(cmd))
+    logging.info(f"[{payload.get('exec_id')}] Running AKS login: %s", " ".join(cmd))
     try:
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logging.info(result.stdout.strip())
-    except subprocess.CalledProcessError as e:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+        )
+
+        collected_stdout = []
+        if proc.stdout:
+            for line in proc.stdout:
+                if not line:
+                    continue
+                msg = line.rstrip()
+                collected_stdout.append(line)
+                logging.info(f"[{payload.get('exec_id')}] {msg}")
+
+        stdout_data = "".join(collected_stdout)
+        stderr_data = ""
+        if proc.stderr:
+            stderr_data = proc.stderr.read() or ""
+
+        rc = proc.wait()
+        if rc != 0:
+            raise RuntimeError(
+                f"[{payload.get('exec_id')}] AKS login error (rc={rc}): {stderr_data.strip() or stdout_data.strip()}"
+            )
+    except OSError as e:
         raise RuntimeError(
-            f"AKS login failed: {e.stderr.strip() or e.stdout.strip()}"
+            f"[{payload.get('exec_id')}] AKS login execution error: {e}"
         ) from e
 
 
@@ -293,6 +326,7 @@ def _run_script(
     script_path: str | None = None,
     aks_resource_info: dict | None = None,
     monitor_condition: Optional[str] = "",
+    payload: dict | None = None,  # <--- aggiunto
 ) -> subprocess.CompletedProcess:
     """Run the requested script fetching it from Blob Storage, falling back to local folder, then GitHub."""
     tmp_path: str | None = None
@@ -368,7 +402,44 @@ def _run_script(
             cmd = cmd + shlex.split(run_args)
 
         logging.info("Running script: %s", cmd)
-        return subprocess.run(cmd, capture_output=True, text=True, check=True)
+        # STREAMING: leggere stdout riga per riga e inoltrare
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+        )
+
+        collected_stdout = []
+        if proc.stdout:
+            for line in proc.stdout:
+                if not line:
+                    continue
+                collected_stdout.append(line)
+                logging.info(f"[{payload.get('exec_id')}] {line.rstrip()}")
+
+        stdout_data = "".join(collected_stdout)
+        stderr_data = ""
+        if proc.stderr:
+            stderr_data = proc.stderr.read() or ""
+
+        returncode = proc.wait()
+        if returncode != 0:
+            raise subprocess.CalledProcessError(
+                returncode=returncode,
+                cmd=cmd,
+                output=stdout_data,
+                stderr=stderr_data,
+            )
+
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=returncode,
+            stdout=stdout_data,
+            stderr=stderr_data,
+        )
     finally:
         # Clean up only if paths are valid files
         for p in (tmp_path, github_tmp_path):
@@ -409,7 +480,7 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
 @app.queue_trigger(arg_name="msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION)
 def process_runbook(msg: func.QueueMessage) -> None:
     payload = json.loads(msg.get_body().decode("utf-8"))
-    logging.info(f"[{payload.get('id')}] Job started: %s", payload)
+    logging.info(f"[{payload.get('exec_id')}] Job started: %s", payload)
 
     started_at = _format_requested_at()
     exec_id = payload.get("exec_id") or ""
@@ -419,7 +490,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
         items = list(_ACTIVE_RUNS.values())
         if any(item["id"] == payload.get("id") for item in items):
             log_msg = f"Execution {exec_id} already in progress, skipping"
-            logging.info(f"[{payload.get('id')}] {log_msg}")
+            logging.info(f"[{payload.get('exec_id')}] {log_msg}")
             _post_status(payload, status="skipped", log_message=log_msg)
             return
 
@@ -444,13 +515,15 @@ def process_runbook(msg: func.QueueMessage) -> None:
         )
         if payload.get("aks_resource_info"):
             try:
-                _run_aks_login(payload["aks_resource_info"])
-                logging.info(f"[{payload.get('id')}] AKS login completed successfully")
+                _run_aks_login(payload["aks_resource_info"], payload)
+                logging.info(
+                    f"[{payload.get('exec_id')}] AKS login completed successfully"
+                )
             except Exception as e:
                 # Report error and stop processing
-                err_msg = f"AKS login failed: {type(e).__name__}: {e}"
+                err_msg = f"[{payload.get('exec_id')}] AKS login failed: {type(e).__name__}: {e}"
                 _post_status(payload, status="error", log_message=err_msg)
-                logging.error(f"[{payload.get('id')}] {err_msg}")
+                logging.error(f"{err_msg}")
                 return
 
         if os.getenv("DEV_SCRIPT_PATH"):
@@ -464,12 +537,13 @@ def process_runbook(msg: func.QueueMessage) -> None:
             run_args=payload.get("run_args"),
             aks_resource_info=payload.get("aks_resource_info"),
             monitor_condition=payload.get("monitor_condition"),
+            payload=payload,
         )
         log_msg = f"Script succeeded. stdout: {result.stdout.strip()}"
-        logging.info(f"[{payload.get('id')}] {log_msg}")
+        logging.info(f"[{payload.get('exec_id')}] {log_msg}")
         response = _post_status(payload, status="completed", log_message=log_msg)
         logging.info(
-            f"[{payload.get('id')}] Receiver response: status=%s body=%r",
+            f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
             getattr(response, "status_code", ""),
             getattr(response, "text", ""),
         )
@@ -478,23 +552,23 @@ def process_runbook(msg: func.QueueMessage) -> None:
         try:
             response = _post_status(payload, status="failed", log_message=error_message)
             logging.error(
-                f"[{payload.get('id')}] Receiver response: status=%s body=%r",
+                f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
                 getattr(response, "status_code", ""),
                 getattr(response, "text", ""),
             )
         finally:
-            logging.error(f"[{payload.get('id')}] {error_message}")
+            logging.error(f"[{payload.get('exec_id')}] {error_message}")
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
         try:
             response = _post_status(payload, status="error", log_message=err_msg)
             logging.error(
-                f"[{payload.get('id')}] Receiver response: status=%s body=%r",
+                f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
                 getattr(response, "status_code", ""),
                 getattr(response, "text", ""),
             )
         finally:
-            logging.error(f"[{payload.get('id')}] Unexpected error: %s", err_msg)
+            logging.error(f"[{payload.get('exec_id')}] Unexpected error: %s", err_msg)
     finally:
         # Remove from the registry: no longer "in progress"
         logging.info(

@@ -87,14 +87,14 @@ if [[ $READY_RC -ne 0 ]]; then
 fi
 
 # Switch context user to a dedicated ServiceAccount in the target namespace (TokenRequest TTL 10m)
-log "[aks-login] Preparing RBAC and token in namespace '$NAMESPACE'"
+log "Preparing RBAC and token in namespace '$NAMESPACE'"
 
 # Ensure ServiceAccount exists (best-effort, log outcome)
 if ! kubectl -n "$NAMESPACE" get sa cloudo-sa 1>/dev/null 2>&1; then
   if kubectl -n "$NAMESPACE" create sa cloudo-sa; then
-    log "[aks-login] ServiceAccount created: cloudo-sa"
+    log "ServiceAccount created: cloudo-sa"
   else
-    log "[aks-login] WARN: cannot create ServiceAccount cloudo-sa (forbidden?). Continuing if pre-provisioned."
+    log "WARN: cannot create ServiceAccount cloudo-sa (forbidden?). Continuing if pre-provisioned."
   fi
 fi
 
@@ -134,9 +134,9 @@ subjects:
   - kind: ServiceAccount
     name: cloudo-sa
 YAML
-  log "[aks-login] RBAC applied (namespace '$NAMESPACE')"
+  log "RBAC applied (namespace '$NAMESPACE')"
 else
-  log "[aks-login] No rights to manage RBAC in '$NAMESPACE'. Expecting pre-provisioned SA/Role/RoleBinding."
+  log "No rights to manage RBAC in '$NAMESPACE'. Expecting pre-provisioned SA/Role/RoleBinding."
 fi
 
 

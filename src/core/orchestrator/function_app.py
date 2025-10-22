@@ -103,12 +103,14 @@ def resolve_status(header_status: Optional[str]) -> str:
 
 
 def resolve_caller_url(req: func.HttpRequest) -> str:
-    return (
+    raw = (
         get_header(req, "X-Caller-Url")
         or get_header(req, "Referer")
         or get_header(req, "Origin")
         or req.url
     )
+    parts = urlsplit(raw)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
 def _strip_after_api(url: str) -> str:
@@ -462,6 +464,19 @@ def Trigger(
     connection=STORAGE_CONN,
 )
 def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpResponse:
+    # Validate required headers
+    required_headers = ["ExecId", "Status", "Name", "Id", "runbook"]
+    missing_headers = [h for h in required_headers if not get_header(req, h)]
+    if missing_headers:
+        return func.HttpResponse(
+            json.dumps(
+                {"error": f"Missing required headers: {missing_headers}"},
+                ensure_ascii=False,
+            ),
+            status_code=400,
+            mimetype="application/json",
+        )
+
     # Log only relevant and serializable headers for observability
     logging.info(
         f"[{get_header(req, 'ExecId')}] Receiver invoked",
@@ -558,6 +573,10 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                                 "type": "mrkdwn",
                                 "text": f"*MonitorCondition:*\n{get_header(req, 'MonitorCondition')}",
                             },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Origin*:\n{request_origin_url}",
+                            },
                         ],
                     },
                     {
@@ -592,7 +611,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                         "elements": [
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Severity:*\n{get_header(req, 'Severity')}",
+                                "text": f"*Severity:* {get_header(req, 'Severity')}",
                             },
                             {
                                 "type": "mrkdwn",

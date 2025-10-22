@@ -9,15 +9,53 @@ resource "azurerm_role_assignment" "role_assignment" {
   for_each = merge(
     {
       for aks_key, _ in var.aks_integration : "${aks_key}:AKSClusterUser" =>
-      { role = "Azure Kubernetes Service Cluster User Role", key = aks_key }
+      { role = "Azure Kubernetes Service Cluster User Role", key = aks_key, kind = "aks" }
     },
     {
       for aks_key, _ in var.aks_integration : "${aks_key}:AKSServiceAccount" =>
-      { role = "Azure Kubernetes Service RBAC Admin", key = aks_key }
+      { role = "Azure Kubernetes Service RBAC Admin", key = aks_key, kind = "aks" }
+    },
+    {
+      "subscription:Reader" = {
+        role = "Reader"
+        key  = null
+        kind = "subscription"
+      }
+    },
+    // Custom per-AKS (backward compatibility)
+    merge([
+      for aks_key, roles in var.custom_roles_per_aks : {
+        for role_name in roles :
+        "${aks_key}:custom:${role_name}" => { role = role_name, key = aks_key, kind = "aks" }
+      }
+    ]...),
+    // Custom at subscription level (backward compatibility)
+    {
+      for role_name in var.custom_roles_subscription :
+      "subscription:custom:${role_name}" => { role = role_name, key = null, kind = "subscription" }
+    },
+    // Generic custom assignments for any scope/resource
+    {
+      for i, ra in var.custom_role_assignments :
+      "custom:${i}" => {
+        role         = ra.role
+        scope_custom = ra.scope
+        principal    = try(ra.principal_id, null)
+        kind         = "custom"
+        key          = null
+      }
     }
   )
 
-  scope                = var.aks_integration[each.value.key].cluster_id
-  role_definition_name = each.value.role
-  principal_id         = azurerm_user_assigned_identity.identity.principal_id
+  scope = each.value.kind == "aks" ? var.aks_integration[each.value.key].cluster_id : (each.value.kind == "subscription" ? "/subscriptions/${var.subscription_id}" : each.value.scope_custom)
+
+  // Use role_definition_name when a role name is provided; otherwise use role_definition_id when a full role definition ID is provided
+  role_definition_name = can(regex("^/subscriptions/", each.value.role)) ? null : each.value.role
+  role_definition_id   = can(regex("^/subscriptions/", each.value.role)) ? each.value.role : null
+
+  // Allow overriding the principal; fallback to the module-managed identity
+  principal_id = coalesce(
+    try(each.value.principal, null),
+    azurerm_user_assigned_identity.identity.principal_id
+  )
 }

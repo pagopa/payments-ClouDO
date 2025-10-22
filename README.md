@@ -72,6 +72,45 @@ module "cloudo" {
     }
   }
 
+  custom_roles_per_aks = {
+    "weu" = [
+      "Monitoring Reader",
+      "Azure Kubernetes Service Cluster User Role"
+    ]
+    "itn" = [
+      "Reader"
+    ]
+  }
+
+  custom_roles_subscription = [
+    "Reader",
+    "Storage Blob Data Reader"
+  ]
+
+  custom_role_assignments = [
+    {
+      // Example: Assign by role name to a resource group
+      role  = "Contributor"
+      scope = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app"
+    },
+    {
+      // Example: Assign by role name to a specific resource
+      role  = "Storage Blob Data Reader"
+      scope = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Storage/storageAccounts/mystg"
+    },
+    {
+      // Example: Assign by role_definition_id (built-in or custom role)
+      role  = "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/ba92f5b4-2d11-453d-a403-e96b0029c9fe"
+      scope = "/subscriptions/00000000-0000-0000-0000-000000000000"
+    },
+    {
+      // Example: Override principal_id
+      role         = "Reader"
+      scope        = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-ops"
+      principal_id = "11111111-2222-3333-4444-555555555555"
+    }
+  ]
+
   app_service_logs = {
     retention_period_days = 3
     disk_quota_mb         = 35
