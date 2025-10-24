@@ -90,11 +90,11 @@ fi
 log "Preparing RBAC and token in namespace '$NAMESPACE'"
 
 # Ensure ServiceAccount exists (best-effort, log outcome)
-if ! kubectl -n "$NAMESPACE" get sa cloudo-sa 1>/dev/null 2>&1; then
-  if kubectl -n "$NAMESPACE" create sa cloudo-sa; then
-    log "ServiceAccount created: cloudo-sa"
+if ! kubectl -n "$NAMESPACE" get sa cloudo-sa-$NAMESPACE 1>/dev/null 2>&1; then
+  if kubectl -n "$NAMESPACE" create sa cloudo-sa-$NAMESPACE; then
+    log "ServiceAccount created: cloudo-sa-$NAMESPACE"
   else
-    log "WARN: cannot create ServiceAccount cloudo-sa (forbidden?). Continuing if pre-provisioned."
+    log "WARN: cannot create ServiceAccount cloudo-sa-$NAMESPACE (forbidden?). Continuing if pre-provisioned."
   fi
 fi
 
@@ -103,11 +103,11 @@ if kubectl auth can-i get roles -n "$NAMESPACE" 1>/dev/null 2>&1 && \
    kubectl auth can-i create roles -n "$NAMESPACE" 1>/dev/null 2>&1 && \
    kubectl auth can-i create rolebindings -n "$NAMESPACE" 1>/dev/null 2>&1; then
   # Apply namespaced Role + RoleBinding
-  kubectl -n "$NAMESPACE" apply -f - <<'YAML'
+  kubectl -n "$NAMESPACE" apply -f - <<YAML
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: cloudo-maintainer
+  name: cloudo-maintainer-${NAMESPACE}
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments","deployments/scale","replicasets","statefulsets","statefulsets/scale","daemonsets"]
@@ -118,6 +118,9 @@ rules:
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
     verbs: ["get","list","watch","create","update","patch","delete"]
+  - apiGroups: ["keda.sh"]
+    resources: ["scaledobjects"]
+    verbs: ["get","list","watch","create","update","patch","delete"]
   - apiGroups: [""]
     resources: ["pods","pods/log","pods/exec","services","configmaps","secrets","endpoints","persistentvolumeclaims","replicationcontrollers","events"]
     verbs: ["get","list","watch","create","update","patch","delete"]
@@ -125,14 +128,14 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: cloudo-maintainer-binding
+  name: cloudo-maintainer-binding-${NAMESPACE}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: cloudo-maintainer
+  name: cloudo-maintainer-${NAMESPACE}
 subjects:
   - kind: ServiceAccount
-    name: cloudo-sa
+    name: cloudo-sa-${NAMESPACE}
 YAML
   log "RBAC applied (namespace '$NAMESPACE')"
 else
@@ -141,8 +144,8 @@ fi
 
 
 # Generate short-lived token (TokenRequest) with TTL 10 minutes
-log "Trying to get token (TTL ${TOKEN_TTL}s) for SA cloudo-sa"
-if TOKEN=$(kubectl -n "$NAMESPACE" create token cloudo-sa --duration="${TOKEN_TTL}s" 2> >(tee /dev/stderr)); then
+log "Trying to get token (TTL ${TOKEN_TTL}s) for SA cloudo-sa-$NAMESPACE"
+if TOKEN=$(kubectl -n "$NAMESPACE" create token cloudo-sa-$NAMESPACE --duration="${TOKEN_TTL}s" 2> >(tee /dev/stderr)); then
   kubectl config set-credentials "sa-$NAMESPACE-cloudo" --token="$TOKEN"
   kubectl config set-context --current --user="sa-$NAMESPACE-cloudo" --namespace="$NAMESPACE"
 else

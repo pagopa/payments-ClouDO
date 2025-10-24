@@ -363,6 +363,7 @@ def _run_script(
         os.environ["AKS_POD"] = to_str(aks_info.get("aks_pod"))
         os.environ["AKS_DEPLOYMENT"] = to_str(aks_info.get("aks_deployment"))
         os.environ["AKS_JOB"] = to_str(aks_info.get("aks_job"))
+        os.environ["AKS_HPA"] = to_str(aks_info.get("aks_horizontalpodautoscaler"))
     except Exception as e:
         logging.warning("AKS set env failed: %s", e)
 

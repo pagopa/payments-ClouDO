@@ -130,12 +130,19 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
         or annotations.get("kubernetes_deployment")
     )
 
-    # For job, first try k8s-specific; only then consider generic "job" if it doesn't look like "kube-state-metrics"
+    # For a job, first try k8s-specific; only then consider generic "job" if it doesn't look like "kube-state-metrics"
     job = (
         labels.get("kubernetes_job_name")
         or annotations.get("kubernetes_job_name")
         or labels.get("job_name")
         or annotations.get("job_name")
+    )
+
+    horizontalpodautoscaler = (
+        labels.get("horizontalpodautoscaler")
+        or labels.get("kubernetes_horizontalpodautoscaler")
+        or annotations.get("horizontalpodautoscaler")
+        or annotations.get("kubernetes_horizontalpodautoscaler")
     )
 
     monitor_condition = essentials.get("monitorcondition") or ""
@@ -153,6 +160,7 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
         "namespace": namespace,
         "pod": pod,
         "deployment": deployment,
+        "horizontalpodautoscaler": horizontalpodautoscaler,
         "job": job,
         "monitorCondition": monitor_condition,
         "severity": severity,
