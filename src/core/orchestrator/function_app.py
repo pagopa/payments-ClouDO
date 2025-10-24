@@ -301,6 +301,7 @@ def Trigger(
             namespace,
             pod,
             deployment,
+            horizontalpodautoscaler,
             job,
             monitor_condition,
             severity,
@@ -314,6 +315,7 @@ def Trigger(
                 "aks_pod": pod,
                 "aks_deployment": deployment,
                 "aks_job": job,
+                "aks_horizontalpodautoscaler": horizontalpodautoscaler,
             }
             if resource_name
             else None
