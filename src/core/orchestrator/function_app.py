@@ -751,7 +751,7 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
 <html lang="it">
 <head>
   <meta charset="utf-8"/>
-  <title>Query Log</title>
+  <title>ClouDO Log</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <style>
     :root{{--bg:#f9fafb;--fg:#111827;--muted:#6b7280;--card:#fff;--border:#e5e7eb;--primary:#2563eb}}
@@ -788,7 +788,7 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
 </head>
 <body>
   <div class="box">
-    <h1>Query Log</h1>
+    <h1>ClouDO Log</h1>
     <p class="muted">Interroga la tabella RunbookLogs. Suggerimento: PartitionKey tipicamente è la data YYYYMMDD.</p>
     <div class="grid">
       <div>
@@ -890,6 +890,10 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
       return (''+s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
     }}
     function openLogModal(btn){{
+      // legacy no-op to keep backward compatibility if referenced elsewhere
+      openTraceModal(btn);
+    }}
+    function openTraceModal(btn){{
       const url = btn.getAttribute('data-url');
       const modal = document.getElementById('logModal');
       const pre = document.getElementById('logContent');
@@ -908,6 +912,35 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
             }}
           }} catch(_){{
             pre.textContent = txt; // fallback se non è JSON valido
+          }}
+        }})
+        .catch(err => {{ pre.textContent = 'Errore: ' + err.message; }});
+    }}
+    function openOnlyLogModal(btn){{
+      const url = btn.getAttribute('data-url');
+      const modal = document.getElementById('logModal');
+      const pre = document.getElementById('logContent');
+      pre.textContent = 'Caricamento...';
+      modal.style.setProperty('display','flex','important');
+      fetch(url, {{ cache: 'no-store' }})
+        .then(r => r.text())
+        .then(txt => {{
+          try {{
+            const data = JSON.parse(txt);
+            const extractLog = (e) => (e && (e.Log ?? e.log ?? '')) || '';
+            if (Array.isArray(data)) {{
+              const logs = data
+                .sort((a,b) => (b.RequestedAt || '').localeCompare(a.RequestedAt || ''))
+                .map(e => extractLog(e))
+                .filter(s => s && s.length > 0);
+              pre.textContent = logs.length ? logs.join('\\n\\n---\\n\\n') : 'Nessun campo Log disponibile.';
+            }} else {{
+              const only = extractLog(data);
+              pre.textContent = only ? only : 'Nessun campo Log disponibile.';
+            }}
+          }} catch(_){{
+            // se non è JSON valido mostro il testo grezzo
+            pre.textContent = txt;
           }}
         }})
         .catch(err => {{ pre.textContent = 'Errore: ' + err.message; }});
@@ -971,7 +1004,12 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
           '<td>' + esc(item.Name || '') + '</td>' +
           '<td>' + esc(item.Id || '') + '</td>' +
           '<td>' + esc(item.Runbook || '') + '</td>' +
-          '<td><button class="btn" data-url="' + urlWithCode + '" onclick="openLogModal(this)">Vedi log</button></td>'
+          '<td>' +
+            '<div style="display:flex; gap:6px; flex-wrap:nowrap; align-items:center">' +
+              '<button class="btn" data-url="' + urlWithCode + '" onclick="openTraceModal(this)">Trace</button>' +
+              '<button class="btn" data-url="' + urlWithCode + '" onclick="openOnlyLogModal(this)">Log</button>' +
+            '</div>' +
+          '</td>';
         tbody.appendChild(tr);
       }});
       el('info').textContent = (data.items || []).length + ' risultato/i';
