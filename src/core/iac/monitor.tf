@@ -1,5 +1,5 @@
 resource "azurerm_monitor_action_group" "cloudo_trigger" {
-  name                = "${var.prefix}-${var.env}-cloudo-trigger"
+  name                = "${var.prefix}-cloudo-trigger"
   resource_group_name = var.resource_group_name
   short_name          = "cloudo-trig"
 
