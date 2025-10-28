@@ -514,9 +514,29 @@ def process_runbook(msg: func.QueueMessage) -> None:
             status="running",
             log_message=f"Start execution: {payload.get('exec_id') or ''} for '{payload.get('runbook')}' at {started_at}",
         )
-        if payload.get("aks_resource_info"):
+
+        aks_info_raw = payload.get("aks_resource_info")
+        aks_info: dict = {}
+        if isinstance(aks_info_raw, str):
             try:
-                _run_aks_login(payload["aks_resource_info"], payload)
+                parsed = json.loads(aks_info_raw)
+                if isinstance(parsed, dict):
+                    aks_info = parsed
+            except json.JSONDecodeError:
+                logging.warning(
+                    "[%s] aks_resource_info non è JSON valido", payload.get("exec_id")
+                )
+        elif isinstance(aks_info_raw, dict):
+            aks_info = aks_info_raw
+
+        ns_val = (
+            str(aks_info.get("aks_namespace", "")).strip().lower() if aks_info else ""
+        )
+        has_valid_ns = bool(ns_val) and ns_val not in {"null", "none", "undefined"}
+
+        if aks_info and has_valid_ns:
+            try:
+                _run_aks_login(aks_info, payload)
                 logging.info(
                     f"[{payload.get('exec_id')}] AKS login completed successfully"
                 )
