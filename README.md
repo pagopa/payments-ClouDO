@@ -153,12 +153,12 @@ Actually the Runbooks can be written with `bash` & `python` programming language
 When the alert originates from Azure Kubernetes Service (AKS),
 the runbook has the following environment variables available:
 
-- **AKS_ID**: The full Azure resource ID of the AKS cluster.
+- **RESOURCE_ID**: The full Azure resource ID.
+- **RESOURCE_RG**: The Azure Resource Group name.
+- **RESOURCE_NAME**: The resource name.
 - **AKS_JOB**: The originating job/name from the alert context (if available).
-- **AKS_RG**: The Azure Resource Group name of the AKS cluster.
-- **AKS_NAME**: The AKS cluster name.
 - **AKS_DEPLOYMENT**: The Kubernetes Deployment name related to the alert (if available).
-- **AKS_NAMESPACE**: The Kubernetes namespace associated with the alert.
+- **AKS_NAMESPACE**: The Kubernetes namespace associated with the alert (if available).
 - **AKS_POD**: The specific Kubernetes Pod name related to the alert (if available).
 - **MONITOR_CONDITION**: The monitor state for the alert, e.g., "Fired" or "Resolved."
 

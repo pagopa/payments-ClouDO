@@ -268,13 +268,13 @@ def _run_aks_login(aks_resource_info: dict, payload: dict = None) -> None:
             f"[{payload.get('exec_id')}] aks_resource_info must be a dict"
         )
 
-    rg = (aks_resource_info.get("aks_rg") or "").strip()
-    name = (aks_resource_info.get("aks_name") or "").strip()
+    rg = (aks_resource_info.get("resource_rg") or "").strip()
+    name = (aks_resource_info.get("resource_name") or "").strip()
     ns = (aks_resource_info.get("aks_namespace") or "").strip()
 
     if not rg or not name:
         raise RuntimeError(
-            f"[{payload.get('exec_id')}] aks_resource_info requires non-empty 'aks_rg' and 'aks_name'"
+            f"[{payload.get('exec_id')}] aks_resource_info requires non-empty 'resource_rg' and 'resource_name'"
         )
 
     script_path = os.path.normpath("utils/aks-login.sh")
@@ -356,9 +356,9 @@ def _run_script(
         aks_info = normalize_aks_info(aks_resource_info)
         logging.info(f"AKS info: {aks_info}")
 
-        os.environ["AKS_NAME"] = to_str(aks_info.get("aks_name"))
-        os.environ["AKS_RG"] = to_str(aks_info.get("aks_rg"))
-        os.environ["AKS_ID"] = to_str(aks_info.get("aks_id"))
+        os.environ["RESOURCE_NAME"] = to_str(aks_info.get("resource_name"))
+        os.environ["RESOURCE_RG"] = to_str(aks_info.get("resource_rg"))
+        os.environ["RESOURCE_ID"] = to_str(aks_info.get("resource_id"))
         os.environ["AKS_NAMESPACE"] = to_str(aks_info.get("aks_namespace"))
         os.environ["AKS_POD"] = to_str(aks_info.get("aks_pod"))
         os.environ["AKS_DEPLOYMENT"] = to_str(aks_info.get("aks_deployment"))

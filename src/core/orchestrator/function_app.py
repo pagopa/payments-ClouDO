@@ -308,9 +308,9 @@ def Trigger(
         ) = utils.parse_resource_fields(req).values()
         aks_resource_info = (
             {
-                "aks_name": resource_name,
-                "aks_rg": resource_group,
-                "aks_id": resource_id,
+                "resource_name": resource_name,
+                "resource_rg": resource_group,
+                "resource_id": resource_id,
                 "aks_namespace": namespace,
                 "aks_pod": pod,
                 "aks_deployment": deployment,

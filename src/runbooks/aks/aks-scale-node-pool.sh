@@ -14,7 +14,6 @@ else
   fi
 fi
 
-# Optionally set the subscription if provided
 if [[ -n "${AZURE_SUBSCRIPTION_ID:-}" ]]; then
   echo "Setting subscription..."
   if ! az account set --subscription "$AZURE_SUBSCRIPTION_ID"; then
@@ -28,12 +27,13 @@ get_current_node_count() {
     local resource_group=$1
     local cluster_name=$2
     local nodepool_name=$3
+    local query=$4
 
     current_count=$(az aks nodepool show \
         --resource-group "$resource_group" \
         --cluster-name "$cluster_name" \
         --name "$nodepool_name" \
-        --query 'count' \
+        --query "$query" \
         --output tsv)
 
     echo "$current_count"
@@ -44,31 +44,57 @@ scale_node_pool() {
     local resource_group=$1
     local cluster_name=$2
     local nodepool_name=$3
-    local new_count=$4
 
-    az aks nodepool scale \
+    # Get current node count
+    current_count=$(get_current_node_count "$RESOURCE_GROUP" "$CLUSTER_NAME" "$NODEPOOL_NAME" "count")
+    max_count=$(get_current_node_count "$RESOURCE_GROUP" "$CLUSTER_NAME" "$NODEPOOL_NAME" "maxCount")
+    min_count=$(get_current_node_count "$RESOURCE_GROUP" "$CLUSTER_NAME" "$NODEPOOL_NAME" "minCount")
+
+    # Scale by 1
+    new_count=$((current_count + 1))
+    # Check if node pool is in autoscale mode
+    local mode=$(az aks nodepool show \
         --resource-group "$resource_group" \
         --cluster-name "$cluster_name" \
         --name "$nodepool_name" \
-        --node-count "$new_count"
+        --query 'enableAutoScaling' \
+        --output tsv)
+
+    echo "Current nodepool mode -> $mode"
+
+    if [[ "$mode" == "true" ]]; then
+        # Scale max count instead by 1
+        new_count=$((max_count + 1))
+
+        echo "Scaling node pool from $max_count to $new_count nodes..."
+        echo "Set min: $min_count & max: $new_count"
+
+        az aks nodepool update \
+            --resource-group "$resource_group" \
+            --cluster-name "$cluster_name" \
+            --name "$nodepool_name" \
+            --update-cluster-autoscaler \
+            --max-count "$new_count" \
+            --min-count "$min_count"
+    else
+        echo "Scaling node pool from $current_count to $new_count nodes..."
+        az aks nodepool scale \
+            --resource-group "$resource_group" \
+            --cluster-name "$cluster_name" \
+            --name "$nodepool_name" \
+            --node-count "$new_count"
+    fi
 }
 
 # Main script execution
-if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 <resource-group> <cluster-name> <nodepool-name>"
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <nodepool-name>"
     exit 1
 fi
 
-RESOURCE_GROUP=$1
-CLUSTER_NAME=$2
-NODEPOOL_NAME=$3
-
-# Get current node count
-current_count=$(get_current_node_count "$RESOURCE_GROUP" "$CLUSTER_NAME" "$NODEPOOL_NAME")
-
-# Calculate new count
-new_count=$((current_count + 1))
+RESOURCE_GROUP=$RESOURCE_RG
+CLUSTER_NAME=$RESOURCE_NAME
+NODEPOOL_NAME=$1
 
 # Scale the node pool
-echo "Scaling node pool from $current_count to $new_count nodes..."
-scale_node_pool "$RESOURCE_GROUP" "$CLUSTER_NAME" "$NODEPOOL_NAME" "$new_count"
+scale_node_pool "$RESOURCE_GROUP" "$CLUSTER_NAME" "$NODEPOOL_NAME"
