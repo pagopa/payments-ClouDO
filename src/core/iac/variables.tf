@@ -65,8 +65,8 @@ variable "custom_roles_subscription" {
 variable "github_repo_info" {
   type = object({
     repo_name    = string
-    repo_branch  = string
-    repo_token   = string
+    repo_branch  = optional(string, "main")
+    repo_token   = optional(string, "")
     runbook_path = string
   })
   description = "A map containing GitHub repository information such as repo, branch, token."
