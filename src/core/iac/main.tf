@@ -77,6 +77,8 @@ resource "azurerm_linux_function_app" "orchestrator" {
     "OPSGENIE_API_KEY"                    = var.opsgenie_api_key
     "GITHUB_TOKEN"                        = var.orchestrator_image.registry_password
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
+    "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
+    "APPROVAL_SECRET"                     = var.approval_runbook.secret
   }
 
   virtual_network_subnet_id = try(module.function_snet.id, null)

@@ -28,12 +28,7 @@ STORAGE_CONN = "AzureWebJobsStorage"
 MAX_TABLE_CHARS = int(os.getenv("MAX_TABLE_LOG_CHARS", "32000"))
 APPROVAL_TTL_MIN = int(os.getenv("APPROVAL_TTL_MIN", "60"))
 APPROVAL_SECRET = (os.getenv("APPROVAL_SECRET") or "").strip()
-FINAL_STATES = {
-    "rejected",
-    "succeeded",
-    "error",
-    "accepted",
-}  # treated as terminal for approvals
+
 
 if os.getenv("FEATURE_DEV", "false").lower() != "true":
     AUTH = func.AuthLevel.FUNCTION
