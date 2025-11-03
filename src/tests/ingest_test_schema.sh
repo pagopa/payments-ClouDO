@@ -25,6 +25,7 @@ az storage entity insert \
     runbook=check_sys.sh \
     url="http://$WORKER/api/Runbook" \
     oncall=false \
+    require_approval=true \
   --if-exists merge \
   --connection-string "${CONN_STR}" \
   --only-show-errors >/dev/null
