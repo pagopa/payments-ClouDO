@@ -147,11 +147,9 @@ def _only_pending_for_exec(rows: list[dict], exec_id: str) -> bool:
     True if ExecId had only 'pending' (o nothing).
     False if there is some other rows not 'pending'.
     """
-    found = False
     for e in rows:
         if str(e.get("ExecId") or "") != exec_id:
             continue
-        found = True
         st = str(e.get("Status") or "").strip().lower()
         if st != "pending":
             return False
