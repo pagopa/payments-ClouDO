@@ -144,6 +144,15 @@ variable "opsgenie_api_key" {
   default     = ""
 }
 
+variable "approval_runbook" {
+  description = "(Optional) Configuration for approval runbook settings including time-to-live in minutes and secret key for approval validation. If not provided, approval functionality will use default settings."
+  type = object({
+    ttl_min = optional(string)
+    secret  = optional(string)
+  })
+  default = {}
+}
+
 variable "app_service_logs" {
   description = "(Optional) Configuration for App Service file system logs including disk quota and retention period."
   type = object({

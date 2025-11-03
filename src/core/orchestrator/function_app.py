@@ -4,7 +4,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
@@ -26,6 +26,9 @@ TABLE_NAME = "RunbookLogs"
 TABLE_SCHEMAS = "RunbookSchemas"
 STORAGE_CONN = "AzureWebJobsStorage"
 MAX_TABLE_CHARS = int(os.getenv("MAX_TABLE_LOG_CHARS", "32000"))
+APPROVAL_TTL_MIN = int(os.getenv("APPROVAL_TTL_MIN", "60"))
+APPROVAL_SECRET = (os.getenv("APPROVAL_SECRET") or "").strip()
+
 
 if os.getenv("FEATURE_DEV", "false").lower() != "true":
     AUTH = func.AuthLevel.FUNCTION
@@ -78,6 +81,121 @@ def _truncate_for_table(s: str | None, max_chars: int) -> str:
     if not s:
         return "", False
     return (s) if len(s) <= max_chars else (s[:max_chars])
+
+
+def _b64url_encode(data: bytes) -> str:
+    # Base64 URL-safe without padding
+    return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
+
+
+def _b64url_decode(s: str) -> bytes:
+    # Decode Base64 URL-safe without padding
+    pad = "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s + pad)
+
+
+def _sign_payload_b64(payload_b64: str) -> str:
+    # HMAC-SHA256 signature over base64url payload (no padding)
+    import hashlib
+    import hmac
+
+    key = (APPROVAL_SECRET or "default").encode("utf-8")
+    return hmac.new(key, payload_b64.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _verify_signed_payload(exec_id_path: str, p: str, s: str) -> tuple[bool, dict]:
+    """
+    Verify signature, parse payload (JSON), and basic invariants:
+    - signature matches
+    - exp not expired
+    - execId in payload matches route
+    Returns (ok, payload_dict_or_empty)
+    """
+    try:
+        if not p or not s:
+            return False, {}
+        expected = _sign_payload_b64(p)
+        import hmac
+
+        if not hmac.compare_digest(expected, s):
+            return False, {}
+        payload_raw = _b64url_decode(p)
+        payload = json.loads(payload_raw.decode("utf-8"))
+        # Validate execId match
+        if (payload.get("execId") or "").strip() != (exec_id_path or "").strip():
+            return False, {}
+        # Validate expiration
+        exp_str = str(payload.get("exp") or "").replace(" ", "").replace("Z", "+00:00")
+        exp_dt = datetime.fromisoformat(exp_str)
+        if datetime.now(timezone.utc) > exp_dt.astimezone(timezone.utc):
+            return False, {}
+        return True, payload
+    except Exception as e:
+        logging.warning(f"verify signed payload failed: {e}")
+        return False, {}
+
+
+def _rows_from_binding(rows: str | list[dict]) -> list[dict]:
+    try:
+        return json.loads(rows) if isinstance(rows, str) else (rows or [])
+    except Exception:
+        return []
+
+
+def _only_pending_for_exec(rows: list[dict], exec_id: str) -> bool:
+    """
+    True if ExecId had only 'pending' (o nothing).
+    False if there is some other rows not 'pending'.
+    """
+    for e in rows:
+        if str(e.get("ExecId") or "") != exec_id:
+            continue
+        st = str(e.get("Status") or "").strip().lower()
+        if st != "pending":
+            return False
+    return True
+
+
+def _notify_slack_decision(
+    exec_id: str, schema_id: str, decision: str, approver: str, extra: str = ""
+) -> None:
+    token = (os.environ.get("SLACK_TOKEN") or "").strip()
+    channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
+    if not token:
+        return
+    emoji = "✅" if decision == "approved" else "❌"
+    try:
+        send_slack_execution(
+            token=token,
+            channel=channel,
+            message=f"[{exec_id}] {emoji} {decision.upper()} - {schema_id}",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{decision}*\n"
+                            f"*ExecId:* `{exec_id}`\n"
+                            f"*SchemaId:* `{schema_id}`\n"
+                            f"*By:* {approver}"
+                        ),
+                    },
+                },
+                *(
+                    [
+                        {
+                            "type": "context",
+                            "elements": [{"type": "mrkdwn", "text": extra}],
+                        }
+                    ]
+                    if extra
+                    else []
+                ),
+            ],
+        )
+    except Exception as e:
+        logging.error(f"[{exec_id}] Slack notify failed: {e}")
 
 
 def decode_base64(data: str) -> str:
@@ -202,8 +320,11 @@ def build_log_entry(
     oncall: Optional[str],
     monitor_condition: Optional[str],
     severity: Optional[str],
+    approval_required: Optional[bool] = None,
+    approval_expires_at: Optional[str] = None,
+    approval_decision_by: Optional[str] = None,
 ) -> dict[str, Any]:
-    # Build a normalized log entity for Azure Table Storage
+    # Normalized log entity for Azure Table Storage (with optional approval fields)
     return {
         "PartitionKey": partition_key,
         "RowKey": row_key,
@@ -219,6 +340,9 @@ def build_log_entry(
         "OnCall": oncall,
         "MonitorCondition": monitor_condition,
         "Severity": severity,
+        "ApprovalRequired": approval_required,
+        "ApprovalExpiresAt": approval_expires_at,
+        "ApprovalDecisionBy": approval_decision_by,
     }
 
 
@@ -239,6 +363,7 @@ class Schema:
     oncall: str | None = "false"
     monitor_condition: str | None = None
     severity: str | None = None
+    require_approval: bool = False
 
     def __post_init__(self):
         if not self.id or not isinstance(self.id, str):
@@ -257,6 +382,9 @@ class Schema:
         self.run_args = (e.get("run_args") or "").strip() or ""
         self.oncall = (
             str(e.get("oncall", e.get("oncall", "false"))).strip().lower() or "false"
+        )
+        self.require_approval = (
+            str(e.get("require_approval", "false")).strip().lower() == "true"
         )
 
 
@@ -374,6 +502,130 @@ def Trigger(
     )
     logging.info(f"[{exec_id}] Set schema: '{schema}'")
     try:
+        # Approval-required path: create pending with signed URL embedding aks_resource_info and function key
+        if schema.require_approval:
+            expires_at = (
+                (datetime.now(timezone.utc) + timedelta(minutes=APPROVAL_TTL_MIN))
+                .isoformat()
+                .replace(" ", "")
+            )
+            # function key to pass along (from header or query)
+            func_key = (
+                req.headers.get("x-functions-key") or req.params.get("code") or ""
+            )
+            # Build payload
+            payload = {
+                "execId": exec_id,
+                "schemaId": schema.id,
+                "url": schema.url,
+                "exp": expires_at,
+                "aks": aks_resource_info or {},
+                "code": func_key or "",
+                "monitorCondition": monitor_condition,
+                "severity": severity,
+            }
+            payload_b64 = _b64url_encode(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            )
+            sig = _sign_payload_b64(payload_b64)
+
+            base = _strip_after_api(resolve_caller_url(req))
+            approve_url = f"{base}/api/approvals/{partition_key}/{exec_id}/approve?p={payload_b64}&s={sig}&code={func_key}"
+            reject_url = f"{base}/api/approvals/{partition_key}/{exec_id}/reject?p={payload_b64}&s={sig}&code={func_key}"
+
+            pending_log = build_log_entry(
+                status="pending",
+                partition_key=partition_key,
+                exec_id=exec_id,
+                row_key=exec_id,
+                requested_at=requested_at,
+                name=schema.name or "",
+                schema_id=schema.id,
+                url=schema.url,
+                runbook=schema.runbook,
+                run_args=schema.run_args,
+                log_msg=json.dumps(
+                    {
+                        "message": "Awaiting approval",
+                        "approve": approve_url,
+                        "reject": reject_url,
+                        "aks": aks_resource_info,
+                    },
+                    ensure_ascii=False,
+                ),
+                oncall=schema.oncall,
+                monitor_condition=monitor_condition,
+                severity=severity,
+                approval_required=True,
+                approval_expires_at=expires_at,
+            )
+            log_table.set(json.dumps(pending_log, ensure_ascii=False))
+
+            # Optional Slack notify
+            slack_bot_token = (os.environ.get("SLACK_TOKEN") or "").strip()
+            slack_channel = (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip()
+            if slack_bot_token:
+                try:
+                    send_slack_execution(
+                        token=slack_bot_token,
+                        channel=slack_channel,
+                        message=f"[{exec_id}] APPROVAL REQUIRED: {schema.name}",
+                        blocks=[
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": (
+                                        f"*Approval required*\n"
+                                        f"*Name:* {schema.name}\n"
+                                        f"*Id:* `{schema.id}`\n"
+                                        f"*ExecId:* `{exec_id}`\n"
+                                        f"*Severity:* {severity or '-'}\n"
+                                        f"*Runbook:* `{schema.runbook or '-'}`\n"
+                                        f"*Args:* ```{(schema.run_args or '').strip() or '-'}```"
+                                    ),
+                                },
+                            },
+                            {
+                                "type": "actions",
+                                "elements": [
+                                    {
+                                        "type": "button",
+                                        "text": {
+                                            "type": "plain_text",
+                                            "text": "Approve ✅",
+                                        },
+                                        "url": approve_url,
+                                    },
+                                    {
+                                        "type": "button",
+                                        "text": {
+                                            "type": "plain_text",
+                                            "text": "Reject ❌",
+                                        },
+                                        "url": reject_url,
+                                    },
+                                ],
+                            },
+                        ],
+                    )
+                except Exception as e:
+                    logging.error(f"[{exec_id}] Slack approval notify failed: {e}")
+
+            body = json.dumps(
+                {
+                    "status": 202,
+                    "message": "Job is pending approval",
+                    "exec_id": exec_id,
+                    "approve": approve_url,
+                    "reject": reject_url,
+                    "expires_at (UTC)": expires_at,
+                },
+                ensure_ascii=False,
+            )
+            return func.HttpResponse(body, status_code=202, mimetype="application/json")
+
+        # No approval required: call downstream runbook endpoint
         # Call downstream runbook endpoint
         response = request(
             "POST",
@@ -453,6 +705,362 @@ def Trigger(
             status_code=500,
             mimetype="application/json",
         )
+
+
+# =========================
+# HTTP Function: Approval
+# =========================
+@app.route(route="approvals/{partitionKey}/{execId}/approve", auth_level=AUTH)
+@app.table_output(
+    arg_name="log_table",
+    table_name=TABLE_NAME,
+    connection=STORAGE_CONN,
+)
+@app.table_input(
+    arg_name="schemas",
+    table_name=TABLE_SCHEMAS,
+    connection=STORAGE_CONN,
+)
+@app.table_input(
+    arg_name="today_logs",
+    table_name=TABLE_NAME,
+    partition_key="{partitionKey}",
+    connection=STORAGE_CONN,
+)
+def approve(
+    req: func.HttpRequest, log_table: func.Out[str], schemas: str, today_logs: str
+) -> func.HttpResponse:
+    route_params = getattr(req, "route_params", {}) or {}
+    execId = (route_params.get("execId") or "").strip()
+
+    p = (req.params.get("p") or "").strip()
+    s = (req.params.get("s") or "").strip()
+    approver = (req.headers.get("X-Approver") or "unknown").strip()
+
+    if not execId:
+        return func.HttpResponse(
+            json.dumps({"error": "Missing execId in route"}, ensure_ascii=False),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    ok, payload = _verify_signed_payload(execId, p, s)
+    if not ok:
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid or expired payload"}, ensure_ascii=False),
+            status_code=401,
+            mimetype="application/json",
+        )
+
+    rows = _rows_from_binding(today_logs)
+    if not _only_pending_for_exec(rows, execId):
+        return func.HttpResponse(
+            json.dumps(
+                {"message": "Already decided or executed for this ExecId"},
+                ensure_ascii=False,
+            ),
+            status_code=409,
+            mimetype="application/json",
+        )
+
+    schema_id = payload.get("schemaId") or ""
+    aks_resource_info = payload.get("aks") or None
+    func_key = payload.get("code") or ""
+    monitor_condition = payload.get("monitorCondition") or ""
+    severity = payload.get("severity") or ""
+
+    # Load schema entity
+    try:
+        parsed = json.loads(schemas) if isinstance(schemas, str) else schemas
+    except Exception:
+        parsed = None
+    if not isinstance(parsed, list):
+        return func.HttpResponse(
+            json.dumps({"error": "Schemas not available"}, ensure_ascii=False),
+            status_code=500,
+            mimetype="application/json",
+        )
+
+    def get_id(e: dict) -> str:
+        return str(e.get("Id") or e.get("id") or "").strip()
+
+    schema_entity = next((e for e in parsed if get_id(e) == schema_id), None)
+    if not schema_entity:
+        return func.HttpResponse(
+            json.dumps({"error": "Schema not found"}, ensure_ascii=False),
+            status_code=404,
+            mimetype="application/json",
+        )
+
+    schema = Schema(id=schema_entity.get("id"), entity=schema_entity)
+
+    partition_key = today_partition_key()
+    requested_at = format_requested_at()
+
+    # Execute once (pass embedded aks_resource_info and propagate function key if needed)
+    try:
+        headers = build_headers(
+            schema, execId, aks_resource_info, monitor_condition, severity
+        )
+        if func_key:
+            headers["x-functions-key"] = func_key
+        response = request(
+            "POST",
+            schema.url,
+            headers=build_headers(
+                schema, execId, aks_resource_info, monitor_condition, severity
+            ),
+        )
+        api_body = safe_json(response)
+        status_label = "accepted" if response.status_code == 202 else "error"
+
+        log_entity = build_log_entry(
+            status=status_label,
+            partition_key=partition_key,
+            row_key=str(uuid.uuid4()),
+            exec_id=execId,
+            requested_at=requested_at,
+            name=schema.name or "",
+            schema_id=schema.id,
+            url=schema.url,
+            runbook=schema.runbook,
+            run_args=schema.run_args,
+            log_msg=json.dumps(
+                {
+                    "message": "Approved and executed",
+                    "response": api_body,
+                    "aks": aks_resource_info,
+                },
+                ensure_ascii=False,
+            ),
+            oncall=schema.oncall,
+            monitor_condition=monitor_condition,
+            severity=severity,
+            approval_required=True,
+            approval_decision_by=approver,
+        )
+        log_table.set(json.dumps(log_entity, ensure_ascii=False))
+
+        # Optional Slack notify
+        _notify_slack_decision(
+            execId,
+            schema.id,
+            f"approved {execId}",
+            approver,
+            extra=f"*Status:* {status_label}",
+        )
+
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="it">
+        <head>
+          <meta charset="utf-8"/>
+          <meta name="viewport" content="width=device-width, initial-scale=1"/>
+          <title>Esecuzione approvata</title>
+          <style>
+            :root{{--bg:#f9fafb;--fg:#111827;--muted:#6b7280;--card:#fff;--border:#e5e7eb;--accent:#16a34a}}
+            body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:2rem;color:var(--fg);background:var(--bg)}}
+            .box{{max-width:860px;margin:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}}
+            h1{{margin:0 0 6px}}
+            .muted{{color:var(--muted)}}
+            .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}}
+            .kv{{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:#fff}}
+            .k{{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px}}
+            .v{{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all}}
+            .badge{{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.75rem;border:1px solid var(--border);background:#ecfdf5;color:#15803d;border-color:#bbf7d0}}
+            .btns{{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}}
+            .btn{{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#111827;text-decoration:none}}
+            .btn:hover{{border-color:var(--accent);color:#15803d}}
+            pre{{background:#0b122a;color:#eef2ff;border:1px solid var(--border);border-radius:8px;padding:12px;overflow:auto}}
+            footer{{margin-top:14px;color:var(--muted);font-size:.85rem}}
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <h1>Esecuzione approvata <span class="badge">{status_label}</span></h1>
+            <p class="muted">Il runbook è stato avviato correttamente.</p>
+
+            <div class="grid">
+              <div class="kv"><span class="k">ExecId</span><span class="v">{execId}</span></div>
+              <div class="kv"><span class="k">SchemaId</span><span class="v">{schema.id}</span></div>
+              <div class="kv"><span class="k">Nome</span><span class="v">{schema.name or '-'}</span></div>
+              <div class="kv"><span class="k">Runbook</span><span class="v">{schema.runbook or '-'}</span></div>
+              <div class="kv"><span class="k">Severity</span><span class="v">{severity or '-'}</span></div>
+              <div class="kv"><span class="k">Timestamp</span><span class="v">{requested_at}</span></div>
+            </div>
+
+            <div class="kv" style="margin-top:12px;">
+              <span class="k">Args</span>
+              <pre>{(schema.run_args or '-')}</pre>
+            </div>
+
+            <div class="btns">
+              <a class="btn" href="/api/logs/{partition_key}/{execId}?code={func_key}" target="_blank" rel="noopener">Vedi trace</a>
+            </div>
+
+            <footer>ClouDO - Cloudo Operations.</footer>
+          </div>
+        </body>
+        </html>
+        """.strip()
+
+        return func.HttpResponse(html, status_code=200, mimetype="text/html")
+
+    except Exception as e:
+        err_log = build_log_entry(
+            status="error",
+            partition_key=partition_key,
+            row_key=str(uuid.uuid4()),
+            exec_id=execId,
+            requested_at=requested_at,
+            name=schema.name or "",
+            schema_id=schema.id,
+            url=schema.url,
+            runbook=schema.runbook,
+            run_args=schema.run_args,
+            log_msg=f"Approve failed: {str(e)}",
+            oncall=schema.oncall,
+            monitor_condition=None,
+            severity=None,
+            approval_required=True,
+            approval_decision_by=approver,
+        )
+        log_table.set(json.dumps(err_log, ensure_ascii=False))
+        _notify_slack_decision(
+            execId,
+            schema_id,
+            f"approved {execId}",
+            approver,
+            extra=f"*Error:* {str(e)}",
+        )
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}, ensure_ascii=False),
+            status_code=500,
+            mimetype="application/json",
+        )
+
+
+# =========================
+# HTTP Function: Rejecter
+# =========================
+@app.route(route="approvals/{partitionKey}/{execId}/reject", auth_level=AUTH)
+@app.table_output(
+    arg_name="log_table",
+    table_name=TABLE_NAME,
+    connection=STORAGE_CONN,
+)
+@app.table_input(
+    arg_name="today_logs",
+    table_name=TABLE_NAME,
+    partition_key="{partitionKey}",
+    connection=STORAGE_CONN,
+)
+def reject(
+    req: func.HttpRequest, log_table: func.Out[str], today_logs: str
+) -> func.HttpResponse:
+    route_params = getattr(req, "route_params", {}) or {}
+    execId = (route_params.get("execId") or "").strip()
+
+    rows = _rows_from_binding(today_logs)
+    if not _only_pending_for_exec(rows, execId):
+        return func.HttpResponse(
+            json.dumps(
+                {"message": "Already decided or executed for this ExecId"},
+                ensure_ascii=False,
+            ),
+            status_code=409,
+            mimetype="application/json",
+        )
+
+    p = (req.params.get("p") or "").strip()
+    s = (req.params.get("s") or "").strip()
+    approver = (req.headers.get("X-Approver") or "unknown").strip()
+
+    if not execId:
+        return func.HttpResponse(
+            json.dumps({"error": "Missing execId in route"}, ensure_ascii=False),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    ok, payload = _verify_signed_payload(execId, p, s)
+    if not ok:
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid or expired payload"}, ensure_ascii=False),
+            status_code=401,
+            mimetype="application/json",
+        )
+
+    schema_id = payload.get("schemaId") or ""
+
+    partition_key = today_partition_key()
+    requested_at = format_requested_at()
+
+    log_entity = build_log_entry(
+        status="rejected",
+        partition_key=partition_key,
+        row_key=str(uuid.uuid4()),
+        exec_id=execId,
+        requested_at=requested_at,
+        name=None,
+        schema_id=schema_id,
+        url=None,
+        runbook=None,
+        run_args=None,
+        log_msg=json.dumps({"message": "Rejected by approver"}, ensure_ascii=False),
+        oncall=None,
+        monitor_condition=None,
+        severity=None,
+        approval_required=True,
+        approval_decision_by=approver,
+    )
+    log_table.set(json.dumps(log_entity, ensure_ascii=False))
+
+    _notify_slack_decision(execId, schema_id, f"rejected {execId}", approver)
+
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="it">
+    <head>
+      <meta charset="utf-8"/>
+      <meta name="viewport" content="width=device-width, initial-scale=1"/>
+      <title>Richiesta rifiutata</title>
+      <style>
+        :root{{--bg:#f9fafb;--fg:#111827;--muted:#6b7280;--card:#fff;--border:#e5e7eb;--accent:#dc2626}}
+        body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:2rem;color:var(--fg);background:var(--bg)}}
+        .box{{max-width:860px;margin:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}}
+        h1{{margin:0 0 6px}}
+        .muted{{color:var(--muted)}}
+        .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}}
+        .kv{{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:#fff}}
+        .k{{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px}}
+        .v{{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all}}
+        .badge{{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.75rem;border:1px solid var(--border);background:#fef2f2;color:#b91c1c;border-color:#fecaca}}
+        .btns{{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}}
+        .btn{{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#111827;text-decoration:none}}
+        .btn:hover{{border-color:var(--accent);color:#b91c1c}}
+        footer{{margin-top:14px;color:var(--muted);font-size:.85rem}}
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <h1>Richiesta rifiutata <span class="badge">rejected</span></h1>
+        <p class="muted">L'operazione non verrà eseguita.</p>
+
+        <div class="grid">
+          <div class="kv"><span class="k">ExecId</span><span class="v">{execId}</span></div>
+          <div class="kv"><span class="k">SchemaId</span><span class="v">{schema_id}</span></div>
+          <div class="kv"><span class="k">Approver</span><span class="v">{approver}</span></div>
+          <div class="kv"><span class="k">Timestamp</span><span class="v">{requested_at}</span></div>
+        </div>
+
+        <footer>ClouDO - Cloudo Operations.</footer>
+      </div>
+    </body>
+    </html>
+    """.strip()
+
+    return func.HttpResponse(html, status_code=200, mimetype="text/html")
 
 
 # =========================
@@ -885,6 +1493,7 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
       let cls = 'badge';
       if (st==='succeeded') cls+=' ok';
       else if (st==='accepted') cls+=' warn';
+      else if (st === 'pending') cls+= ' warn';
       else if (st === 'running') cls+= ' info';
       else cls+=' err';
       return '<span class="'+cls+'">'+(st||'')+'</span>';
