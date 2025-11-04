@@ -16,27 +16,50 @@ def _html_escape(s: str) -> str:
 
 
 def render_template_str(template: str, ctx: dict[str, Any]) -> str:
-    """
-    Supporta:
-    - {chiave} -> con escape HTML
-    - {raw:chiave} -> inserimento raw (nessun escape). Usa solo per JS/CSS già serializzati.
-    """
-    safe_ctx = {
-        k: (_html_escape(str(v)) if v is not None else "") for k, v in ctx.items()
-    }
-    # 1) rimpiazzo RAW
     import re
+
+    safe_ctx = {k: ("" if v is None else _html_escape(str(v))) for k, v in ctx.items()}
+
+    # capture {raw:key}
+    raw_tokens: dict[str, str] = {}
 
     def raw_sub(m):
         key = m.group(1)
-        return "" if key not in ctx or ctx[key] is None else str(ctx[key])
+        val = "" if key not in ctx or ctx[key] is None else str(ctx[key])
+        token = f"__RAW_TOKEN__{len(raw_tokens)}__"
+        raw_tokens[token] = val
+        return token
 
-    out = re.sub(r"\{raw:([a-zA-Z0-9_]+)\}", raw_sub, template)
-    # 2) rimpiazzo con escape
+    tmp = re.sub(r"\{raw:([a-zA-Z0-9_]+)\}", raw_sub, template)
+
+    # capture {key}
+    norm_tokens: dict[str, str] = {}
+
+    def norm_sub(m):
+        key = m.group(1)
+        token = f"__NORM_TOKEN__{len(norm_tokens)}__"
+        norm_tokens[token] = key
+        return token
+
+    tmp = re.sub(r"\{([a-zA-Z0-9_]+)\}", norm_sub, tmp)
+
+    # escape literal braces for str.format
+    tmp = tmp.replace("{", "{{").replace("}", "}}")
+
+    # restore {key}
+    for token, key in norm_tokens.items():
+        tmp = tmp.replace(token, "{" + key + "}")
+
     try:
-        return out.format(**safe_ctx)
+        formatted = tmp.format(**safe_ctx)
     except KeyError:
-        return out
+        formatted = tmp
+
+    # restore raw tokens
+    for token, val in raw_tokens.items():
+        formatted = formatted.replace(token, val)
+
+    return formatted
 
 
 @lru_cache(maxsize=32)
