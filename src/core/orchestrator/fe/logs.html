@@ -145,6 +145,45 @@
       // legacy no-op to keep backward compatibility if referenced elsewhere
       openTraceModal(btn);
     }
+
+    function decodeNewlines(s) {
+      // decodifica \n, \t, ecc. in caratteri reali; fallback semplice
+      try {
+        return JSON.parse('"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"');
+      } catch (_) {
+        return String(s).replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+      }
+    }
+
+    function openOnlyLogModal(btn){
+      const url = btn.getAttribute('data-url');
+      const modal = document.getElementById('logModal');
+      const pre = document.getElementById('logContent');
+      pre.textContent = 'Caricamento...';
+      modal.style.setProperty('display','flex','important');
+      fetch(url, { cache: 'no-store' })
+        .then(r => r.text())
+        .then(txt => {
+          try {
+            const data = JSON.parse(txt);
+            const extractLog = (e) => (e && (e.Log ?? e.log ?? '')) || '';
+            if (Array.isArray(data)) {
+              const logs = data
+                .sort((a,b) => (b.RequestedAt || '').localeCompare(a.RequestedAt || ''))
+                .map(e => decodeNewlines(extractLog(e)))
+                .filter(s => s && s.length > 0);
+              pre.textContent = logs.length ? logs.join('\n\n---\n\n') : 'Nessun campo Log disponibile.';
+            } else {
+              const only = decodeNewlines(extractLog(data));
+              pre.textContent = only ? only : 'Nessun campo Log disponibile.';
+            }
+          } catch(_){
+            pre.textContent = txt;
+          }
+        })
+        .catch(err => { pre.textContent = 'Errore: ' + err.message; });
+    }
+
     function openTraceModal(btn){
       const url = btn.getAttribute('data-url');
       const modal = document.getElementById('logModal');
@@ -168,41 +207,6 @@
         })
         .catch(err => { pre.textContent = 'Errore: ' + err.message; });
     }
-    function openOnlyLogModal(btn){
-      const url = btn.getAttribute('data-url');
-      const modal = document.getElementById('logModal');
-      const pre = document.getElementById('logContent');
-      pre.textContent = 'Caricamento...';
-      modal.style.setProperty('display','flex','important');
-      fetch(url, { cache: 'no-store' })
-        .then(r => r.text())
-        .then(txt => {
-          try {
-            const data = JSON.parse(txt);
-            const extractLog = (e) => (e && (e.Log ?? e.log ?? '')) || '';
-            if (Array.isArray(data)) {
-              const logs = data
-                .sort((a,b) => (b.RequestedAt || '').localeCompare(a.RequestedAt || ''))
-                .map(e => extractLog(e))
-                .filter(s => s && s.length > 0);
-              pre.textContent = logs.length ? logs.join('\\n\\n---\\n\\n') : 'Nessun campo Log disponibile.';
-            } else {
-              const only = extractLog(data);
-              pre.textContent = only ? only : 'Nessun campo Log disponibile.';
-            }
-          } catch(_){
-            // se non è JSON valido mostro il testo grezzo
-            pre.textContent = txt;
-          }
-        })
-        .catch(err => { pre.textContent = 'Errore: ' + err.message; });
-    }
-    function closeLogModal(){ document.getElementById('logModal').style.display = 'none'; }
-    document.addEventListener('keydown', e => { if(e.key==='Escape') closeLogModal(); });
-    document.addEventListener('click', e => {
-      const m = document.getElementById('logModal');
-      if (m.style.display !== 'none' && e.target === m) closeLogModal();
-    });
 
     function closeLogModal(){
       const modal = document.getElementById('logModal');
