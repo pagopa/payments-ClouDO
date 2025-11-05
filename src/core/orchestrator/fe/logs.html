@@ -7,10 +7,10 @@
   <style>
     :root{--bg:#f9fafb;--fg:#111827;--muted:#6b7280;--card:#fff;--border:#e5e7eb;--primary:#2563eb}
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:2rem;color:var(--fg);background:var(--bg)}
-    .box{max-width:1200px;margin:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+    .box{flex;margin:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
     h1{margin-top:0}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-    label{font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+    label{font-size:.85rem;color:var(--muted);display:block;margin-bottom:8px}
     input,select{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}
     .row{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:8px}
     button{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer}
@@ -86,14 +86,14 @@
       </div>
     </div>
     <div class="row">
-        <button id="run" class="primary">
+      <button id="run" class="primary">
           <span style="display:inline-block;width:0;height:0;border-left:8px solid currentColor;
             border-top:6px solid transparent;border-bottom:6px solid transparent;margin-right:6px;
             vertical-align:middle;">
           </span>
-          Run
-        </button>
-        <button id="clear">Reset</button>
+        Run
+      </button>
+      <button id="clear">Reset</button>
       <span id="info" class="muted" aria-live="polite"></span>
     </div>
     <div id="logModal" class="modal" style="display:none;">
@@ -104,8 +104,9 @@
     </div>
     <details open>
       <summary>Risultati</summary>
-      <table id="tbl">
-        <thead>
+      <div class="table-responsive">
+        <table id="tbl">
+          <thead>
           <tr>
             <th class="sticky">RequestedAt</th>
             <th class="sticky">Status</th>
@@ -113,11 +114,13 @@
             <th class="sticky">Name</th>
             <th class="sticky">Id</th>
             <th class="sticky">Runbook</th>
+            <th class="sticky">Condition</th>
             <th class="sticky">Azioni</th>
           </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </details>
 
     <details>
@@ -125,7 +128,6 @@
       <pre id="raw"></pre>
     </details>
   </div>
-
   <script>
     const FUNCTION_QUERY_CODE = {raw:code_js};
     const el = id => document.getElementById(id);
@@ -260,6 +262,7 @@
           '<td>' + esc(item.Name || '') + '</td>' +
           '<td>' + esc(item.Id || '') + '</td>' +
           '<td>' + esc(item.Runbook || '') + '</td>' +
+          '<td>' + esc(item.MonitorCondition || '') + '</td>' +
           '<td>' +
             '<div style="display:flex; gap:6px; flex-wrap:nowrap; align-items:center">' +
               '<button class="btn" data-url="' + urlWithCode + '" onclick="openTraceModal(this)">Trace</button>' +
