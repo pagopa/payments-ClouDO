@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Esecuzione approvata</title>
+  <style>
+    :root{--bg:#f9fafb;--fg:#111827;--muted:#6b7280;--card:#fff;--border:#e5e7eb;--accent:#16a34a}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:2rem;color:var(--fg);background:var(--bg)}
+    .box{max-width:860px;margin:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+    h1{margin:0 0 6px}
+    .muted{color:var(--muted)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}
+    .kv{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:#fff}
+    .k{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px}
+    .v{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.75rem;border:1px solid var(--border);background:#ecfdf5;color:#15803d;border-color:#bbf7d0}
+    .btns{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+    .btn{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#111827;text-decoration:none}
+    .btn:hover{border-color:var(--accent);color:#15803d}
+    pre{background:#0b122a;color:#eef2ff;border:1px solid var(--border);border-radius:8px;padding:12px;overflow:auto}
+    footer{margin-top:14px;color:var(--muted);font-size:.85rem}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Esecuzione approvata <span class="badge">{status_label}</span></h1>
+    <p class="muted">Il runbook è stato avviato correttamente.</p>
+
+    <div class="grid">
+      <div class="kv"><span class="k">ExecId</span><span class="v">{execId}</span></div>
+      <div class="kv"><span class="k">SchemaId</span><span class="v">{schema_id}</span></div>
+      <div class="kv"><span class="k">Nome</span><span class="v">{schema_name}</span></div>
+      <div class="kv"><span class="k">Runbook</span><span class="v">{schema_runbook}</span></div>
+      <div class="kv"><span class="k">Severity</span><span class="v">{severity}</span></div>
+      <div class="kv"><span class="k">Timestamp</span><span class="v">{requested_at}</span></div>
+    </div>
+
+    <div class="kv" style="margin-top:12px;">
+      <span class="k">Args</span>
+      <pre>{schema_run_args}</pre>
+    </div>
+
+    <div class="btns">
+      <a class="btn" href="/api/logs/{partition_key}/{execId}?code={func_key}" target="_blank" rel="noopener">Vedi trace</a>
+    </div>
+
+    <footer>ClouDO - Cloudo Operations.</footer>
+  </div>
+</body>
+</html>

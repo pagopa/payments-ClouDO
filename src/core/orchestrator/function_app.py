@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 import azure.functions as func
 import utils
 from escalation import send_opsgenie_alert, send_slack_execution
+from frontend import render_template
 from requests import request
 
 app = func.FunctionApp()
@@ -850,59 +851,21 @@ def approve(
             extra=f"*Status:* {status_label}",
         )
 
-        html = f"""
-        <!DOCTYPE html>
-        <html lang="it">
-        <head>
-          <meta charset="utf-8"/>
-          <meta name="viewport" content="width=device-width, initial-scale=1"/>
-          <title>Esecuzione approvata</title>
-          <style>
-            :root{{--bg:#f9fafb;--fg:#111827;--muted:#6b7280;--card:#fff;--border:#e5e7eb;--accent:#16a34a}}
-            body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:2rem;color:var(--fg);background:var(--bg)}}
-            .box{{max-width:860px;margin:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}}
-            h1{{margin:0 0 6px}}
-            .muted{{color:var(--muted)}}
-            .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}}
-            .kv{{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:#fff}}
-            .k{{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px}}
-            .v{{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all}}
-            .badge{{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.75rem;border:1px solid var(--border);background:#ecfdf5;color:#15803d;border-color:#bbf7d0}}
-            .btns{{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}}
-            .btn{{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#111827;text-decoration:none}}
-            .btn:hover{{border-color:var(--accent);color:#15803d}}
-            pre{{background:#0b122a;color:#eef2ff;border:1px solid var(--border);border-radius:8px;padding:12px;overflow:auto}}
-            footer{{margin-top:14px;color:var(--muted);font-size:.85rem}}
-          </style>
-        </head>
-        <body>
-          <div class="box">
-            <h1>Esecuzione approvata <span class="badge">{status_label}</span></h1>
-            <p class="muted">Il runbook è stato avviato correttamente.</p>
-
-            <div class="grid">
-              <div class="kv"><span class="k">ExecId</span><span class="v">{execId}</span></div>
-              <div class="kv"><span class="k">SchemaId</span><span class="v">{schema.id}</span></div>
-              <div class="kv"><span class="k">Nome</span><span class="v">{schema.name or '-'}</span></div>
-              <div class="kv"><span class="k">Runbook</span><span class="v">{schema.runbook or '-'}</span></div>
-              <div class="kv"><span class="k">Severity</span><span class="v">{severity or '-'}</span></div>
-              <div class="kv"><span class="k">Timestamp</span><span class="v">{requested_at}</span></div>
-            </div>
-
-            <div class="kv" style="margin-top:12px;">
-              <span class="k">Args</span>
-              <pre>{(schema.run_args or '-')}</pre>
-            </div>
-
-            <div class="btns">
-              <a class="btn" href="/api/logs/{partition_key}/{execId}?code={func_key}" target="_blank" rel="noopener">Vedi trace</a>
-            </div>
-
-            <footer>ClouDO - Cloudo Operations.</footer>
-          </div>
-        </body>
-        </html>
-        """.strip()
+        html = render_template(
+            "approve.html",
+            {
+                "status_label": status_label,
+                "execId": execId,
+                "schema_id": schema.id,
+                "schema_name": schema.name or "-",
+                "schema_runbook": schema.runbook or "-",
+                "schema_run_args": (schema.run_args or "-"),
+                "severity": severity or "-",
+                "requested_at": requested_at,
+                "partition_key": partition_key,
+                "func_key": func_key,
+            },
+        )
 
         return func.HttpResponse(html, status_code=200, mimetype="text/html")
 
@@ -1018,47 +981,15 @@ def reject(
 
     _notify_slack_decision(execId, schema_id, f"rejected {execId}", approver)
 
-    html = f"""
-    <!DOCTYPE html>
-    <html lang="it">
-    <head>
-      <meta charset="utf-8"/>
-      <meta name="viewport" content="width=device-width, initial-scale=1"/>
-      <title>Richiesta rifiutata</title>
-      <style>
-        :root{{--bg:#f9fafb;--fg:#111827;--muted:#6b7280;--card:#fff;--border:#e5e7eb;--accent:#dc2626}}
-        body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:2rem;color:var(--fg);background:var(--bg)}}
-        .box{{max-width:860px;margin:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}}
-        h1{{margin:0 0 6px}}
-        .muted{{color:var(--muted)}}
-        .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}}
-        .kv{{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:#fff}}
-        .k{{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px}}
-        .v{{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all}}
-        .badge{{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.75rem;border:1px solid var(--border);background:#fef2f2;color:#b91c1c;border-color:#fecaca}}
-        .btns{{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}}
-        .btn{{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#111827;text-decoration:none}}
-        .btn:hover{{border-color:var(--accent);color:#b91c1c}}
-        footer{{margin-top:14px;color:var(--muted);font-size:.85rem}}
-      </style>
-    </head>
-    <body>
-      <div class="box">
-        <h1>Richiesta rifiutata <span class="badge">rejected</span></h1>
-        <p class="muted">L'operazione non verrà eseguita.</p>
-
-        <div class="grid">
-          <div class="kv"><span class="k">ExecId</span><span class="v">{execId}</span></div>
-          <div class="kv"><span class="k">SchemaId</span><span class="v">{schema_id}</span></div>
-          <div class="kv"><span class="k">Approver</span><span class="v">{approver}</span></div>
-          <div class="kv"><span class="k">Timestamp</span><span class="v">{requested_at}</span></div>
-        </div>
-
-        <footer>ClouDO - Cloudo Operations.</footer>
-      </div>
-    </body>
-    </html>
-    """.strip()
+    html = render_template(
+        "reject.html",
+        {
+            "execId": execId,
+            "schema_id": schema_id,
+            "approver": approver or "-",
+            "requested_at": requested_at,
+        },
+    )
 
     return func.HttpResponse(html, status_code=200, mimetype="text/html")
 
@@ -1348,7 +1279,6 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
 
 
 @app.route(route="logs", auth_level=AUTH)
-# fmt: off
 # ruff: noqa
 def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
     key = req.headers.get("x-functions-key") or req.params.get("code")
@@ -1357,305 +1287,13 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
     func_key = key
     code_js = json.dumps(func_key or "")
 
-    html: str = f"""
-<!DOCTYPE html>
-<html lang="it">
-<head>
-  <meta charset="utf-8"/>
-  <title>ClouDO Log</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <style>
-    :root{{--bg:#f9fafb;--fg:#111827;--muted:#6b7280;--card:#fff;--border:#e5e7eb;--primary:#2563eb}}
-    body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:2rem;color:var(--fg);background:var(--bg)}}
-    .box{{max-width:1200px;margin:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}}
-    h1{{margin-top:0}}
-    .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}}
-    label{{font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px}}
-    input,select{{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}}
-    .row{{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:8px}}
-    button{{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer}}
-    button.primary{{background:var(--primary);color:#fff;border-color:var(--primary)}}
-    table{{width:100%;border-collapse:collapse;margin-top:16px}}
-    th,td{{border-bottom:1px solid var(--border);padding:8px 6px;text-align:left;vertical-align:top}}
-    th.sticky{{position:sticky;top:0;background:#fff;z-index:1}}
-    .muted{{color:var(--muted)}}
-    .badge{{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.75rem;border:1px solid var(--border)}}
-    .ok{{background:#ecfdf5;color:#15803d;border-color:#bbf7d0}}
-    .warn{{background:#fffbeb;color:#b45309;border-color:#fde68a}}
-    .err{{background:#fef2f2;color:#b91c1c;border-color:#fecaca}}
-    .info{{background:#e6f0ff;color:#1e40af;border-color:#bfdbfe}}
-    details>summary{{cursor:pointer;user-select:none;font-weight:600;margin:12px 0}}
-    pre{{background:#0b1220;color:#eef2ff;padding:12px;border-radius:10px;overflow:auto}}
-    .nowrap{{white-space:nowrap}}
-    .modal{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1000}}
-    .modal-content{{background:#fff;max-width:80vw;max-height:80vh;overflow:auto;padding:16px;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.2)}}
-    .close{{float:right;border:0;background:transparent;font-size:1.5rem;cursor:pointer;line-height:1}}
-    .btn{{padding:6px 10px;border:1px solid var(--border,#ddd);background:#f7f7f7;border-radius:6px;cursor:pointer}}
-    .btn:hover{{background:#eee}}
-    #logModal{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1000}}
-    #logModal .modal-content{{background:#fff;max-width:80vw;width:80vw;max-height:80vh;overflow:auto;padding:16px;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.2)}}
-    #logContent{{white-space:pre-wrap;margin:0;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}}
-  </style>
-</head>
-<body>
-  <div class="box">
-    <h1>ClouDO Log</h1>
-    <p class="muted">Interroga la tabella RunbookLogs. Suggerimento: PartitionKey tipicamente è la data YYYYMMDD.</p>
-    <div class="grid">
-      <div>
-        <label for="partitionKey">PartitionKey</label>
-        <input id="partitionKey" placeholder="es. 20251001"/>
-      </div>
-      <div>
-        <label for="execId">ExecId</label>
-        <input id="execId" placeholder="UUID esatto (opzionale)"/>
-      </div>
-      <div>
-        <label for="status">Status</label>
-        <select id="status">
-          <option value="">All</option>
-          <option value="accepted">accepted</option>
-          <option value="succeeded">succeeded</option>
-          <option value="running">running</option>
-          <option value="failed">failed</option>
-          <option value="error">error</option>
-        </select>
-      </div>
-      <div>
-        <label for="q">Testo (Name/Id/Runbook/Url/Log)</label>
-        <input id="q" placeholder="contains... (case-insensitive)"/>
-      </div>
-      <div>
-        <label for="from">Da (RequestedAt)</label>
-        <input id="from" type="datetime-local"/>
-      </div>
-      <div>
-        <label for="to">A (RequestedAt)</label>
-        <input id="to" type="datetime-local"/>
-      </div>
-      <div>
-        <label for="limit">Limite</label>
-        <input id="limit" type="number" min="1" max="5000" value="200"/>
-      </div>
-      <div>
-        <label for="order">Ordine</label>
-        <select id="order">
-          <option value="desc">RequestedAt desc</option>
-          <option value="asc">RequestedAt asc</option>
-        </select>
-      </div>
-    </div>
-    <div class="row">
-        <button id="run" class="primary">
-          <span style="display:inline-block;width:0;height:0;border-left:8px solid currentColor;
-            border-top:6px solid transparent;border-bottom:6px solid transparent;margin-right:6px;
-            vertical-align:middle;">
-          </span>
-          Run
-        </button>
-        <button id="clear">Reset</button>
-      <span id="info" class="muted" aria-live="polite"></span>
-    </div>
-    <div id="logModal" class="modal" style="display:none;">
-      <div class="modal-content">
-        <button class="close" onclick="closeLogModal()" aria-label="Chiudi">&times;</button>
-        <pre id="logContent" style="white-space:pre-wrap;margin:0;"></pre>
-      </div>
-    </div>
-    <details open>
-      <summary>Risultati</summary>
-      <table id="tbl">
-        <thead>
-          <tr>
-            <th class="sticky">RequestedAt</th>
-            <th class="sticky">Status</th>
-            <th class="sticky">ExecId</th>
-            <th class="sticky">Name</th>
-            <th class="sticky">Id</th>
-            <th class="sticky">Runbook</th>
-            <th class="sticky">Azioni</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </details>
-
-    <details>
-      <summary>JSON raw</summary>
-      <pre id="raw"></pre>
-    </details>
-  </div>
-
-  <script>
-    const FUNCTION_QUERY_CODE = {code_js};
-    const el = id => document.getElementById(id);
-    function rowBadge(st){{
-      let cls = 'badge';
-      if (st==='succeeded') cls+=' ok';
-      else if (st==='accepted') cls+=' warn';
-      else if (st === 'pending') cls+= ' warn';
-      else if (st === 'running') cls+= ' info';
-      else cls+=' err';
-      return '<span class="'+cls+'">'+(st||'')+'</span>';
-    }}
-    function esc(s){{
-      return (''+s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
-    }}
-    function openLogModal(btn){{
-      // legacy no-op to keep backward compatibility if referenced elsewhere
-      openTraceModal(btn);
-    }}
-    function openTraceModal(btn){{
-      const url = btn.getAttribute('data-url');
-      const modal = document.getElementById('logModal');
-      const pre = document.getElementById('logContent');
-      pre.textContent = 'Caricamento...';
-      modal.style.setProperty('display','flex','important');
-      fetch(url, {{ cache: 'no-store' }})
-        .then(r => r.text())
-        .then(txt => {{
-          try {{
-            const data = JSON.parse(txt);
-            if (Array.isArray(data)) {{
-              data.sort((a,b) => (b.RequestedAt || '').localeCompare(a.RequestedAt || ''));
-              pre.textContent = JSON.stringify(data, null, 2);
-            }} else {{
-              pre.textContent = JSON.stringify(data, null, 2);
-            }}
-          }} catch(_){{
-            pre.textContent = txt; // fallback se non è JSON valido
-          }}
-        }})
-        .catch(err => {{ pre.textContent = 'Errore: ' + err.message; }});
-    }}
-    function openOnlyLogModal(btn){{
-      const url = btn.getAttribute('data-url');
-      const modal = document.getElementById('logModal');
-      const pre = document.getElementById('logContent');
-      pre.textContent = 'Caricamento...';
-      modal.style.setProperty('display','flex','important');
-      fetch(url, {{ cache: 'no-store' }})
-        .then(r => r.text())
-        .then(txt => {{
-          try {{
-            const data = JSON.parse(txt);
-            const extractLog = (e) => (e && (e.Log ?? e.log ?? '')) || '';
-            if (Array.isArray(data)) {{
-              const logs = data
-                .sort((a,b) => (b.RequestedAt || '').localeCompare(a.RequestedAt || ''))
-                .map(e => extractLog(e))
-                .filter(s => s && s.length > 0);
-              pre.textContent = logs.length ? logs.join('\\n\\n---\\n\\n') : 'Nessun campo Log disponibile.';
-            }} else {{
-              const only = extractLog(data);
-              pre.textContent = only ? only : 'Nessun campo Log disponibile.';
-            }}
-          }} catch(_){{
-            // se non è JSON valido mostro il testo grezzo
-            pre.textContent = txt;
-          }}
-        }})
-        .catch(err => {{ pre.textContent = 'Errore: ' + err.message; }});
-    }}
-    function closeLogModal(){{ document.getElementById('logModal').style.display = 'none'; }}
-    document.addEventListener('keydown', e => {{ if(e.key==='Escape') closeLogModal(); }});
-    document.addEventListener('click', e => {{
-      const m = document.getElementById('logModal');
-      if (m.style.display !== 'none' && e.target === m) closeLogModal();
-    }});
-
-    function closeLogModal(){{
-      const modal = document.getElementById('logModal');
-      modal.style.display = 'none';
-    }}
-
-    // chiusura con ESC e click fuori
-    document.addEventListener('keydown', (e) => {{
-      if (e.key === 'Escape') closeLogModal();
-    }});
-    document.addEventListener('click', (e) => {{
-      const modal = document.getElementById('logModal');
-      if (modal.style.display !== 'none' && e.target === modal) closeLogModal();
-    }});
-    async function runQuery(){{
-      const params = new URLSearchParams();
-      const pk = el('partitionKey').value.trim();
-      if (!pk) {{ alert('PartitionKey è obbligatorio'); return; }}
-      params.set('partitionKey', pk);
-      const execId = el('execId').value.trim(); if (execId) params.set('execId', execId);
-      const status = el('status').value; if (status) params.set('status', status);
-      const q = el('q').value.trim(); if (q) params.set('q', q);
-      const f = el('from').value; if (f) params.set('from', f);
-      const t = el('to').value; if (t) params.set('to', t);
-      const limit = el('limit').value; if (limit) params.set('limit', limit);
-      const order = el('order').value; if (order) params.set('order', order);
-      if (FUNCTION_QUERY_CODE) params.set('code', FUNCTION_QUERY_CODE);
-
-      el('info').textContent = 'Caricamento...';
-      const url = '/api/logs/query?' + params.toString();
-      const res = await fetch(url);
-      const data = await res.json().catch(() => ({{ error: 'parse' }}));
-      el('raw').textContent = JSON.stringify(data, null, 2);
-      const tbody = el('tbl').querySelector('tbody');
-      tbody.innerHTML = '';
-      if (!res.ok) {{
-        el('info').textContent = 'Errore: ' + ((data && data.error) || res.status);
-        return;
-      }}
-      (data.items || []).forEach(item => {{
-        const tr = document.createElement('tr');
-        const baseUrl = "/api/logs/" + esc(item.PartitionKey || "") + "/" + esc(item.ExecId || "");
-        const urlWithCode = {code_js} && {code_js} !== ""
-          ? baseUrl + "?code=" + encodeURIComponent({code_js})
-          : baseUrl;
-
-        tr.innerHTML =
-          '<td class="nowrap">' + esc(item.RequestedAt || '') + '</td>' +
-          '<td>' + rowBadge(item.Status || '') + '</td>' +
-          '<td class="nowrap">' + esc(item.ExecId || '') + '</td>' +
-          '<td>' + esc(item.Name || '') + '</td>' +
-          '<td>' + esc(item.Id || '') + '</td>' +
-          '<td>' + esc(item.Runbook || '') + '</td>' +
-          '<td>' +
-            '<div style="display:flex; gap:6px; flex-wrap:nowrap; align-items:center">' +
-              '<button class="btn" data-url="' + urlWithCode + '" onclick="openTraceModal(this)">Trace</button>' +
-              '<button class="btn" data-url="' + urlWithCode + '" onclick="openOnlyLogModal(this)">Log</button>' +
-            '</div>' +
-          '</td>';
-        tbody.appendChild(tr);
-      }});
-      el('info').textContent = (data.items || []).length + ' risultato/i';
-    }}
-    el('run').addEventListener('click', runQuery);
-    function setDefaultPartitionKey(){{
-      const d = new Date();
-      const pad = n => String(n).padStart(2,'0');
-      const yyyy = d.getFullYear();
-      const mm = pad(d.getMonth()+1);
-      const dd = pad(d.getDate());
-      const today = `${{yyyy}}${{mm}}${{dd}}`;
-      const input = document.getElementById('partitionKey');
-      if (input && !input.value) input.value = today;
-    }};
-    el('clear').addEventListener('click', ()=>{{
-      ['partitionKey','execId','q','from','to'].forEach(id=>el(id).value='');
-      el('status').value='';
-      el('limit').value='200';
-      el('order').value='desc';
-      el('tbl').querySelector('tbody').innerHTML='';
-      el('raw').textContent='';
-      el('info').textContent='';
-      setDefaultPartitionKey();
-    }});
-    setDefaultPartitionKey();
-  </script>
- </body>
-</html>
-""".strip()
+    html = render_template(
+        "logs.html",
+        {
+            "code_js": code_js,
+        },
+    )
     return func.HttpResponse(html, status_code=200, mimetype="text/html")
-
-
-# fmt: on
 
 
 @app.table_input(

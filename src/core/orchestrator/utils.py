@@ -103,9 +103,11 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
         config_items = essentials.get("configurationitems") or []
         if config_items and isinstance(config_items, list):
             resource_name = config_items[0]
-        resource_name = resource_name or ctx.get("resourcename")
-        resource_group = ctx.get("resourcegroup")
-        resource_id = ctx.get("resourceid")
+        resource_name = (
+            resource_name or ctx.get("resourcename") or labels.get("resourcename")
+        )
+        resource_group = ctx.get("resourcegroup") or labels.get("resourcegroup")
+        resource_id = ctx.get("resourceid") or labels.get("resourceid")
 
     # Kubernetes fields
     namespace = (
