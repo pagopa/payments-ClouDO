@@ -17,7 +17,7 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
 USER root
 
 # Install tzdata to ensure proper zoneinfo behavior
-RUN apt-get update && \
+RUN apt-get update && apt-get upgrade -y && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata && \
     rm -rf /var/lib/apt/lists/*
 
