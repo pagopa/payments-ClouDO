@@ -3,7 +3,6 @@ data "azurerm_subscription" "current" {}
 
 # Subnet
 module "function_snet" {
-  #source = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/subnet?ref=7.40.2"
   source = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/subnet?ref=1b507dcbfc89880e17ff6722fb69b10dfda9368d"
 
   count = var.vnet_name != null ? 1 : 0

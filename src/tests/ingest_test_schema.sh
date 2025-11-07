@@ -39,8 +39,8 @@ az storage entity insert \
     id="test-2" \
     name=test-entity-2 \
     description='Hello Test 2!' \
-    runbook=test.py \
-    run_args="-n 5000 --repeats 100" \
+    runbook=printenv.sh \
+    run_args="" \
     url="http://$WORKER/api/Runbook" \
     oncall=false \
   --if-exists merge \
