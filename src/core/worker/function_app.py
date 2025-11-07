@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import shlex
+import signal
 import stat
 import subprocess
 import sys
@@ -33,11 +34,12 @@ GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_PATH_PREFIX = os.environ.get("GITHUB_PATH_PREFIX", "src/runbooks")
 
+_PROCESS_BY_EXEC: dict[str, subprocess.Popen] = {}
+
 if os.getenv("FEATURE_DEV", "false").lower() != "true":
     AUTH = func.AuthLevel.FUNCTION
 else:
     AUTH = func.AuthLevel.ANONYMOUS
-
 
 app = func.FunctionApp()
 
@@ -335,6 +337,7 @@ def _run_script(
 
     # Setting MONITOR_CONDITION env VAR
     os.environ["MONITOR_CONDITION"] = monitor_condition
+    TERMINATED_CODES = {-signal.SIGTERM} if hasattr(signal, "SIGTERM") else set()
 
     try:
 
@@ -403,7 +406,7 @@ def _run_script(
             cmd = cmd + shlex.split(run_args)
 
         logging.info("Running script: %s", cmd)
-        # STREAMING: leggere stdout riga per riga e inoltrare
+        # STREAMING
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -411,7 +414,17 @@ def _run_script(
             text=True,
             bufsize=1,
             universal_newlines=True,
+            preexec_fn=os.setsid if os.name != "nt" else None,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
+
+        # Record the process to be stopped
+        try:
+            if payload and payload.get("exec_id"):
+                with _ACTIVE_LOCK:
+                    _PROCESS_BY_EXEC[payload["exec_id"]] = proc
+        except Exception:
+            pass
 
         collected_stdout = []
         if proc.stdout:
@@ -427,22 +440,25 @@ def _run_script(
             stderr_data = proc.stderr.read() or ""
 
         returncode = proc.wait()
-        if returncode != 0:
+        if returncode != 0 and returncode not in TERMINATED_CODES:
             raise subprocess.CalledProcessError(
+                returncode=returncode, cmd=cmd, output=stdout_data, stderr=stderr_data
+            )
+        else:
+            return subprocess.CompletedProcess(
+                args=cmd,
                 returncode=returncode,
-                cmd=cmd,
-                output=stdout_data,
+                stdout=stdout_data,
                 stderr=stderr_data,
             )
-
-        return subprocess.CompletedProcess(
-            args=cmd,
-            returncode=returncode,
-            stdout=stdout_data,
-            stderr=stderr_data,
-        )
     finally:
         # Clean up only if paths are valid files
+        try:
+            if payload and payload.get("exec_id"):
+                with _ACTIVE_LOCK:
+                    _PROCESS_BY_EXEC.pop(payload["exec_id"], None)
+        except Exception:
+            pass
         for p in (tmp_path, github_tmp_path):
             try:
                 if isinstance(p, str) and p and os.path.exists(p):
@@ -560,14 +576,22 @@ def process_runbook(msg: func.QueueMessage) -> None:
             monitor_condition=payload.get("monitor_condition"),
             payload=payload,
         )
-        log_msg = f"Script succeeded. stdout: {result.stdout.strip()}"
-        logging.info(f"[{payload.get('exec_id')}] {log_msg}")
-        response = _post_status(payload, status="completed", log_message=log_msg)
-        logging.info(
-            f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
-            getattr(response, "status_code", ""),
-            getattr(response, "text", ""),
-        )
+        stopped = False
+        try:
+            if os.name != "nt":
+                stopped = result.returncode == -getattr(signal, "SIGTERM", 15)
+        except Exception as e:
+            logging.error(e)
+
+        if not stopped:
+            log_msg = f"Script succeeded. stdout: {result.stdout.strip()}"
+            logging.info(f"[{payload.get('exec_id')}] {log_msg}")
+            response = _post_status(payload, status="completed", log_message=log_msg)
+            logging.info(
+                f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
+                getattr(response, "status_code", ""),
+                getattr(response, "text", ""),
+            )
     except subprocess.CalledProcessError as e:
         error_message = f"Script failed. returncode={e.returncode} stderr={e.stderr.strip()} stdout={e.stdout.strip()}"
         try:
@@ -676,6 +700,90 @@ def list_processes(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
+@app.route(route="processes/stop", auth_level=AUTH)
+def stop_process(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Stop a job by exec_id.
+    example: POST /api/processes/stop?exec_id=123
+    """
+    exec_id = (req.params.get("exec_id") or req.headers.get("ExecId") or "").strip()
+    if not exec_id:
+        return func.HttpResponse(
+            json.dumps({"error": "exec_id mancante"}, ensure_ascii=False),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    with _ACTIVE_LOCK:
+        proc = _PROCESS_BY_EXEC.get(exec_id)
+        run_info = _ACTIVE_RUNS.get(exec_id)
+
+    if not proc:
+        return func.HttpResponse(
+            json.dumps({"status": "not_found", "exec_id": exec_id}, ensure_ascii=False),
+            status_code=404,
+            mimetype="application/json",
+        )
+
+    try:
+        if proc.poll() is None:
+            if os.name != "nt":
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                except Exception:
+                    proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except Exception:
+                    if proc.poll() is None:
+                        try:
+                            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                        except Exception:
+                            proc.kill()
+            else:
+                try:
+                    proc.send_signal(signal.CTRL_BREAK_EVENT)
+                except Exception:
+                    proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except Exception:
+                    if proc.poll() is None:
+                        proc.kill()
+        status = "stopped"
+        code = 200
+    except Exception as e:
+        status = f"error: {type(e).__name__}: {e}"
+        code = 500
+
+    try:
+        if run_info:
+            run_info["status"] = "stopped"
+            payload = {
+                "runbook": run_info.get("runbook"),
+                "run_args": run_info.get("run_args"),
+                "id": run_info.get("id"),
+                "name": run_info.get("name"),
+                "exec_id": run_info.get("exec_id"),
+                "oncall": None,
+                "monitor_condition": None,
+                "severity": None,
+            }
+            _post_status(
+                payload,
+                status="stopped",
+                log_message=f"Execution {exec_id} stopped by request",
+            )
+    except Exception:
+        logging.warning("Impossibile inviare status di stop per %s", exec_id)
+
+    return func.HttpResponse(
+        json.dumps({"status": status, "exec_id": exec_id}, ensure_ascii=False),
+        status_code=code,
+        mimetype="application/json",
+    )
+
+
 # =========================
 # DEV: Test runbook
 # =========================
@@ -718,7 +826,12 @@ def dev_run_script(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         result = _run_script(
-            script_name=script_name, script_path=script_path, run_args=run_args
+            script_name=script_name,
+            script_path=script_path,
+            run_args=run_args,
+            aks_resource_info={},
+            monitor_condition="",
+            payload={},
         )
         body = json.dumps(
             {
