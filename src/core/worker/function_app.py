@@ -756,7 +756,6 @@ def stop_process(req: func.HttpRequest) -> func.HttpResponse:
         status = f"error: {type(e).__name__}: {e}"
         code = 500
 
-    # aggiorna stato e invia notifica se possibile
     try:
         if run_info:
             run_info["status"] = "stopped"
