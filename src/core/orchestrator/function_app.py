@@ -394,7 +394,7 @@ class Schema:
 # =========================
 
 
-@app.route(route="Trigger", auth_level=AUTH)
+@app.route(route="Trigger", methods=[func.HttpMethod.POST], auth_level=AUTH)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
@@ -711,7 +711,11 @@ def Trigger(
 # =========================
 # HTTP Function: Approval
 # =========================
-@app.route(route="approvals/{partitionKey}/{execId}/approve", auth_level=AUTH)
+@app.route(
+    route="approvals/{partitionKey}/{execId}/approve",
+    methods=[func.HttpMethod.GET],
+    auth_level=AUTH,
+)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
@@ -906,7 +910,11 @@ def approve(
 # =========================
 # HTTP Function: Rejecter
 # =========================
-@app.route(route="approvals/{partitionKey}/{execId}/reject", auth_level=AUTH)
+@app.route(
+    route="approvals/{partitionKey}/{execId}/reject",
+    methods=[func.HttpMethod.GET],
+    auth_level=AUTH,
+)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
@@ -999,7 +1007,7 @@ def reject(
 # =========================
 
 
-@app.route(route="Receiver", auth_level=AUTH)
+@app.route(route="Receiver", methods=[func.HttpMethod.POST], auth_level=AUTH)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
@@ -1296,6 +1304,7 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(html, status_code=200, mimetype="text/html")
 
 
+# TODO Manage empty partitions
 @app.table_input(
     arg_name="rows",
     table_name=TABLE_NAME,
@@ -1416,3 +1425,68 @@ def logs_query(req: func.HttpRequest, rows: str) -> func.HttpResponse:
             status_code=500,
             mimetype="application/json",
         )
+
+
+@app.route(route="ui/{*path}", auth_level=AUTH)
+@app.table_input(
+    arg_name="entities",
+    table_name=TABLE_SCHEMAS,
+    connection=STORAGE_CONN,
+)
+def ui(req: func.HttpRequest, entities: str) -> func.HttpResponse:
+    # Parse bound table entities (binding returns a JSON array)
+    urls = []
+    runbooks = []
+    try:
+        parsed = json.loads(entities) if isinstance(entities, str) else entities
+
+        for e in parsed:
+            urls.append(e.get("url"))
+            runbooks.append(e.get("runbook"))
+
+        urls = set(urls)
+        runbooks = set(runbooks)
+
+        logging.info(f"urls: {urls}, runbooks: {runbooks}")
+    except Exception:
+        parsed = None
+
+    logging.info(f"ui parsed: {parsed}")
+
+    rel = (req.route_params.get("path") or "index.html").strip("/")
+    root = os.path.join(os.getcwd(), "fe")
+    file_path = os.path.normpath(os.path.join(root, rel))
+    if not file_path.startswith(root) or not os.path.exists(file_path):
+        file_path = os.path.join(root, "index.html")  # fallback SPA/HTML
+    try:
+        with open(file_path, "rb"):
+            data = render_template(
+                "index.html",
+                {
+                    "orchestrator_uri": req.url,
+                    "urls": urls,
+                    "runbooks": runbooks,
+                },
+            )
+        if file_path.endswith(".html"):
+            mime = "text/html; charset=utf-8"
+        elif file_path.endswith(".css"):
+            mime = "text/css; charset=utf-8"
+        elif file_path.endswith(".js"):
+            mime = "application/javascript; charset=utf-8"
+        elif file_path.endswith(".json"):
+            mime = "application/json; charset=utf-8"
+        elif file_path.endswith(".png"):
+            mime = "image/png"
+        elif file_path.endswith(".jpg") or file_path.endswith(".jpeg"):
+            mime = "image/jpeg"
+        elif file_path.endswith(".svg"):
+            mime = "image/svg+xml"
+        else:
+            mime = "application/octet-stream"
+        return func.HttpResponse(
+            data, status_code=200, mimetype=mime, headers={"Cache-Control": "no-store"}
+        )
+    except Exception as e:
+        logging.error("UI serving error: %s", e)
+        return func.HttpResponse("Not found", status_code=404)

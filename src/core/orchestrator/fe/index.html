@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
 <head>
     <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>Richiesta rifiutata</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>ClouDO - Runbook Controller</title>
     <!--  <link rel="stylesheet" href="/api/ui/global.css"/>-->
     <style>
         /* ===== Design Tokens (Dark Soft) ===== */
@@ -207,18 +207,172 @@
     </style>
 </head>
 <body>
-<div class="box">
-    <h1>Richiesta rifiutata <span class="badge badge-err">rejected</span></h1>
-    <p class="muted">L'operazione non verrà eseguita.</p>
-
-    <div class="grid-approval">
-        <div class="kv"><span class="k">ExecId</span><span class="v">{execId}</span></div>
-        <div class="kv"><span class="k">SchemaId</span><span class="v">{schema_id}</span></div>
-        <div class="kv"><span class="k">Approver</span><span class="v">{approver}</span></div>
-        <div class="kv"><span class="k">Timestamp</span><span class="v">{requested_at}</span></div>
+<header class="app">
+    <div class="wrap">
+        <h1>ClouDO - Runbook Controller</h1>
+        <p class="muted">UI per invocare il Trigger automatico e monitorare i worker</p>
     </div>
+</header>
 
-    <footer class="muted" style="margin-top:10px">ClouDO - Cloudo Operations.</footer>
-</div>
+<main class="wrap" style="padding:20px">
+    <section class="card">
+        <header><h2>Esegui Trigger</h2></header>
+        <div class="content">
+            <div class="row">
+<!--                <div>-->
+<!--                    <label for="triggerBase">Host Trigger</label>-->
+                    <input id="triggerBase" class="input" type="hidden" placeholder="{orchestrator_uri}"
+                           value="{orchestrator_uri}"/>
+<!--                </div>-->
+                <div>
+                    <label for="triggerId">Query id (opzionale)</label>
+                    <input id="triggerId" class="input" placeholder="es. test-2"/>
+                </div>
+            </div>
+
+            <label for="triggerBody">Body JSON (opzionale)</label>
+            <textarea id="triggerBody" class="input" placeholder='{
+  "data": {
+    "essentials": { "alertRule": "test", "severity": "Sev2", "monitorCondition": "Fired" },
+    "alertContext": { "labels": { "namespace": "apisix", "deployment": "apisix-dashboard" } }
+  }
+}'></textarea>
+
+            <div class="row" style="margin-top:10px; align-items:center">
+                <div>
+                    <button id="btnExecute" class="btn btn-primary">Esegui</button>
+                </div>
+                <span class="muted">Risposta:</span>
+            </div>
+            <pre id="triggerResp" class="log" style="margin-top:8px; max-height:220px"></pre>
+        </div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+        <header><h2>Processi sui worker</h2></header>
+        <div class="content">
+            <label for="workers">Elenco worker (uno per riga)</label>
+            <textarea id="workers" class="input" placeholder="{urls}">{urls}</textarea>
+
+            <div class="row" style="margin-top:10px; align-items:end">
+                <div>
+                    <label for="filter">Filtro (q)</label>
+                    <input id="filter" class="input" placeholder="exec_id, id, name, runbook"/>
+                </div>
+                <div style="display:flex; gap:8px">
+                    <button id="btnRefresh" class="btn btn-ghost">Refresh</button>
+                </div>
+            </div>
+
+            <div id="tables" style="margin-top:10px"></div>
+            <div id="lastUpdate" class="muted">–</div>
+        </div>
+    </section>
+</main>
+
+<script>
+    const qs = s => document.querySelector(s);
+
+    function buildUrl(base, path, params){
+      const u = new URL(path, base);
+      if(params) Object.entries(params).forEach(([k,v]) => {
+        if(v !== undefined && v !== null && String(v).length) u.searchParams.set(k, v);
+      });
+      return u.toString();
+    }
+
+    async function executeTrigger(){
+      const base = qs('#triggerBase').value.trim();
+      const id = qs('#triggerId').value.trim();
+      const url = buildUrl(base, '/api/Trigger', { id });
+
+      const body = qs('#triggerBody').value.trim();
+      let resp, text;
+      if(body){
+        try{ JSON.parse(body); } catch(e){ return alert('Body JSON non valido'); }
+        resp = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body });
+      }else{
+        resp = await fetch(url, { method:'POST' });
+      }
+      text = await resp.text();
+      qs('#triggerResp').textContent = `HTTP ${resp.status}\n${text}`;
+    }
+
+    function statusBadge(s){
+      const st = String(s||'').toLowerCase();
+      if (st === 'running') return '<span class="status status-running">running</span>';
+      if (st === 'completed' || st === 'succeeded') return '<span class="status status-completed">succeeded</span>';
+      if (st === 'failed' || st === 'error') return '<span class="status status-failed">'+s+'</span>';
+      if (st === 'stopped' || st === 'accepted' || st === 'pending') return '<span class="status status-stopped">'+s+'</span>';
+      return '<span class="status">'+s+'</span>';
+    }
+
+    function renderTable(host, runs){
+      const rows = (runs||[]).map(x=>`
+        <tr>
+          <td><code class="code">${x.exec_id||''}</code></td>
+          <td>${x.runbook||''}</td>
+          <td>${x.name||''}</td>
+          <td class="muted">${x.startedAt||''}</td>
+          <td>${statusBadge(x.status)}</td>
+          <td style="text-align:right">
+            <button class="btn btn-warn stopBtn" data-host="${host}" data-exec="${x.exec_id||''}">Stop</button>
+          </td>
+        </tr>
+      `).join('') || `<tr><td colspan="6" class="muted">Nessun processo</td></tr>`;
+
+      return `
+        <div class="card" style="margin-top:12px">
+          <header><h3>${host}</h3></header>
+          <div class="content" style="overflow:auto">
+            <table class="table">
+              <thead>
+                <tr><th>ExecId</th><th>Runbook</th><th>Name</th><th>Started</th><th>Status</th><th>Azioni</th></tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    async function refresh(){
+      const hosts = qs('#workers').value.split('\n').map(s=>s.trim()).filter(Boolean);
+      const q = qs('#filter').value.trim();
+      const container = qs('#tables');
+      container.innerHTML = '<div class="muted">Caricamento...</div>';
+
+      const results = await Promise.all(hosts.map(async h=>{
+        try{
+          const url = buildUrl(h, '/api/processes', q ? { q } : undefined);
+          const r = await fetch(url, { method: 'GET' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const j = await r.json();
+          return { host: h, runs: j.runs || [] };
+        }catch(e){ return { host: h, runs: [], error: String(e) }; }
+      }));
+
+      container.innerHTML = results.map(r=>{
+        if(r.error) return `<div class="muted"><strong>${r.host}</strong>: ${r.error}</div>`;
+        return renderTable(r.host, r.runs);
+      }).join('');
+
+      container.querySelectorAll('.stopBtn').forEach(btn=>{
+        btn.onclick = async ()=>{
+          const host = btn.getAttribute('data-host');
+          const exec = btn.getAttribute('data-exec');
+          const url = buildUrl(host, '/api/processes/stop', { exec_id: exec });
+          await fetch(url, { method: 'DELETE' });
+          await refresh();
+        };
+      });
+
+      qs('#lastUpdate').textContent = `Ultimo aggiornamento: ${new Date().toLocaleTimeString()}`;
+    }
+
+    qs('#btnExecute').onclick = executeTrigger;
+    qs('#btnRefresh').onclick = refresh;
+    setInterval(refresh, 5000);
+    refresh();
+</script>
 </body>
 </html>
