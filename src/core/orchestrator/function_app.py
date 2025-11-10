@@ -1459,7 +1459,7 @@ def ui(req: func.HttpRequest, entities: str) -> func.HttpResponse:
     if not file_path.startswith(root) or not os.path.exists(file_path):
         file_path = os.path.join(root, "index.html")  # fallback SPA/HTML
     try:
-        with open(file_path, "rb") as f:
+        with open(file_path, "rb"):
             data = render_template(
                 "index.html",
                 {
