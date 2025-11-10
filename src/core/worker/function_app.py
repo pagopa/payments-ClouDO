@@ -67,6 +67,16 @@ def _format_requested_at() -> str:
     )
 
 
+def _cors_headers():
+    return {
+        "Access-Control-Allow-Origin": os.getenv(
+            "CORS_ORIGIN", "http://localhost:7071"
+        ),
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+    }
+
+
 def encode_logs(value: str | None) -> bytes:
     """
     Encode a string value to base64 bytes.
@@ -645,8 +655,14 @@ def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
         body,
         status_code=200,
         mimetype="application/json",
-        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        headers={**{"Cache-Control": "no-store"}, **_cors_headers()},
     )
+
+
+@app.route(route="ui/opts", auth_level=func.AuthLevel.ANONYMOUS)
+def ui_opts(req: func.HttpRequest) -> func.HttpResponse:
+    # preflight CORS
+    return func.HttpResponse("", status_code=204, headers=_cors_headers())
 
 
 # =========================
@@ -654,7 +670,7 @@ def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
 # =========================
 
 
-@app.route(route="processes", auth_level=AUTH)
+@app.route(route="processes", methods=[func.HttpMethod.GET], auth_level=AUTH)
 def list_processes(req: func.HttpRequest) -> func.HttpResponse:
     """
     Lists the "in progress" runs of the RunbookTest endpoint (jobs not yet completed).
@@ -696,11 +712,14 @@ def list_processes(req: func.HttpRequest) -> func.HttpResponse:
         body,
         status_code=200,
         mimetype="application/json",
-        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        headers={
+            **{"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+            **_cors_headers(),
+        },
     )
 
 
-@app.route(route="processes/stop", auth_level=AUTH)
+@app.route(route="processes/stop", methods=[func.HttpMethod.DELETE], auth_level=AUTH)
 def stop_process(req: func.HttpRequest) -> func.HttpResponse:
     """
     Stop a job by exec_id.
@@ -781,6 +800,7 @@ def stop_process(req: func.HttpRequest) -> func.HttpResponse:
         json.dumps({"status": status, "exec_id": exec_id}, ensure_ascii=False),
         status_code=code,
         mimetype="application/json",
+        headers=_cors_headers(),
     )
 
 
