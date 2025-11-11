@@ -17,6 +17,17 @@ from requests import request
 
 app = func.FunctionApp()
 
+try:
+    from smart_routing import (  # type: ignore
+        execute_actions,
+        resolve_opsgenie_apikey,
+        resolve_slack_token,
+        route_alert,
+    )
+except Exception:
+    route_alert = None  # fallback if module missing
+    execute_actions = None
+
 
 # =========================
 # Constants and Utilities
@@ -256,7 +267,8 @@ def safe_json(response) -> dict | str | None:
 def build_headers(
     schema: "Schema",
     exec_id: str,
-    aks_resource_info: dict | None,
+    resource_info: dict | None,
+    routing_info: dict | None,
     monitor_condition: str | None,
     severity: str | None,
 ) -> dict:
@@ -272,8 +284,10 @@ def build_headers(
         "MonitorCondition": monitor_condition,
         "Severity": severity,
     }
-    if aks_resource_info is not None:
-        headers["aks_resource_info"] = json.dumps(aks_resource_info, ensure_ascii=False)
+    if resource_info is not None:
+        headers["resource_info"] = json.dumps(resource_info, ensure_ascii=False)
+    if routing_info is not None:
+        headers["routing_info"] = json.dumps(routing_info, ensure_ascii=False)
     return headers
 
 
@@ -303,6 +317,16 @@ def build_response_body(
         },
         ensure_ascii=False,
     )
+
+
+def parse_header_json(req, name):
+    raw = get_header(req, name)
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
 
 
 def build_log_entry(
@@ -394,7 +418,7 @@ class Schema:
 # =========================
 
 
-@app.route(route="Trigger", methods=[func.HttpMethod.POST], auth_level=AUTH)
+@app.route(route="Trigger/{team?}", methods=[func.HttpMethod.POST], auth_level=AUTH)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
@@ -412,7 +436,8 @@ def Trigger(
     resource_name = resource_group = resource_id = schema_id = monitor_condition = (
         severity
     ) = ""
-
+    route_params = getattr(req, "route_params", {}) or {}
+    logging.info(route_params)
     # Pre-compute logging fields
     requested_at = format_requested_at()
     partition_key = today_partition_key()
@@ -421,7 +446,16 @@ def Trigger(
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
         schema_id = utils.extract_schema_id_from_req(req)
-        aks_resource_info = None
+        resource_info = None
+        routing_info = {
+            "team": route_params.get("team") or "",
+            "slack_token": req.params.get("slack_token")
+            or resolve_slack_token(route_params.get("team") or ""),
+            "slack_channel": req.params.get("slack_channel")
+            or (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip(),
+            "opsgenie_token": req.params.get("opsgenie_api_key")
+            or resolve_opsgenie_apikey(route_params.get("team") or ""),
+        }
     else:
         (
             resource_name,
@@ -436,7 +470,7 @@ def Trigger(
             monitor_condition,
             severity,
         ) = utils.parse_resource_fields(req).values()
-        aks_resource_info = (
+        resource_info = (
             {
                 "resource_name": resource_name,
                 "resource_rg": resource_group,
@@ -446,11 +480,21 @@ def Trigger(
                 "aks_deployment": deployment,
                 "aks_job": job,
                 "aks_horizontalpodautoscaler": horizontalpodautoscaler,
+                "team": route_params.get("team"),
             }
             if resource_name
             else None
         )
-        logging.info(f"[{exec_id}] Resource info: %s", aks_resource_info)
+        routing_info = {
+            "team": route_params.get("team") or "",
+            "slack_token": req.params.get("slack_token")
+            or resolve_slack_token(route_params.get("team") or ""),
+            "slack_channel": req.params.get("slack_channel")
+            or (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip(),
+            "opsgenie_token": req.params.get("opsgenie_api_key")
+            or resolve_opsgenie_apikey(route_params.get("team") or ""),
+        }
+        logging.info(f"[{exec_id}] Resource info: %s", resource_info)
 
     if not schema_id:
         return func.HttpResponse(
@@ -492,7 +536,6 @@ def Trigger(
             status_code=404,
             mimetype="application/json",
         )
-    logging.info(f"[{exec_id}] Getting schema entity id '{schema_id}'")
     logging.info(f"[{exec_id}] Getting schema entity id '{schema_entity}'")
     # Build domain model
     schema = Schema(
@@ -503,7 +546,7 @@ def Trigger(
     )
     logging.info(f"[{exec_id}] Set schema: '{schema}'")
     try:
-        # Approval-required path: create pending with signed URL embedding aks_resource_info and function key
+        # Approval-required path: create pending with signed URL embedding resource_info and function key
         if schema.require_approval:
             expires_at = (
                 (datetime.now(timezone.utc) + timedelta(minutes=APPROVAL_TTL_MIN))
@@ -520,7 +563,8 @@ def Trigger(
                 "schemaId": schema.id,
                 "url": schema.url,
                 "exp": expires_at,
-                "aks": aks_resource_info or {},
+                "resource_info": resource_info or {},
+                "routing_info": routing_info or {},
                 "code": func_key or "",
                 "monitorCondition": monitor_condition,
                 "severity": severity,
@@ -550,7 +594,7 @@ def Trigger(
                         "message": "Awaiting approval",
                         "approve": approve_url,
                         "reject": reject_url,
-                        "aks": aks_resource_info,
+                        "resource_info": resource_info,
                     },
                     ensure_ascii=False,
                 ),
@@ -562,13 +606,15 @@ def Trigger(
             )
             log_table.set(json.dumps(pending_log, ensure_ascii=False))
 
+            logging.info(routing_info)
+
             # Optional Slack notify
-            slack_bot_token = (os.environ.get("SLACK_TOKEN") or "").strip()
-            slack_channel = (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip()
-            if slack_bot_token:
+            slack_token = routing_info.get("slack_token")
+            slack_channel = routing_info.get("slack_channel")
+            if slack_token:
                 try:
                     send_slack_execution(
-                        token=slack_bot_token,
+                        token=slack_token,
                         channel=slack_channel,
                         message=f"[{exec_id}] APPROVAL REQUIRED: {schema.name}",
                         blocks=[
@@ -632,7 +678,12 @@ def Trigger(
             "POST",
             schema.url,
             headers=build_headers(
-                schema, exec_id, aks_resource_info, monitor_condition, severity
+                schema,
+                exec_id,
+                resource_info,
+                routing_info,
+                monitor_condition,
+                severity,
             ),
         )
         api_body = safe_json(response)
@@ -658,6 +709,162 @@ def Trigger(
             severity=severity,
         )
         log_table.set(json.dumps(start_log, ensure_ascii=False))
+
+        # smart routing notification (if routing module available)
+        if route_alert and execute_actions:
+            ctx = {
+                "resourceId": resource_id,
+                "resourceGroup": resource_group,
+                "resourceName": resource_name,
+                "alertRule": (schema.name or ""),
+                "severity": severity,
+                "namespace": ((resource_info or {}).get("namespace") or ""),
+                "oncall": schema.oncall,
+                "status": status_label,
+                "execId": exec_id,
+                "name": schema.name or "",
+                "id": schema.id,
+                "routing_info": routing_info,
+            }
+            decision = route_alert(ctx)
+            logging.info(f"[{exec_id}] {decision}")
+            status_emoji = "✅" if status_label == "succeeded" else "❌"
+            request_origin_url = resolve_caller_url(req)
+            payload = {
+                "slack": {
+                    "message": f"[{exec_id}] Status: {status_label}: {schema.name or ''}",
+                    "blocks": [
+                        {
+                            "type": "header",
+                            "text": {
+                                "type": "plain_text",
+                                "text": f"Worker Notification {status_emoji}",
+                                "emoji": True,
+                            },
+                        },
+                        {
+                            "type": "section",
+                            "fields": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*Name:*\n{schema.name or ''}",
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*Id:*\n{schema.id or ''}",
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*ExecId:*\n{exec_id or ''}",
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*Status:*\n{status_label}",
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*Severity:*\n{severity or ''}",
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*OnCall:*\n{schema.oncall or ''}",
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*MonitorCondition:*\n{schema.monitor_condition or ''}",
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*Origin*:\n{request_origin_url}",
+                                },
+                            ],
+                        },
+                        {
+                            "type": "section",
+                            "fields": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*Runbook:*\n{schema.runbook or ''}",
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*MonitorCondition:*\n{schema.monitor_condition or ''}",
+                                },
+                            ],
+                        },
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"*Run Args:*\n```{schema.run_args or ''}```",
+                            },
+                        },
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"*Logs (truncated):*\n```{(json.dumps(api_body, ensure_ascii=False) if isinstance(api_body, (dict, list)) else str(api_body))[:1500]}```",
+                            },
+                        },
+                        {
+                            "type": "context",
+                            "elements": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*Severity:* {severity}",
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"*Teams:* {', '.join([a.team for a in decision.actions if getattr(a, 'team', None)])}",
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": f"Timestamp: <!date^{int(__import__('time').time())}^{{date_short}} {{time}}|now>",
+                                },
+                            ],
+                        },
+                        {"type": "divider"},
+                    ],
+                },
+                "opsgenie": {
+                    "message": f"[{schema.id}] [{severity}] {schema.name}",
+                    "priority": f"P{int(str(severity).strip().lower().replace('sev','') or '4') + 1}",
+                    "alias": exec_id,
+                    "details": {
+                        "Name": schema.name,
+                        "Id": schema.id,
+                        "ExecId": exec_id,
+                        "Status": status_label,
+                        "Runbook": schema.runbook,
+                        "Run_Args": schema.run_args,
+                        "OnCall": schema.oncall,
+                        "MonitorCondition": monitor_condition,
+                        "Severity": severity,
+                        "Teams:": ", ".join(
+                            [
+                                a.team
+                                for a in decision.actions
+                                if getattr(a, "team", None)
+                            ]
+                        ),
+                    },
+                    "description": f"Execution result for {exec_id}:\n\n{api_body}",
+                },
+            }
+            try:
+                if status_label != "accepted":
+                    execute_actions(
+                        decision,
+                        payload,
+                        send_slack_fn=lambda token, channel, **kw: send_slack_execution(
+                            token=token, channel=channel, **kw
+                        ),
+                        send_opsgenie_fn=lambda api_key, **kw: send_opsgenie_alert(
+                            api_key=api_key, **kw
+                        ),
+                    )
+            except Exception as e:
+                logging.error(f"[{exec_id}] smart routing failed: {e}")
 
         # Return HTTP response mirroring downstream status
         response_body = build_response_body(
@@ -769,7 +976,8 @@ def approve(
         )
 
     schema_id = payload.get("schemaId") or ""
-    aks_resource_info = payload.get("aks") or None
+    resource_info = payload.get("resource_info") or None
+    routing_info = payload.get("routing_info") or None
     func_key = payload.get("code") or ""
     monitor_condition = payload.get("monitorCondition") or ""
     severity = payload.get("severity") or ""
@@ -802,10 +1010,10 @@ def approve(
     partition_key = today_partition_key()
     requested_at = format_requested_at()
 
-    # Execute once (pass embedded aks_resource_info and propagate function key if needed)
+    # Execute once (pass embedded resource_info and propagate function key if needed)
     try:
         headers = build_headers(
-            schema, execId, aks_resource_info, monitor_condition, severity
+            schema, execId, resource_info, routing_info, monitor_condition, severity
         )
         if func_key:
             headers["x-functions-key"] = func_key
@@ -813,7 +1021,7 @@ def approve(
             "POST",
             schema.url,
             headers=build_headers(
-                schema, execId, aks_resource_info, monitor_condition, severity
+                schema, execId, resource_info, routing_info, monitor_condition, severity
             ),
         )
         api_body = safe_json(response)
@@ -834,7 +1042,7 @@ def approve(
                 {
                     "message": "Approved and executed",
                     "response": api_body,
-                    "aks": aks_resource_info,
+                    "resource_info": resource_info,
                 },
                 ensure_ascii=False,
             ),
@@ -1077,16 +1285,45 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
             status_code=200,
             mimetype="application/json",
         )
-    slack_bot_token = (os.environ.get("SLACK_TOKEN") or "").strip()
-    slack_channel = (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip()
-    if slack_bot_token:
-        try:
-            status_emoji = "✅" if status_label == "succeeded" else "❌"
-            send_slack_execution(
-                token=slack_bot_token,
-                channel=slack_channel,
-                message=f"[{get_header(req, 'ExecId')}] Status: {status_label}: {get_header(req, 'Name')}",
-                blocks=[
+    resource_info = parse_header_json(req, "ResourceInfo")
+    routing_info = parse_header_json(req, "RoutingInfo")
+    resource_id = get_header(req, "Resource-Id") or (
+        resource_info.get("resource_id") or ""
+    )
+    resource_group = get_header(req, "Resource-Group") or (
+        resource_info.get("resource_rg") or ""
+    )
+    resource_name = get_header(req, "Resource-Name") or (
+        resource_info.get("resource_name") or ""
+    )
+    namespace = get_header(req, "Namespace") or (
+        resource_info.get("aks_namespace") or ""
+    )
+
+    # smart routing (replace direct Slack/Opsgenie paths)
+    if route_alert and execute_actions:
+        exec_id = get_header(req, "ExecId")
+        ctx = {
+            "resourceId": resource_id or None,
+            "resourceGroup": resource_group or None,
+            "resourceName": resource_name or None,
+            "alertRule": get_header(req, "Name"),
+            "severity": get_header(req, "Severity"),
+            "namespace": namespace or None,
+            "oncall": (get_header(req, "OnCall") or "").strip().lower(),
+            "status": status_label,
+            "execId": exec_id,
+            "name": get_header(req, "Name"),
+            "id": get_header(req, "Id"),
+            "routing_info": routing_info,
+        }
+        decision = route_alert(ctx)
+        logging.info(f"[{get_header(req, 'ExecId')}] {decision}")
+        status_emoji = "✅" if status_label == "succeeded" else "❌"
+        payload = {
+            "slack": {
+                "message": f"[{get_header(req, 'ExecId')}] Status: {status_label}: {get_header(req, 'Name')}",
+                "blocks": [
                     {
                         "type": "header",
                         "text": {
@@ -1165,59 +1402,63 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                             },
                             {
                                 "type": "mrkdwn",
+                                "text": f"*Teams:* {', '.join([a.team for a in decision.actions if getattr(a, 'team', None)])}",
+                            },
+                            {
+                                "type": "mrkdwn",
                                 "text": f"Timestamp: <!date^{int(__import__('time').time())}^{{date_short}} {{time}}|now>",
                             },
                         ],
                     },
                     {"type": "divider"},
                 ],
+            },
+            "opsgenie": {
+                "message": f"[{get_header(req, 'Id')}] [{get_header(req, 'Severity')}] {get_header(req, 'Name')}",
+                "priority": f"P{int(str(get_header(req, 'Severity')).strip().lower().replace('sev', '') or '4') + 1}",
+                "alias": exec_id,
+                "details": {
+                    "Name": get_header(req, "Name"),
+                    "Id": get_header(req, "Id"),
+                    "ExecId": exec_id,
+                    "Status": get_header(req, "Status"),
+                    "Runbook": get_header(req, "runbook"),
+                    "Run_Args": get_header(req, "run_args"),
+                    "OnCall": get_header(req, "OnCall"),
+                    "MonitorCondition": get_header(req, "MonitorCondition"),
+                    "Severity": get_header(req, "Severity"),
+                    "Teams:": ", ".join(
+                        [a.team for a in decision.actions if getattr(a, "team", None)]
+                    ),
+                },
+                "description": f"Execution result for {exec_id}:\n\n{_truncate_for_table(decode_base64(req.get_body()), MAX_TABLE_CHARS or '')}",
+            },
+        }
+        try:
+            execute_actions(
+                decision,
+                payload,
+                send_slack_fn=lambda token, channel, **kw: send_slack_execution(
+                    token=token, channel=channel, **kw
+                ),
+                send_opsgenie_fn=lambda api_key, **kw: send_opsgenie_alert(
+                    api_key=api_key, **kw
+                ),
+            )
+            # Return a coherent JSON response
+            return func.HttpResponse(
+                json.dumps({"message": "Received Boss!"}, ensure_ascii=False),
+                status_code=200,
+                mimetype="application/json",
             )
         except Exception as e:
-            logging.error(
-                f"[{get_header(req, 'ExecId')}] escalation to SLACK failed: {e}"
-            )
-            logging.error(f"status: escalation_failed: {str(e)}")
+            logging.error(f"[{exec_id}] smart routing failed: {e}")
+    else:
+        logging.warning("Routing module not available, keeping legacy notifications")
 
-    if req.headers.get("OnCall") == "true" and status_label != "succeeded":
-        opsgenie_api_key = (os.environ.get("OPSGENIE_API_KEY") or "").strip()
-        if opsgenie_api_key:
-            try:
-                send_opsgenie_alert(
-                    api_key=opsgenie_api_key,
-                    message=f"[{get_header(req, 'Id')}] [{get_header(req, 'Severity')}] {get_header(req, 'Name')}",
-                    priority=f"P{int(str(get_header(req, 'Severity')).strip().lower().replace('sev', '')) + 1}",
-                    alias=get_header(req, "ExecId"),
-                    details={
-                        "Name": get_header(req, "Name"),
-                        "Id": get_header(req, "Id"),
-                        "ExecId": get_header(req, "ExecId"),
-                        "Status": get_header(req, "Status"),
-                        "Runbook": get_header(req, "runbook"),
-                        "Run_Args": get_header(req, "run_args"),
-                        "OnCall": get_header(req, "OnCall"),
-                        "MonitorCondition": get_header(req, "MonitorCondition"),
-                        "Severity": get_header(req, "Severity"),
-                    },
-                    description=f"Execution failed for {get_header(req, 'ExecId')}:\n\n{_truncate_for_table(decode_base64(req.get_body()), MAX_TABLE_CHARS or '')}",
-                )
-            except Exception as e:
-                logging.error(
-                    f"[{get_header(req, 'ExecId')}] escalation to OPSGENIE failed: {e}"
-                )
-                logging.error(f"status: escalation_failed: {str(e)}")
-
-        else:
-            logging.warning("OPSGENIE API key not set")
         # Return a coherent JSON response
         return func.HttpResponse(
             json.dumps({"message": "Chiamo il reperibile!"}, ensure_ascii=False),
-            status_code=200,
-            mimetype="application/json",
-        )
-    else:
-        # Return a coherent JSON response
-        return func.HttpResponse(
-            json.dumps({"message": "Received Boss!"}, ensure_ascii=False),
             status_code=200,
             mimetype="application/json",
         )

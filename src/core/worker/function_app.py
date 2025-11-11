@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
+from subprocess import CompletedProcess
 from threading import Lock
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -100,6 +101,8 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
         "OnCall": payload.get("oncall"),
         "MonitorCondition": payload.get("monitor_condition"),
         "Severity": payload.get("severity"),
+        "ResourceInfo": payload.get("resource_info"),
+        "RoutingInfo": payload.get("routing_info"),
     }
 
 
@@ -261,32 +264,30 @@ def _clean_path(p: str | None) -> str | None:
     return s
 
 
-def _run_aks_login(aks_resource_info: dict, payload: dict = None) -> None:
+def _run_aks_login(resource_info: dict, payload: dict = None) -> None:
     """
     Runs the local AKS login script:
       src/core/worker/utils/aks-login.sh <rg> <name> <namespace>
-    Accepts aks_resource_info as dict or JSON string.
+    Accepts resource_info as dict or JSON string.
     Streams stdout lines to Receiver if payload is provided.
     """
-    if isinstance(aks_resource_info, str):
+    if isinstance(resource_info, str):
         try:
-            aks_resource_info = json.loads(aks_resource_info)
+            resource_info = json.loads(resource_info)
         except json.JSONDecodeError as e:
             raise RuntimeError(
-                f"[{payload.get('exec_id')}] aks_resource_info is not valid JSON: {e}"
+                f"[{payload.get('exec_id')}] resource_info is not valid JSON: {e}"
             ) from e
-    if not isinstance(aks_resource_info, dict):
-        raise RuntimeError(
-            f"[{payload.get('exec_id')}] aks_resource_info must be a dict"
-        )
+    if not isinstance(resource_info, dict):
+        raise RuntimeError(f"[{payload.get('exec_id')}] resource_info must be a dict")
 
-    rg = (aks_resource_info.get("resource_rg") or "").strip()
-    name = (aks_resource_info.get("resource_name") or "").strip()
-    ns = (aks_resource_info.get("aks_namespace") or "").strip()
+    rg = (resource_info.get("resource_rg") or "").strip()
+    name = (resource_info.get("resource_name") or "").strip()
+    ns = (resource_info.get("aks_namespace") or "").strip()
 
     if not rg or not name:
         raise RuntimeError(
-            f"[{payload.get('exec_id')}] aks_resource_info requires non-empty 'resource_rg' and 'resource_name'"
+            f"[{payload.get('exec_id')}] resource_info requires non-empty 'resource_rg' and 'resource_name'"
         )
 
     script_path = os.path.normpath("utils/aks-login.sh")
@@ -336,10 +337,10 @@ def _run_script(
     script_name: str,
     run_args: Optional[str],
     script_path: str | None = None,
-    aks_resource_info: dict | None = None,
+    resource_info: dict | None = None,
     monitor_condition: Optional[str] = "",
-    payload: dict | None = None,  # <--- aggiunto
-) -> subprocess.CompletedProcess:
+    payload: dict | None = None,
+) -> Optional[CompletedProcess[str]]:
     """Run the requested script fetching it from Blob Storage, falling back to local folder, then GitHub."""
     tmp_path: str | None = None
     github_tmp_path: str | None = None
@@ -366,17 +367,17 @@ def _run_script(
         def to_str(x) -> str:
             return "" if x is None else str(x)
 
-        aks_info = normalize_aks_info(aks_resource_info)
-        logging.info(f"AKS info: {aks_info}")
+        info = normalize_aks_info(resource_info)
+        logging.info(f"AKS info: {info}")
 
-        os.environ["RESOURCE_NAME"] = to_str(aks_info.get("resource_name"))
-        os.environ["RESOURCE_RG"] = to_str(aks_info.get("resource_rg"))
-        os.environ["RESOURCE_ID"] = to_str(aks_info.get("resource_id"))
-        os.environ["AKS_NAMESPACE"] = to_str(aks_info.get("aks_namespace"))
-        os.environ["AKS_POD"] = to_str(aks_info.get("aks_pod"))
-        os.environ["AKS_DEPLOYMENT"] = to_str(aks_info.get("aks_deployment"))
-        os.environ["AKS_JOB"] = to_str(aks_info.get("aks_job"))
-        os.environ["AKS_HPA"] = to_str(aks_info.get("aks_horizontalpodautoscaler"))
+        os.environ["RESOURCE_NAME"] = to_str(info.get("resource_name"))
+        os.environ["RESOURCE_RG"] = to_str(info.get("resource_rg"))
+        os.environ["RESOURCE_ID"] = to_str(info.get("resource_id"))
+        os.environ["AKS_NAMESPACE"] = to_str(info.get("aks_namespace"))
+        os.environ["AKS_POD"] = to_str(info.get("aks_pod"))
+        os.environ["AKS_DEPLOYMENT"] = to_str(info.get("aks_deployment"))
+        os.environ["AKS_JOB"] = to_str(info.get("aks_job"))
+        os.environ["AKS_HPA"] = to_str(info.get("aks_horizontalpodautoscaler"))
     except Exception as e:
         logging.warning("AKS set env failed: %s", e)
 
@@ -422,10 +423,8 @@ def _run_script(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            bufsize=1,
-            universal_newlines=True,
-            preexec_fn=os.setsid if os.name != "nt" else None,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+            bufsize=0,
+            close_fds=True,
         )
 
         # Record the process to be stopped
@@ -433,8 +432,8 @@ def _run_script(
             if payload and payload.get("exec_id"):
                 with _ACTIVE_LOCK:
                     _PROCESS_BY_EXEC[payload["exec_id"]] = proc
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"[{payload.get('exec_id')}] cannot record process: {e}")
 
         collected_stdout = []
         if proc.stdout:
@@ -467,14 +466,16 @@ def _run_script(
             if payload and payload.get("exec_id"):
                 with _ACTIVE_LOCK:
                     _PROCESS_BY_EXEC.pop(payload["exec_id"], None)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"[{payload.get('exec_id')}] remove lock error: {e}")
         for p in (tmp_path, github_tmp_path):
             try:
                 if isinstance(p, str) and p and os.path.exists(p):
                     os.remove(p)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(
+                    f"[{payload.get('exec_id')}] remove path error ({p}): {e}"
+                )
 
 
 @app.route(route="Runbook", auth_level=AUTH)
@@ -493,10 +494,15 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
         "monitor_condition": req.headers.get("MonitorCondition"),
         "severity": req.headers.get("Severity"),
     }
-    if "aks_resource_info" in req.headers:
-        aks_info = req.headers.get("aks_resource_info")
-        if aks_info is not None:
-            payload["aks_resource_info"] = aks_info
+    if "resource_info" in req.headers:
+        info = req.headers.get("resource_info")
+        if info is not None:
+            payload["resource_info"] = info
+    if "routing_info" in req.headers:
+        info = req.headers.get("routing_info")
+        if info is not None:
+            payload["routing_info"] = info
+
     out_msg.set(json.dumps(payload, ensure_ascii=False))
     body = json.dumps(
         {"status": "accepted", "message": "processing scheduled"}, ensure_ascii=False
@@ -541,28 +547,26 @@ def process_runbook(msg: func.QueueMessage) -> None:
             log_message=f"Start execution: {payload.get('exec_id') or ''} for '{payload.get('runbook')}' at {started_at}",
         )
 
-        aks_info_raw = payload.get("aks_resource_info")
-        aks_info: dict = {}
-        if isinstance(aks_info_raw, str):
+        info_raw = payload.get("resource_info")
+        info: dict = {}
+        if isinstance(info_raw, str):
             try:
-                parsed = json.loads(aks_info_raw)
+                parsed = json.loads(info_raw)
                 if isinstance(parsed, dict):
-                    aks_info = parsed
+                    info = parsed
             except json.JSONDecodeError:
                 logging.warning(
-                    "[%s] aks_resource_info non è JSON valido", payload.get("exec_id")
+                    "[%s] resource_info non è JSON valido", payload.get("exec_id")
                 )
-        elif isinstance(aks_info_raw, dict):
-            aks_info = aks_info_raw
+        elif isinstance(info_raw, dict):
+            info = info_raw
 
-        ns_val = (
-            str(aks_info.get("aks_namespace", "")).strip().lower() if aks_info else ""
-        )
+        ns_val = str(info.get("aks_namespace", "")).strip().lower() if info else ""
         has_valid_ns = bool(ns_val) and ns_val not in {"null", "none", "undefined"}
 
-        if aks_info and has_valid_ns:
+        if info and has_valid_ns:
             try:
-                _run_aks_login(aks_info, payload)
+                _run_aks_login(info, payload)
                 logging.info(
                     f"[{payload.get('exec_id')}] AKS login completed successfully"
                 )
@@ -582,7 +586,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
             script_name=payload.get("runbook"),
             script_path=script_path,
             run_args=payload.get("run_args"),
-            aks_resource_info=payload.get("aks_resource_info"),
+            resource_info=payload.get("resource_info"),
             monitor_condition=payload.get("monitor_condition"),
             payload=payload,
         )
@@ -746,29 +750,18 @@ def stop_process(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         if proc.poll() is None:
-            if os.name != "nt":
-                try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-                except Exception:
-                    proc.terminate()
-                try:
-                    proc.wait(timeout=10)
-                except Exception:
-                    if proc.poll() is None:
-                        try:
-                            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                        except Exception:
-                            proc.kill()
-            else:
-                try:
-                    proc.send_signal(signal.CTRL_BREAK_EVENT)
-                except Exception:
-                    proc.terminate()
-                try:
-                    proc.wait(timeout=10)
-                except Exception:
-                    if proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception as e:
+                logging.error(f"[{exec_id}] terminate error: {e}")
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                if proc.poll() is None:
+                    try:
                         proc.kill()
+                    except Exception as e:
+                        logging.error(f"[{exec_id}] kill error: {e}")
         status = "stopped"
         code = 200
     except Exception as e:
@@ -849,7 +842,7 @@ def dev_run_script(req: func.HttpRequest) -> func.HttpResponse:
             script_name=script_name,
             script_path=script_path,
             run_args=run_args,
-            aks_resource_info={},
+            resource_info={},
             monitor_condition="",
             payload={},
         )

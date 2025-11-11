@@ -4,6 +4,10 @@
     "logLevel": {
       "Default": "Warning",
       "Function": "Information",
+      "Function.get_log": "None",
+      "Function.logs_frontend": "None",
+      "Function.logs_query": "None",
+      "Function.ui": "None",
       "Host": "Error",
       "Host.Results": "Error",
       "Microsoft": "Error",

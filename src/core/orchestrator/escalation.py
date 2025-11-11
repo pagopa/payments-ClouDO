@@ -33,6 +33,10 @@ def send_opsgenie_alert(
     Returns:
         bool: True if alert was sent successfully, False otherwise
     """
+    # Skip call if the API key is missing/empty
+    if not api_key or not str(api_key).strip():
+        logging.warning("OpsGenie: missing or empty apiKey, skipping alert send.")
+        return False
     try:
         conf = Configuration()
         conf.api_key["Authorization"] = api_key
@@ -72,6 +76,14 @@ def send_slack_execution(
     Returns:
         bool: True if message was sent successfully, False otherwise
     """
+    # Skip call if token or channel are missing/empty
+    if not token or not str(token).strip():
+        logging.warning("Slack: missing or empty token, skipping message send.")
+        return False
+    if not channel or not str(channel).strip():
+        logging.warning("Slack: missing or empty channel, skipping message send.")
+        return False
+
     try:
         client = WebClient(token=token)
         response = client.chat_postMessage(channel=channel, text=message, blocks=blocks)
