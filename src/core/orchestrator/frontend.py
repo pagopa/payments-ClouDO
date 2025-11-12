@@ -37,7 +37,7 @@ def render_template_str(template: str, ctx: dict[str, Any]) -> str:
         raw_tokens[t] = v
         return t
 
-    tmp = re.sub(r"\{raw:([a-z0-9_]+)\}", raw_sub, template, flags=re.I)
+    tmp = re.sub(r"\{raw:([a-z0-9_]+)}", raw_sub, template, flags=re.I)
     # ONLY known keys
     keys = "|".join(map(re.escape, ctx.keys()))
 
@@ -47,7 +47,7 @@ def render_template_str(template: str, ctx: dict[str, Any]) -> str:
         return "" if v is None else esc(str(v))
 
     if keys:
-        tmp = re.sub(r"\{(" + keys + r")\}", norm_sub, tmp)
+        tmp = re.sub(r"\{(" + keys + r")}", norm_sub, tmp)
     for t, v in raw_tokens.items():
         tmp = tmp.replace(t, v)
     return tmp

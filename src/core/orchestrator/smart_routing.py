@@ -87,9 +87,9 @@ def load_routing_config() -> dict[str, Any]:
 # =========================
 
 
-def _sev_to_num(sev: str | None) -> Optional[int]:
+def _sev_to_num(sev: Optional[str]) -> Optional[int]:
     """
-    Normalize Azure severity "Sev0..Sev4" to integer 0..4.
+    Normalize Azure severity "Sev0-Sev4" to integer 0..4.
     Lower is more critical (0=Critical, 4=Informational).
     """
     if not sev:
@@ -177,6 +177,7 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
         ctx.get("resourceGroup"), when["resourceGroupPrefix"]
     ):
         return False
+    # TODO dinamic match
 
     # Severity range
     sev = _sev_to_num(ctx.get("severity"))
@@ -276,7 +277,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     ri_opsgenie_token = routing_info.get("opsgenie_token") or None
 
     status = (ctx.get("status") or "").strip().lower()
-    logging.debug(
+    logging.info(
         f"Routing: evaluating {len(rules)} rules for execId={ctx.get('execId')} with status={status}"
     )
 
@@ -293,42 +294,82 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
             if atype not in ("slack", "opsgenie"):
                 logging.warning(f"Ignoring unsupported action type: {atype}")
                 continue
+            logging.info(f"Executing action: {atype} for {t.get('team')}")
 
-            # Team risolto: preferisci routing_info.team se valorizzato
-            team_name = ri_team or t.get("team")
+            team_name = t.get("team") or ri_team
             team_conf = teams_cfg.get(team_name, {}) if team_name else {}
             matched_team = matched_team or team_name
 
             if atype == "slack":
-                # Channel e token: preferisci routing_info.* se valorizzati
                 channel = (
-                    ri_slack_channel
-                    or t.get("channel")
+                    t.get("channel")
                     or (team_conf.get("slack", {}) or {}).get("channel")
                     or (defaults.get("slack", {}) or {}).get("channel")
+                    or ri_slack_channel
                 )
                 token = (
-                    ri_slack_token or t.get("token") or resolve_slack_token(team_name)
+                    t.get("token") or resolve_slack_token(team_name) or ri_slack_token
                 )
                 resolved_actions.append(
                     Action(type="slack", channel=channel, token=token, team=team_name)
                 )
 
             elif atype == "opsgenie":
-                # Team Opsgenie: preferisci routing_info.team se presente
                 og_team = (
                     team_name
                     or (team_conf.get("opsgenie", {}) or {}).get("team")
                     or (defaults.get("opsgenie", {}) or {}).get("team")
+                    or ri_team
                 )
                 api_key = (
-                    ri_opsgenie_token
-                    or t.get("apiKey")
+                    t.get("apiKey")
                     or resolve_opsgenie_apikey(og_team)
+                    or ri_opsgenie_token
                 )
                 resolved_actions.append(
                     Action(type="opsgenie", team=og_team, apiKey=api_key)
                 )
+
+        action_types_in_rule = {a.type for a in resolved_actions}
+
+        if "slack" in action_types_in_rule and ri_team:
+            already_slack_for_team = any(
+                a.type == "slack" and a.team == ri_team for a in resolved_actions
+            )
+            if not already_slack_for_team:
+                ri_team_conf = teams_cfg.get(ri_team, {})
+                extra_channel = (
+                    ri_slack_channel
+                    or (ri_team_conf.get("slack", {}) or {}).get("channel")
+                    or (defaults.get("slack", {}) or {}).get("channel")
+                )
+                extra_token = ri_slack_token or resolve_slack_token(ri_team)
+                if extra_channel or extra_token:
+                    resolved_actions.append(
+                        Action(
+                            type="slack",
+                            channel=extra_channel,
+                            token=extra_token,
+                            team=ri_team,
+                        )
+                    )
+
+        if "opsgenie" in action_types_in_rule and (ri_team or ri_opsgenie_token):
+            og_extra_team = ri_team or (defaults.get("opsgenie", {}) or {}).get("team")
+            already_og_for_team = any(
+                a.type == "opsgenie" and a.team == og_extra_team
+                for a in resolved_actions
+            )
+            if not already_og_for_team:
+                extra_api_key = ri_opsgenie_token or resolve_opsgenie_apikey(
+                    og_extra_team
+                )
+                if extra_api_key:
+                    resolved_actions.append(
+                        Action(
+                            type="opsgenie", team=og_extra_team, apiKey=extra_api_key
+                        )
+                    )
 
         if resolved_actions:
             logging.info(
@@ -372,12 +413,15 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
 
 def execute_actions(
-    decision: RoutingDecision, payload: dict[str, Any], send_slack_fn, send_opsgenie_fn
+    decision: RoutingDecision,
+    payload: dict[str, Any],
+    send_slack_fn=None,
+    send_opsgenie_fn=None,
 ) -> None:
     """
     Execute the decided actions in order.
     - If any action succeeds, continue executing others (fan-out).
-    - If all actions fail, attempt a final Opsgenie fallback using default env key.
+    - If all actions fail, attempt a final Opsgenie fallback using a default env key.
     """
     any_success = False
 

@@ -5,13 +5,17 @@ import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 import azure.functions as func
 import utils
-from escalation import send_opsgenie_alert, send_slack_execution
+from escalation import (
+    format_opsgenie_description,
+    send_opsgenie_alert,
+    send_slack_execution,
+)
 from frontend import render_template
 from requests import request
 
@@ -89,10 +93,12 @@ def utc_partition_key() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d")
 
 
-def _truncate_for_table(s: str | None, max_chars: int) -> str:
+def _truncate_for_table(
+    s: Optional[str], max_chars: int
+) -> Union[str, tuple[str, bool]]:
     if not s:
         return "", False
-    return (s) if len(s) <= max_chars else (s[:max_chars])
+    return s if len(s) <= max_chars else (s[:max_chars])
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -147,7 +153,7 @@ def _verify_signed_payload(exec_id_path: str, p: str, s: str) -> tuple[bool, dic
         return False, {}
 
 
-def _rows_from_binding(rows: str | list[dict]) -> list[dict]:
+def _rows_from_binding(rows: Union[str, list[dict]]) -> list[dict]:
     try:
         return json.loads(rows) if isinstance(rows, str) else (rows or [])
     except Exception:
@@ -157,7 +163,7 @@ def _rows_from_binding(rows: str | list[dict]) -> list[dict]:
 def _only_pending_for_exec(rows: list[dict], exec_id: str) -> bool:
     """
     True if ExecId had only 'pending' (o nothing).
-    False if there is some other rows not 'pending'.
+    False if there are some other rows not 'pending'.
     """
     for e in rows:
         if str(e.get("ExecId") or "") != exec_id:
@@ -253,7 +259,7 @@ def _strip_after_api(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, new_path, "", ""))
 
 
-def safe_json(response) -> dict | str | None:
+def safe_json(response) -> Optional[Union[dict, str]]:
     # Safely parse response body, falling back to text or None
     try:
         return response.json()
@@ -267,10 +273,10 @@ def safe_json(response) -> dict | str | None:
 def build_headers(
     schema: "Schema",
     exec_id: str,
-    resource_info: dict | None,
-    routing_info: dict | None,
-    monitor_condition: str | None,
-    severity: str | None,
+    resource_info: Optional[dict],
+    routing_info: Optional[dict],
+    monitor_condition: Optional[str],
+    severity: Optional[str],
 ) -> dict:
     # Standardize request headers sent to the downstream runbook endpoint
     headers = {
@@ -296,7 +302,7 @@ def build_response_body(
     schema: "Schema",
     partition_key: str,
     exec_id: str,
-    api_json: dict | str | None,
+    api_json: Optional[Union[dict, str]],
 ) -> str:
     # Build the HTTP response payload returned by this function
     return json.dumps(
@@ -380,14 +386,14 @@ def build_log_entry(
 class Schema:
     id: str
     entity: Optional[dict] = None
-    name: str | None = None
-    description: str | None = None
-    url: str | None = None
-    runbook: str | None = None
-    run_args: str | None = None
-    oncall: str | None = "false"
-    monitor_condition: str | None = None
-    severity: str | None = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    url: Optional[str] = None
+    runbook: Optional[str] = None
+    run_args: Optional[str] = None
+    oncall: Optional[str] = "false"
+    monitor_condition: Optional[str] = None
+    severity: Optional[str] = None
     require_approval: bool = False
 
     def __post_init__(self):
@@ -446,7 +452,7 @@ def Trigger(
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
         schema_id = utils.extract_schema_id_from_req(req)
-        resource_info = None
+        resource_info = {}
         routing_info = {
             "team": route_params.get("team") or "",
             "slack_token": req.params.get("slack_token")
@@ -458,6 +464,7 @@ def Trigger(
         }
     else:
         (
+            _raw,
             resource_name,
             resource_group,
             resource_id,
@@ -472,6 +479,7 @@ def Trigger(
         ) = utils.parse_resource_fields(req).values()
         resource_info = (
             {
+                "_raw": _raw,
                 "resource_name": resource_name,
                 "resource_rg": resource_group,
                 "resource_id": resource_id,
@@ -483,7 +491,7 @@ def Trigger(
                 "team": route_params.get("team"),
             }
             if resource_name
-            else None
+            else {}
         )
         routing_info = {
             "team": route_params.get("team") or "",
@@ -815,7 +823,7 @@ def Trigger(
                                 },
                                 {
                                     "type": "mrkdwn",
-                                    "text": f"*Teams:* {', '.join([a.team for a in decision.actions if getattr(a, 'team', None)])}",
+                                    "text": f"*Teams:* {', '.join(dict.fromkeys(a.team for a in decision.actions if getattr(a, 'team', None)))}",
                                 },
                                 {
                                     "type": "mrkdwn",
@@ -829,7 +837,8 @@ def Trigger(
                 "opsgenie": {
                     "message": f"[{schema.id}] [{severity}] {schema.name}",
                     "priority": f"P{int(str(severity).strip().lower().replace('sev','') or '4') + 1}",
-                    "alias": exec_id,
+                    "alias": schema.id,
+                    "monitor_condition": monitor_condition or "",
                     "details": {
                         "Name": schema.name,
                         "Id": schema.id,
@@ -841,14 +850,14 @@ def Trigger(
                         "MonitorCondition": monitor_condition,
                         "Severity": severity,
                         "Teams:": ", ".join(
-                            [
+                            dict.fromkeys(
                                 a.team
                                 for a in decision.actions
                                 if getattr(a, "team", None)
-                            ]
+                            )
                         ),
                     },
-                    "description": f"Execution result for {exec_id}:\n\n{api_body}",
+                    "description": f"{format_opsgenie_description(exec_id, resource_info, api_body)}",
                 },
             }
             try:
@@ -949,6 +958,23 @@ def approve(
     s = (req.params.get("s") or "").strip()
     approver = (req.headers.get("X-Approver") or "unknown").strip()
 
+    # from urllib.parse import parse_qs
+    # form = {k: v[0] for k, v in parse_qs(req.get_body().decode()).items()}
+    # payload = json.loads(form["payload"])
+    # user_id = payload["user"]["id"]
+    # logging.info(user_id)
+    # SLACK_BOT_TOKEN = os.environ["SLACK_TOKEN"]  # bot token xoxb- con scope users:read.email
+    # r = request(
+    #     "https://slack.com/api/users.info",
+    #     headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+    #     params={"user": user_id},
+    #     timeout=10,
+    # )
+    # data = r.json()
+    # logging.info(data)
+    # approver = (data.get("user") or {}).get("profile", {}).get("email")
+    # logging.info(approver)
+
     if not execId:
         return func.HttpResponse(
             json.dumps({"error": "Missing execId in route"}, ensure_ascii=False),
@@ -1010,7 +1036,7 @@ def approve(
     partition_key = today_partition_key()
     requested_at = format_requested_at()
 
-    # Execute once (pass embedded resource_info and propagate function key if needed)
+    # Execute once (pass embedded resource_info and propagate the function key if needed)
     try:
         headers = build_headers(
             schema, execId, resource_info, routing_info, monitor_condition, severity
@@ -1054,14 +1080,75 @@ def approve(
         )
         log_table.set(json.dumps(log_entity, ensure_ascii=False))
 
-        # Optional Slack notify
-        _notify_slack_decision(
-            execId,
-            schema.id,
-            f"approved {execId}",
-            approver,
-            extra=f"*Status:* {status_label}",
-        )
+        # smart routing notification (if routing module available)
+        if route_alert and execute_actions:
+            ctx = {
+                "resourceId": ((resource_info or {}).get("resource_id") or ""),
+                "resourceGroup": ((resource_info or {}).get("resource_group") or ""),
+                "resourceName": ((resource_info or {}).get("resource_name") or ""),
+                "alertRule": (schema.name or ""),
+                "severity": severity,
+                "namespace": ((resource_info or {}).get("namespace") or ""),
+                "oncall": schema.oncall,
+                "status": status_label,
+                "execId": execId,
+                "name": schema.name or "",
+                "id": schema.id,
+                "routing_info": routing_info,
+            }
+            decision = route_alert(ctx)
+            logging.info(f"[{execId}] Approval: {decision}")
+            payload = {
+                "slack": {
+                    "message": f"[{execId}] 🚀 Approved - {schema_id}",
+                    "blocks": [
+                        {
+                            "type": "header",
+                            "text": {
+                                "type": "plain_text",
+                                "text": f"🚀 Approved - {schema_id}",
+                                "emoji": True,
+                            },
+                        },
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": (
+                                    f"*ExecId:* `{execId}`\n"
+                                    f"*SchemaId:* `{schema_id}`\n"
+                                    f"*By:* {approver}"
+                                ),
+                            },
+                        },
+                        *(
+                            [
+                                {
+                                    "type": "context",
+                                    "elements": [
+                                        {
+                                            "type": "mrkdwn",
+                                            "text": f"*Status:* {status_label}",
+                                        }
+                                    ],
+                                }
+                            ]
+                            if status_label
+                            else []
+                        ),
+                    ],
+                }
+            }
+            try:
+                execute_actions(
+                    decision,
+                    payload,
+                    send_slack_fn=lambda token, channel, **kw: send_slack_execution(
+                        token=token, channel=channel, **kw
+                    ),
+                )
+            except Exception as e:
+                logging.error(f"[{execId}] smart routing approval failed: {e}")
 
         html = render_template(
             "approve.html",
@@ -1129,13 +1216,18 @@ def approve(
     connection=STORAGE_CONN,
 )
 @app.table_input(
+    arg_name="schemas",
+    table_name=TABLE_SCHEMAS,
+    connection=STORAGE_CONN,
+)
+@app.table_input(
     arg_name="today_logs",
     table_name=TABLE_NAME,
     partition_key="{partitionKey}",
     connection=STORAGE_CONN,
 )
 def reject(
-    req: func.HttpRequest, log_table: func.Out[str], today_logs: str
+    req: func.HttpRequest, log_table: func.Out[str], schemas: str, today_logs: str
 ) -> func.HttpResponse:
     route_params = getattr(req, "route_params", {}) or {}
     execId = (route_params.get("execId") or "").strip()
@@ -1171,6 +1263,35 @@ def reject(
         )
 
     schema_id = payload.get("schemaId") or ""
+    resource_info = payload.get("resource_info") or None
+    routing_info = payload.get("routing_info") or None
+    monitor_condition = payload.get("monitorCondition") or ""
+    severity = payload.get("severity") or ""
+
+    # Load schema entity
+    try:
+        parsed = json.loads(schemas) if isinstance(schemas, str) else schemas
+    except Exception:
+        parsed = None
+    if not isinstance(parsed, list):
+        return func.HttpResponse(
+            json.dumps({"error": "Schemas not available"}, ensure_ascii=False),
+            status_code=500,
+            mimetype="application/json",
+        )
+
+    def get_id(e: dict) -> str:
+        return str(e.get("Id") or e.get("id") or "").strip()
+
+    schema_entity = next((e for e in parsed if get_id(e) == schema_id), None)
+    if not schema_entity:
+        return func.HttpResponse(
+            json.dumps({"error": "Schema not found"}, ensure_ascii=False),
+            status_code=404,
+            mimetype="application/json",
+        )
+
+    schema = Schema(id=schema_entity.get("id"), entity=schema_entity)
 
     partition_key = today_partition_key()
     requested_at = format_requested_at()
@@ -1181,21 +1302,87 @@ def reject(
         row_key=str(uuid.uuid4()),
         exec_id=execId,
         requested_at=requested_at,
-        name=None,
-        schema_id=schema_id,
-        url=None,
-        runbook=None,
-        run_args=None,
+        name=schema.name or "",
+        schema_id=schema.id,
+        url=schema.url,
+        runbook=schema.runbook,
+        run_args=schema.run_args,
         log_msg=json.dumps({"message": "Rejected by approver"}, ensure_ascii=False),
-        oncall=None,
-        monitor_condition=None,
-        severity=None,
+        oncall=schema.oncall,
+        monitor_condition=monitor_condition,
+        severity=severity,
         approval_required=True,
         approval_decision_by=approver,
     )
     log_table.set(json.dumps(log_entity, ensure_ascii=False))
 
-    _notify_slack_decision(execId, schema_id, f"rejected {execId}", approver)
+    # smart routing notification (if routing module available)
+    if route_alert and execute_actions:
+        ctx = {
+            "resourceId": ((resource_info or {}).get("resource_id") or ""),
+            "resourceGroup": ((resource_info or {}).get("resource_group") or ""),
+            "resourceName": ((resource_info or {}).get("resource_name") or ""),
+            "alertRule": (schema.name or ""),
+            "severity": severity,
+            "namespace": ((resource_info or {}).get("namespace") or ""),
+            "oncall": schema.oncall,
+            "status": "rejected",
+            "execId": execId,
+            "name": schema.name or "",
+            "id": schema.id,
+            "routing_info": routing_info,
+        }
+        decision = route_alert(ctx)
+        logging.info(f"[{execId}] Reject: {decision}")
+
+        payload = {
+            "slack": {
+                "message": f"[{execId}] ⛔️ Rejected - {schema_id}",
+                "blocks": [
+                    {
+                        "type": "header",
+                        "text": {
+                            "type": "plain_text",
+                            "text": f"⛔️ Rejected - {schema_id}",
+                            "emoji": True,
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                f"*ExecId:* `{execId}`\n"
+                                f"*SchemaId:* `{schema_id}`\n"
+                                f"*By:* {approver}"
+                            ),
+                        },
+                    },
+                    *(
+                        [
+                            {
+                                "type": "context",
+                                "elements": [
+                                    {"type": "mrkdwn", "text": f"*Status:* rejected"}
+                                ],
+                            }
+                        ]
+                        if "rejected"
+                        else []
+                    ),
+                ],
+            }
+        }
+        try:
+            execute_actions(
+                decision,
+                payload,
+                send_slack_fn=lambda token, channel, **kw: send_slack_execution(
+                    token=token, channel=channel, **kw
+                ),
+            )
+        except Exception as e:
+            logging.error(f"[{execId}] smart routing approval failed: {e}")
 
     html = render_template(
         "reject.html",
@@ -1253,7 +1440,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
         },
     )
 
-    # Precompute keys and timestamps for log
+    # Precompute keys and timestamps for the log
     requested_at = format_requested_at()
     partition_key = today_partition_key()
     row_key = str(uuid.uuid4())  # stable hex representation for RowKey
@@ -1402,7 +1589,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Teams:* {', '.join([a.team for a in decision.actions if getattr(a, 'team', None)])}",
+                                "text": f"*Teams:* {', '.join(dict.fromkeys(a.team for a in decision.actions if getattr(a, 'team', None)))}",
                             },
                             {
                                 "type": "mrkdwn",
@@ -1416,7 +1603,8 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
             "opsgenie": {
                 "message": f"[{get_header(req, 'Id')}] [{get_header(req, 'Severity')}] {get_header(req, 'Name')}",
                 "priority": f"P{int(str(get_header(req, 'Severity')).strip().lower().replace('sev', '') or '4') + 1}",
-                "alias": exec_id,
+                "alias": get_header(req, "Id"),
+                "monitor_condition": get_header(req, "MonitorCondition") or "",
                 "details": {
                     "Name": get_header(req, "Name"),
                     "Id": get_header(req, "Id"),
@@ -1428,10 +1616,12 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                     "MonitorCondition": get_header(req, "MonitorCondition"),
                     "Severity": get_header(req, "Severity"),
                     "Teams:": ", ".join(
-                        [a.team for a in decision.actions if getattr(a, "team", None)]
+                        dict.fromkeys(
+                            a.team for a in decision.actions if getattr(a, "team", None)
+                        )
                     ),
                 },
-                "description": f"Execution result for {exec_id}:\n\n{_truncate_for_table(decode_base64(req.get_body()), MAX_TABLE_CHARS or '')}",
+                "description": f"{format_opsgenie_description(exec_id, resource_info, _truncate_for_table(decode_base64(req.get_body()), MAX_TABLE_CHARS or ''))}",
             },
         }
         try:
@@ -1503,7 +1693,7 @@ def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
 )
 def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
     """
-    Returns the entity from the RunbookLogs table identified by PartitionKey and RowKey..
+    Returns the entity from the RunbookLogs table identified by PartitionKey and RowKey.
     Uso: GET /api/logs/{partitionKey}/{execId}
     """
     # If the entity does not exist, the binding returns None/empty.
@@ -1558,7 +1748,7 @@ def logs_query(req: func.HttpRequest, rows: str) -> func.HttpResponse:
     Query dei log via Table Input Binding:
     - partitionKey (required) -> used for the binding
     - execId, status -> filtered by memory
-    - q (contains on some fileds), from/to (range on RequestedAt), order, limit -> in memory
+    - q (contains on some filed), from/to (range on RequestedAt), order, limit -> in memory
     """
     try:
         partition_key = (req.params.get("partitionKey") or "").strip()

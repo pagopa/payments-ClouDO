@@ -78,10 +78,10 @@ def _cors_headers():
     }
 
 
-def encode_logs(value: str | None) -> bytes:
+def encode_logs(value: Optional[str]) -> bytes:
     """
     Encode a string value to base64 bytes.
-    If value is None or empty, returns empty bytes.
+    If the value is None or empty, returns empty bytes.
     """
     if not value:
         return b""
@@ -198,15 +198,17 @@ def _download_from_github(script_name: str) -> str:
             logging.warning("GitHub request error: %s", e)
             continue
 
-    content_bytes: bytes | None = None
+    content_bytes: Optional[bytes] = None
     if (
         isinstance(data, dict)
         and data.get("encoding") == "base64"
         and "content" in data
     ):
+        b64 = data.get("content")
+        if not isinstance(b64, str):
+            raise RuntimeError("Missing or invalid 'content' (expected base64 string)")
         try:
-            b64 = data["content"].replace("\n", "")
-            content_bytes = base64.b64decode(b64)
+            content_bytes = base64.b64decode(b64.replace("\n", ""))
         except Exception as e:
             raise RuntimeError(f"Failed to decode GitHub content: {e}") from e
 
@@ -253,7 +255,7 @@ def _download_from_github(script_name: str) -> str:
     return tmp_path
 
 
-def _clean_path(p: str | None) -> str | None:
+def _clean_path(p: Optional[str]) -> Optional[str]:
     if p is None:
         return None
     s = str(p).strip().strip('"').strip("'")
@@ -336,15 +338,15 @@ def _run_aks_login(resource_info: dict, payload: dict = None) -> None:
 def _run_script(
     script_name: str,
     run_args: Optional[str],
-    script_path: str | None = None,
-    resource_info: dict | None = None,
+    script_path: Optional[str] = None,
+    resource_info: Optional[dict] = None,
     monitor_condition: Optional[str] = "",
-    payload: dict | None = None,
+    payload: Optional[dict] = None,
 ) -> Optional[CompletedProcess[str]]:
-    """Run the requested script fetching it from Blob Storage, falling back to local folder, then GitHub."""
-    tmp_path: str | None = None
-    github_tmp_path: str | None = None
-    github_error: Exception | None = None
+    """Run the requested script fetching it from Blob Storage, falling back to the local folder, then GitHub."""
+    tmp_path: Optional[str] = None
+    github_tmp_path: Optional[str] = None
+    github_error: Optional[Exception] = None
 
     # Setting MONITOR_CONDITION env VAR
     os.environ["MONITOR_CONDITION"] = monitor_condition
@@ -732,7 +734,7 @@ def stop_process(req: func.HttpRequest) -> func.HttpResponse:
     exec_id = (req.params.get("exec_id") or req.headers.get("ExecId") or "").strip()
     if not exec_id:
         return func.HttpResponse(
-            json.dumps({"error": "exec_id mancante"}, ensure_ascii=False),
+            json.dumps({"error": "exec_id missing"}, ensure_ascii=False),
             status_code=400,
             mimetype="application/json",
         )
@@ -787,7 +789,7 @@ def stop_process(req: func.HttpRequest) -> func.HttpResponse:
                 log_message=f"Execution {exec_id} stopped by request",
             )
     except Exception:
-        logging.warning("Impossibile inviare status di stop per %s", exec_id)
+        logging.warning("Unable to send status stop for %s", exec_id)
 
     return func.HttpResponse(
         json.dumps({"status": status, "exec_id": exec_id}, ensure_ascii=False),
