@@ -120,9 +120,23 @@ module "cloudo" {
     channel = "#your_slack_channel"
     token   = "APP_TOKEN"
   }
+  team_slack_channels = {
+    "team-1" = "#cloudo-team1"
+    "team-2" = "#cloudo-team2"
+    "team-3" = "#cloudo-team3"
+  }
+  team_slack_tokens = {
+    "team-1" = "<token-team1-here>"
+    "team-2" = "<token-team2-here>"
+    "team-3" = "<token-team3-here>"
+  }
 
   opsgenie_api_key = "API_KEY_OPSGENIE"
-
+  team_opsgenie_api_keys = {
+    "team-1" = "<api-key-team1-here>"
+    "team-2" = "<api-key-team2-here>"
+    "team-3" = "<api-key-team3-here>"
+  }
 
   schemas = file("YOUR_PATH/schemas.json.tpl")
 
@@ -179,7 +193,8 @@ This is the example of schemas to map the runbooks to execute.
       "description": "Hello Pippo V1!",
       "runbook": "check_sys.sh",
       "worker": "Runbook",
-      "oncall": "false"
+      "oncall": "false",
+      "require_approval": "true"
     },
     {
       "id": "000-0000-0e0e00wa-wqesd",
