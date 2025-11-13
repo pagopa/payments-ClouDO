@@ -72,6 +72,13 @@ repos:
         args: ["--py39-plus"]
         language_version: python3.13
 
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+        args: [ "--max-line-length=200" ]
+        language_version: python3.13
+
   - repo: https://github.com/antonbabenko/pre-commit-terraform
     rev: v1.90.0
     hooks:

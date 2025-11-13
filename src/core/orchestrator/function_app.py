@@ -832,7 +832,7 @@ def Trigger(
                 },
                 "opsgenie": {
                     "message": f"[{schema.id}] [{severity}] {schema.name}",
-                    "priority": f"P{int(str(severity).strip().lower().replace('sev','') or '4') + 1}",
+                    "priority": f"P{int(str(severity).strip().lower().replace('sev', '') or '4') + 1}",
                     "alias": schema.id,
                     "monitor_condition": monitor_condition or "",
                     "details": {
@@ -1359,7 +1359,7 @@ def reject(
                             {
                                 "type": "context",
                                 "elements": [
-                                    {"type": "mrkdwn", "text": f"*Status:* rejected"}
+                                    {"type": "mrkdwn", "text": "*Status:* rejected"}
                                 ],
                             }
                         ]
