@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any, Optional
 
@@ -32,7 +33,7 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
       - resourceGroup from alertContext.resourceGroup
       - resourceId from alertContext.resourceId
 
-    Additionally extracts Kubernetes fields when present:
+    Additionally, extract Kubernetes fields when present:
       - namespace (labels/annotations)
       - pod (labels/annotations: "pod" or "kubernetes_pod_name")
       - deployment (labels/annotations: "deployment" or "kubernetes_deployment")
@@ -44,6 +45,18 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
         pod, deployment, job
       }
     """
+    # Parse body defensively
+    try:
+        raw_body = req.get_body() or b""
+    except Exception:
+        raw_body = b""
+    raw_text = raw_body.decode("utf-8", "ignore")
+    try:
+        parsed = json.loads(raw_text)
+        compact_raw = json.dumps(parsed, separators=(",", ":"))
+    except Exception:
+        compact_raw = raw_text.replace("\r", "").replace("\n", "")
+
     # Parse body defensively
     try:
         data = req.get_json() or {}
@@ -155,6 +168,7 @@ def parse_resource_fields(req: func.HttpRequest) -> dict[str, Any]:
             job = cand
 
     return {
+        "_raw": compact_raw,
         "resourceName": resource_name,
         "resourceGroup": resource_group,
         "resourceId": resource_id,

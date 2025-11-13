@@ -4,6 +4,7 @@
     "logLevel": {
       "Default": "Warning",
       "Function": "Information",
+      "Functions.list_processes": "None",
       "Host": "Error",
       "Host.Results": "Error",
       "Microsoft": "Error",

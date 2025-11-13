@@ -1,6 +1,10 @@
 #!/bin/bash
 
-# Print environment variables containing AKS or MONITOR
-printenv | grep -E "AKS|MONITOR"
+end=$((SECONDS + 5))
 
-sleep 60
+while [ $SECONDS -lt $end ]; do
+    # Print environment variables containing AKS or MONITOR
+    printenv | grep -E "AKS|MONITOR"
+    echo "Test message at second: $SECONDS"
+    sleep 1
+done

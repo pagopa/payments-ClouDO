@@ -120,9 +120,23 @@ module "cloudo" {
     channel = "#your_slack_channel"
     token   = "APP_TOKEN"
   }
+  team_slack_channels = {
+    "team-1" = "#cloudo-team1"
+    "team-2" = "#cloudo-team2"
+    "team-3" = "#cloudo-team3"
+  }
+  team_slack_tokens = {
+    "team-1" = "<token-team1-here>"
+    "team-2" = "<token-team2-here>"
+    "team-3" = "<token-team3-here>"
+  }
 
   opsgenie_api_key = "API_KEY_OPSGENIE"
-
+  team_opsgenie_api_keys = {
+    "team-1" = "<api-key-team1-here>"
+    "team-2" = "<api-key-team2-here>"
+    "team-3" = "<api-key-team3-here>"
+  }
 
   schemas = file("YOUR_PATH/schemas.json.tpl")
 
@@ -140,6 +154,74 @@ module "cloudo" {
     registry_url      = "https://ghcr.io"
     registry_username = "payments-cloud-bot"
     registry_password = data.azurerm_key_vault_secret.github_pat.value
+  }
+
+  # (Optional) EXAMPLE Routing configs
+  routing_config = {
+    teams = {
+      payments = {
+        slack    = { channel = "#cloudo-test" }
+        opsgenie = { team = "payments-oncall" }
+      }
+      platform = {
+        slack    = { channel = "#cloudo-test" }
+        opsgenie = { team = "platform-oncall" }
+      }
+      core-crit = {
+        opsgenie = { team = "core-critical" }
+      }
+      finops = {
+        slack = { channel = "#cloudo-test" }
+      }
+    }
+
+    rules = [
+      {
+        when = { resourceGroup = "rg-payments" }
+        then = [
+          { type = "slack", team = "payments" },
+          { type = "opsgenie", team = "payments" }
+        ]
+      },
+      {
+        when = { namespace = "kube-system" }
+        then = [
+          { type = "slack", team = "platform" }
+        ]
+      },
+      {
+        when = { namespace = "namespace1" }
+        then = [
+          { type = "slack", team = "team-1" }
+        ]
+      },
+      {
+        when = { subscriptionId = "00000000-0000-0000-0000-000000000000", severityMax = "Sev2" }
+        then = [
+          { type = "opsgenie", team = "core-crit" }
+        ]
+      },
+      {
+        when = { alertRule = "Costs-OverBudget" }
+        then = [
+          { type = "slack", team = "finops" }
+        ]
+      },
+      {
+        when = { oncall = "true", statusIn = ["failed", "error"], severityMax = "Sev2" }
+        then = [
+          { type = "opsgenie", team = "payments" },
+          { type = "slack", team = "payments" },
+          { type = "slack", team = "platform" }
+        ]
+      },
+      {
+        when = { any = "*" }
+        then = [
+          { type = "slack", team = "payments" }
+        ]
+      }
+    ]
   }
 
   tags = module.tag_config.tags
@@ -179,7 +261,8 @@ This is the example of schemas to map the runbooks to execute.
       "description": "Hello Pippo V1!",
       "runbook": "check_sys.sh",
       "worker": "Runbook",
-      "oncall": "false"
+      "oncall": "false",
+      "require_approval": "true"
     },
     {
       "id": "000-0000-0e0e00wa-wqesd",

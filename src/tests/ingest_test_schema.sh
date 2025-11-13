@@ -42,7 +42,7 @@ az storage entity insert \
     runbook=printenv.sh \
     run_args="" \
     url="http://$WORKER/api/Runbook" \
-    oncall=false \
+    oncall=true \
   --if-exists merge \
   --connection-string "${CONN_STR}" \
   --only-show-errors >/dev/null

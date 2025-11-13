@@ -10,7 +10,7 @@ default_stages:
   - pre-push
 
 default_language_version:
-  python: python3.9
+  python: python3.13
 
 exclude: >
   (?x)^(
@@ -42,41 +42,42 @@ repos:
       - id: check-added-large-files
         args: ["--maxkb=3000"]
 
-  - repo: https://github.com/psf/black
-    rev: 24.8.0
-    hooks:
-      - id: black
-        language_version: python3.9
-
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.2
     hooks:
       - id: ruff
         args: ["--fix"]
-        language_version: python3.9
+        language_version: python3.13
       - id: ruff-format
-        language_version: python3.9
+        language_version: python3.13
 
   - repo: https://github.com/PyCQA/isort
     rev: 5.13.2
     hooks:
       - id: isort
         args: ["--profile", "black"]
-        language_version: python3.9
+        language_version: python3.13
 
 #  - repo: https://github.com/pycqa/bandit
 #    rev: 1.7.9
 #    hooks:
 #      - id: bandit
 #        args: ["-r", "."]
-#        language_version: python3.9
+#        language_version: python3.13
 
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.17.0
     hooks:
       - id: pyupgrade
         args: ["--py39-plus"]
-        language_version: python3.9
+        language_version: python3.13
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+        args: [ "--max-line-length=200" ]
+        language_version: python3.13
 
   - repo: https://github.com/antonbabenko/pre-commit-terraform
     rev: v1.90.0

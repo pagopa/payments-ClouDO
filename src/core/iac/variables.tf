@@ -144,6 +144,65 @@ variable "opsgenie_api_key" {
   default     = ""
 }
 
+variable "team_opsgenie_api_keys" {
+  description = "Team maps -> Opsgenie API key (OPSGENIE_API_KEY_<TEAM>)"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
+variable "team_slack_tokens" {
+  description = "Team maps -> Slack token (SLACK_TOKEN_<TEAM>)"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
+variable "team_slack_channels" {
+  description = "Team maps -> Slack channel (SLACK_CHANNEL_<TEAM>)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "routing_config" {
+  description = "Routing configuration: defaults, teams and rules (when/then)"
+  type = object({
+    teams = optional(map(object({
+      slack    = optional(object({ channel = optional(string) }))
+      opsgenie = optional(object({ team = optional(string) }))
+    })), {})
+    rules = list(object({
+      when = object({
+        any                 = optional(string) # "*"
+        finalOnly           = optional(bool)
+        statusIn            = optional(list(string))
+        resourceId          = optional(string)
+        resourceGroup       = optional(string)
+        resourceName        = optional(string)
+        subscriptionId      = optional(string)
+        namespace           = optional(string)
+        alertRule           = optional(string)
+        oncall              = optional(string)
+        resourceGroupPrefix = optional(string)
+        severityMin         = optional(string) # "Sev0..Sev4"
+        severityMax         = optional(string) # "Sev0..Sev4"
+      })
+      then = list(object({
+        type    = string # "slack" | "opsgenie"
+        team    = optional(string)
+        channel = optional(string)
+        token   = optional(string)
+        apiKey  = optional(string)
+      }))
+    }))
+  })
+  default = {
+    teams = {}
+    rules = []
+  }
+}
+
+
 variable "approval_runbook" {
   description = "(Optional) Configuration for approval runbook settings including time-to-live in minutes and secret key for approval validation. If not provided, approval functionality will use default settings."
   type = object({
