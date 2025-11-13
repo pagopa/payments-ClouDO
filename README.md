@@ -156,6 +156,74 @@ module "cloudo" {
     registry_password = data.azurerm_key_vault_secret.github_pat.value
   }
 
+  # (Optional) EXAMPLE Routing configs
+  routing_config = {
+    teams = {
+      payments = {
+        slack    = { channel = "#cloudo-test" }
+        opsgenie = { team = "payments-oncall" }
+      }
+      platform = {
+        slack    = { channel = "#cloudo-test" }
+        opsgenie = { team = "platform-oncall" }
+      }
+      core-crit = {
+        opsgenie = { team = "core-critical" }
+      }
+      finops = {
+        slack = { channel = "#cloudo-test" }
+      }
+    }
+
+    rules = [
+      {
+        when = { resourceGroup = "rg-payments" }
+        then = [
+          { type = "slack", team = "payments" },
+          { type = "opsgenie", team = "payments" }
+        ]
+      },
+      {
+        when = { namespace = "kube-system" }
+        then = [
+          { type = "slack", team = "platform" }
+        ]
+      },
+      {
+        when = { namespace = "namespace1" }
+        then = [
+          { type = "slack", team = "team-1" }
+        ]
+      },
+      {
+        when = { subscriptionId = "00000000-0000-0000-0000-000000000000", severityMax = "Sev2" }
+        then = [
+          { type = "opsgenie", team = "core-crit" }
+        ]
+      },
+      {
+        when = { alertRule = "Costs-OverBudget" }
+        then = [
+          { type = "slack", team = "finops" }
+        ]
+      },
+      {
+        when = { oncall = "true", statusIn = ["failed", "error"], severityMax = "Sev2" }
+        then = [
+          { type = "opsgenie", team = "payments" },
+          { type = "slack", team = "payments" },
+          { type = "slack", team = "platform" }
+        ]
+      },
+      {
+        when = { any = "*" }
+        then = [
+          { type = "slack", team = "payments" }
+        ]
+      }
+    ]
+  }
+
   tags = module.tag_config.tags
 }
 ```
