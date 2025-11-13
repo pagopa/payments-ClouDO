@@ -22,12 +22,8 @@ from requests import request
 app = func.FunctionApp()
 
 try:
-    from smart_routing import (  # type: ignore
-        execute_actions,
-        resolve_opsgenie_apikey,
-        resolve_slack_token,
-        route_alert,
-    )
+    from smart_routing import execute_actions  # type: ignore
+    from smart_routing import resolve_opsgenie_apikey, resolve_slack_token, route_alert
 except Exception:
     route_alert = None  # fallback if module missing
     execute_actions = None

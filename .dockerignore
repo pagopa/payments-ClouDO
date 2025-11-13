@@ -56,4 +56,4 @@ runbooks/
 tmp/
 .cache/
 
-tests/
+src/**/tests/
