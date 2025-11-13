@@ -6,7 +6,7 @@ locals {
         {},
         r.when.any != null ? { any = r.when.any } : {},
         r.when.finalOnly != null ? { finalOnly = r.when.finalOnly } : {},
-        length(try(r.when.statusIn, [])) > 0 ? { statusIn = r.when.statusIn } : {},
+        length(coalesce(r.when.statusIn, [])) > 0 ? { statusIn = coalesce(r.when.statusIn, []) } : {},
         r.when.resourceId != null ? { resourceId = r.when.resourceId } : {},
         r.when.resourceGroup != null ? { resourceGroup = r.when.resourceGroup } : {},
         r.when.resourceName != null ? { resourceName = r.when.resourceName } : {},
@@ -43,7 +43,6 @@ locals {
     teams = local.sanitized_teams
     rules = local.sanitized_rules
   }
-
 
   routing_rules_json_from_object = jsonencode(local.routing_rules_clean)
 }
