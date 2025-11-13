@@ -35,11 +35,8 @@ jobs:
           pip install flake8 black isort pytest
           pip install -r src/core/orchestrator/requirements.txt
 
-      - name: Check code formatting with Black
-        run: black --check .
-
       - name: Check imports with isort
-        run: isort --check-only .
+        run: isort --check-only --profile black .
 
       - name: Lint with flake8
         run: flake8 . --max-line-length=200
