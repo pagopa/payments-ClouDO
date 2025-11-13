@@ -41,8 +41,10 @@ def load_routing_config() -> dict[str, Any]:
     """
     raw = (os.environ.get("ROUTING_RULES") or "").strip()
     defaults = {
-        "opsgenie": {"team": "oncall-default"},  # apiKey resolved via env
-        "slack": {"channel": os.environ.get("SLACK_CHANNEL", "#cloudo-default")},
+        "opsgenie": {"team": "default"},  # apiKey resolved via env
+        "slack": {
+            "channel": os.environ.get("SLACK_CHANNEL_DEFAULT", "#cloudo-default")
+        },
     }
     fallback = {
         "version": 1,
@@ -54,7 +56,6 @@ def load_routing_config() -> dict[str, Any]:
                 "then": [
                     {
                         "type": "opsgenie",
-                        "severityMin": "Sev2",
                         "statusIn": ["failed", "error"],
                     },
                     {"type": "slack"},
@@ -216,14 +217,14 @@ def resolve_slack_token(team: Optional[str]) -> Optional[str]:
     """
     Resolve Slack token from env using naming convention:
       - SLACK_TOKEN_<TEAM> (preferred)
-      - SLACK_TOKEN (default)
+      - SLACK_TOKEN_DEFAULT (default)
     """
     if team:
         env_name = f"SLACK_TOKEN_{team}".upper().replace("-", "_")
         tok = os.getenv(env_name)
         if tok:
             return tok
-    return os.getenv("SLACK_TOKEN")
+    return os.getenv("SLACK_TOKEN_DEFAULT")
 
 
 # =========================

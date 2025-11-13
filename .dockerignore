@@ -34,7 +34,7 @@ docs/
 README.md
 
 # Local settings and development-only files
-local.settings.json
+src/core/worker/local.settings.json
 .env
 *.env
 
@@ -55,3 +55,5 @@ runbooks/
 *.log
 tmp/
 .cache/
+
+tests/

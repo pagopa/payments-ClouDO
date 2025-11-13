@@ -67,18 +67,21 @@ resource "azurerm_linux_function_app" "orchestrator" {
     # health_check_eviction_time_in_min = 2
     # health_check_path = "/healthz"
   }
-  app_settings = {
-    "QUEUE_NAME"                          = azurerm_storage_queue.this.name
-    "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
-    "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
-    "SLACK_TOKEN"                         = var.slack_integration.token
-    "SLACK_CHANNEL"                       = var.slack_integration.channel
-    "OPSGENIE_API_KEY"                    = var.opsgenie_api_key
-    "GITHUB_TOKEN"                        = var.orchestrator_image.registry_password
-    "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
-    "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
-    "APPROVAL_SECRET"                     = var.approval_runbook.secret
-  }
+  app_settings = merge(
+    {
+      "QUEUE_NAME"                          = azurerm_storage_queue.this.name
+      "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
+      "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
+      "SLACK_TOKEN_DEFAULT"                 = var.slack_integration.token
+      "SLACK_CHANNEL_DEFAULT"               = var.slack_integration.channel
+      "OPSGENIE_API_KEY_DEFAULT"            = var.opsgenie_api_key
+      "GITHUB_TOKEN"                        = var.orchestrator_image.registry_password
+      "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
+      "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
+      "APPROVAL_SECRET"                     = var.approval_runbook.secret
+    },
+    local.orchestrator_smart_routing_app_settings
+  )
 
   virtual_network_subnet_id = try(module.function_snet.id, null)
 
@@ -131,7 +134,7 @@ resource "azurerm_linux_function_app" "worker" {
     "RECEIVER_URL"                        = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/Receiver?code=${data.azurerm_function_app_host_keys.orchestrator.default_function_key}"
     "GITHUB_REPO"                         = var.github_repo_info.repo_name
     "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
-    GITHUB_TOKEN                          = var.worker_image.registry_password
+    "GITHUB_TOKEN"                        = var.worker_image.registry_password
     "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
     "AZURE_TENANT_ID"                     = azurerm_user_assigned_identity.identity.tenant_id
     "AZURE_CLIENT_ID"                     = azurerm_user_assigned_identity.identity.client_id

@@ -144,6 +144,27 @@ variable "opsgenie_api_key" {
   default     = ""
 }
 
+variable "team_opsgenie_api_keys" {
+  description = "Team maps -> Opsgenie API key (OPSGENIE_API_KEY_<TEAM>)"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
+variable "team_slack_tokens" {
+  description = "Team maps -> Slack token (SLACK_TOKEN_<TEAM>)"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
+variable "team_slack_channels" {
+  description = "Team maps -> Slack channel (SLACK_CHANNEL_<TEAM>)"
+  type        = map(string)
+  default     = {}
+}
+
+
 variable "approval_runbook" {
   description = "(Optional) Configuration for approval runbook settings including time-to-live in minutes and secret key for approval validation. If not provided, approval functionality will use default settings."
   type = object({
