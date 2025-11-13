@@ -271,7 +271,9 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
     routing_info = ctx.get("routing_info") or {}
 
-    logging.info(routing_info)
+    # Avoid logging sensitive information such as API keys or tokens
+    safe_routing_info = {k: v for k, v in routing_info.items() if k not in {"slack_token", "opsgenie_token"}}
+    logging.info("Routing info (redacted): %s", safe_routing_info)
     ri_team = (routing_info.get("team") or "").strip() or None
     ri_slack_token = routing_info.get("slack_token") or None
     ri_slack_channel = routing_info.get("slack_channel") or None
