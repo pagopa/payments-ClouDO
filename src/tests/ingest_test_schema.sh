@@ -22,6 +22,7 @@ az storage entity insert \
     id="test" \
     name=test-entity \
     description='Hello Test!' \
+    worker=local \
     runbook=check_sys.sh \
     url="http://$WORKER/api/Runbook" \
     oncall=false \
@@ -39,6 +40,7 @@ az storage entity insert \
     id="test-2" \
     name=test-entity-2 \
     description='Hello Test 2!' \
+    worker=local \
     runbook=printenv.sh \
     run_args="" \
     url="http://$WORKER/api/Runbook" \
@@ -56,6 +58,7 @@ az storage entity insert \
     id="11111111-2222-3333-4444-555555555555" \
     name=test-entity-3 \
     description='Hello Test 3!' \
+    worker=local \
     runbook=check_sys.sh \
     url="http://$WORKER/api/Runbook" \
     oncall=false \

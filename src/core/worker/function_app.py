@@ -22,8 +22,10 @@ import requests
 # =========================
 
 # Configuration constants
-RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://localhost:7071/api/Receiver")
 QUEUE_NAME = os.environ.get("QUEUE_NAME", "queue")
+NOTIFICATION_QUEUE_NAME = os.environ.get(
+    "NOTIFICATION_QUEUE_NAME", "cloudo-notification"
+)
 STORAGE_CONNECTION = "AzureWebJobsStorage"
 MAX_LOG_BODY_BYTES = int(
     os.environ.get("MAX_LOG_BODY_BYTES", "131072")
@@ -96,6 +98,7 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
         "Id": payload.get("id"),
         "Name": payload.get("name"),
         "ExecId": payload.get("exec_id"),
+        "Worker": payload.get("worker"),
         "Content-Type": "application/json",
         "Status": status,
         "OnCall": payload.get("oncall"),
@@ -106,32 +109,34 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
     }
 
 
-def _post_status(payload: dict, status: str, log_message: str) -> requests.Response:
-    """POST execution status to the Receiver with logs in the JSON body (truncated if too large)."""
+def _post_status(payload: dict, status: str, log_message: str) -> str:
+    """Costruisce il messaggio di stato (con log base64 e truncation) da inviare sulla coda di notifica."""
     headers = _build_status_headers(payload, status, log_message)
 
-    # Prepare a JSON body with logs moved from headers to body and safe truncation
     log_text = log_message or ""
     log_bytes = encode_logs(log_text)
     if len(log_bytes) > MAX_LOG_BODY_BYTES:
         log_bytes = log_bytes[:MAX_LOG_BODY_BYTES]
-    logging.info("POST execution status: %s", log_bytes)
-    try:
-        headers = {**headers, "Content-Type": "text/plain; charset=utf-8"}
-        resp = requests.post(RECEIVER_URL, headers=headers, data=log_bytes, timeout=10)
-        logging.info(
-            "[%s] POST Receiver %s -> status=%s, content-length=%s",
-            payload.get("exec_id"),
-            RECEIVER_URL,
-            getattr(resp, "status_code", "n/a"),
-            resp.headers.get("Content-Length"),
-        )
-        return resp
-    except requests.RequestException as err:
-        logging.error(
-            f"[{payload.get('exec_id')}] Failed to send status to Receiver: %s", err
-        )
-        raise
+
+    message = {
+        "requestedAt": payload.get("requestedAt"),
+        "id": headers.get("Id"),
+        "name": headers.get("Name"),
+        "exec_id": headers.get("ExecId"),
+        "runbook": headers.get("runbook"),
+        "run_args": headers.get("run_args"),
+        "worker": headers.get("Worker"),
+        "status": headers.get("Status"),
+        "oncall": headers.get("OnCall"),
+        "monitor_condition": headers.get("MonitorCondition"),
+        "severity": headers.get("Severity"),
+        "resource_info": headers.get("ResourceInfo"),
+        "routing_info": headers.get("RoutingInfo"),
+        "logs_b64": log_bytes.decode("utf-8"),
+        "content_type": "text/plain; charset=utf-8",
+        "sent_at": _format_requested_at(),
+    }
+    return json.dumps(message, ensure_ascii=False)
 
 
 def _github_auth_headers() -> list[dict]:
@@ -495,6 +500,7 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
         "oncall": req.headers.get("OnCall"),
         "monitor_condition": req.headers.get("MonitorCondition"),
         "severity": req.headers.get("Severity"),
+        "worker": req.headers.get("Worker"),
     }
     if "resource_info" in req.headers:
         info = req.headers.get("resource_info")
@@ -513,7 +519,14 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
 
 
 @app.queue_trigger(arg_name="msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION)
-def process_runbook(msg: func.QueueMessage) -> None:
+@app.queue_output(
+    arg_name="cloudo_notification_q",
+    queue_name=NOTIFICATION_QUEUE_NAME,
+    connection=STORAGE_CONNECTION,
+)
+def process_runbook(
+    msg: func.QueueMessage, cloudo_notification_q: func.Out[str]
+) -> None:
     payload = json.loads(msg.get_body().decode("utf-8"))
     logging.info(f"[{payload.get('exec_id')}] Job started: %s", payload)
 
@@ -526,7 +539,9 @@ def process_runbook(msg: func.QueueMessage) -> None:
         if any(item["id"] == payload.get("id") for item in items):
             log_msg = f"Execution {exec_id} already in progress, skipping"
             logging.info(f"[{payload.get('exec_id')}] {log_msg}")
-            _post_status(payload, status="skipped", log_message=log_msg)
+            cloudo_notification_q.set(
+                _post_status(payload, status="skipped", log_message=log_msg)
+            )
             return
 
     # Register the execution as "in progress"
@@ -537,18 +552,13 @@ def process_runbook(msg: func.QueueMessage) -> None:
             "name": payload.get("name"),
             "runbook": payload.get("runbook"),
             "run_args": payload.get("run_args"),
+            "worker": payload.get("worker"),
             "requestedAt": payload.get("requestedAt"),
             "startedAt": started_at,
             "status": "running",
         }
 
     try:
-        _post_status(
-            payload,
-            status="running",
-            log_message=f"Start execution: {payload.get('exec_id') or ''} for '{payload.get('runbook')}' at {started_at}",
-        )
-
         info_raw = payload.get("resource_info")
         info: dict = {}
         if isinstance(info_raw, str):
@@ -575,7 +585,9 @@ def process_runbook(msg: func.QueueMessage) -> None:
             except Exception as e:
                 # Report error and stop processing
                 err_msg = f"[{payload.get('exec_id')}] AKS login failed: {type(e).__name__}: {e}"
-                _post_status(payload, status="error", log_message=err_msg)
+                cloudo_notification_q.set(
+                    _post_status(payload, status="error", log_message=err_msg)
+                )
                 logging.error(f"{err_msg}")
                 return
 
@@ -600,33 +612,33 @@ def process_runbook(msg: func.QueueMessage) -> None:
             logging.error(e)
 
         if not stopped:
-            log_msg = f"Script succeeded. stdout: {result.stdout.strip()}"
+            log_msg = f"Script succeeded.\nstdout:\n{result.stdout.strip()}"
             logging.info(f"[{payload.get('exec_id')}] {log_msg}")
-            response = _post_status(payload, status="completed", log_message=log_msg)
+            cloudo_notification_q.set(
+                _post_status(payload, status="completed", log_message=log_msg)
+            )
             logging.info(
-                f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
-                getattr(response, "status_code", ""),
-                getattr(response, "text", ""),
+                f"[{payload.get('exec_id')}] Receiver response: status=queued",
             )
     except subprocess.CalledProcessError as e:
         error_message = f"Script failed. returncode={e.returncode} stderr={e.stderr.strip()} stdout={e.stdout.strip()}"
         try:
-            response = _post_status(payload, status="failed", log_message=error_message)
+            cloudo_notification_q.set(
+                _post_status(payload, status="failed", log_message=error_message)
+            )
             logging.error(
-                f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
-                getattr(response, "status_code", ""),
-                getattr(response, "text", ""),
+                f"[{payload.get('exec_id')}] Receiver response: status=queued",
             )
         finally:
             logging.error(f"[{payload.get('exec_id')}] {error_message}")
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
         try:
-            response = _post_status(payload, status="error", log_message=err_msg)
+            cloudo_notification_q.set(
+                _post_status(payload, status="error", log_message=err_msg)
+            )
             logging.error(
-                f"[{payload.get('exec_id')}] Receiver response: status=%s body=%r",
-                getattr(response, "status_code", ""),
-                getattr(response, "text", ""),
+                f"[{payload.get('exec_id')}] Receiver response: status=queued",
             )
         finally:
             logging.error(f"[{payload.get('exec_id')}] Unexpected error: %s", err_msg)
@@ -726,7 +738,14 @@ def list_processes(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.route(route="processes/stop", methods=[func.HttpMethod.DELETE], auth_level=AUTH)
-def stop_process(req: func.HttpRequest) -> func.HttpResponse:
+@app.queue_output(
+    arg_name="cloudo_notification_q",
+    queue_name=NOTIFICATION_QUEUE_NAME,
+    connection=STORAGE_CONNECTION,
+)
+def stop_process(
+    req: func.HttpRequest, cloudo_notification_q: func.Out[str]
+) -> func.HttpResponse:
     """
     Stop a job by exec_id.
     example: POST /api/processes/stop?exec_id=123
@@ -782,11 +801,14 @@ def stop_process(req: func.HttpRequest) -> func.HttpResponse:
                 "oncall": None,
                 "monitor_condition": None,
                 "severity": None,
+                "requestedAt": run_info.get("requestedAt"),
             }
-            _post_status(
-                payload,
-                status="stopped",
-                log_message=f"Execution {exec_id} stopped by request",
+            cloudo_notification_q.set(
+                _post_status(
+                    payload,
+                    status="stopped",
+                    log_message=f"Execution {exec_id} stopped by request",
+                )
             )
     except Exception:
         logging.warning("Unable to send status stop for %s", exec_id)
