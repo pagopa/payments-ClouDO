@@ -173,6 +173,11 @@ resource "azurerm_storage_queue" "this" {
   storage_account_name = module.storage_account.name
 }
 
+resource "azurerm_storage_queue" "notification" {
+  name                 = "cloudo-notification"
+  storage_account_name = module.storage_account.name
+}
+
 resource "azurerm_storage_table" "runbook_logger" {
   name                 = "RunbookLogs"
   storage_account_name = module.storage_account.name
