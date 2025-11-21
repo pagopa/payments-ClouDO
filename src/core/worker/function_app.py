@@ -110,7 +110,7 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
 
 
 def _post_status(payload: dict, status: str, log_message: str) -> str:
-    """Costruisce il messaggio di stato (con log base64 e truncation) da inviare sulla coda di notifica."""
+    """POST execution status to the Receiver with logs in the JSON body (truncated if too large)."""
     headers = _build_status_headers(payload, status, log_message)
 
     log_text = log_message or ""
