@@ -56,7 +56,7 @@ def load_routing_config() -> dict[str, Any]:
                 "then": [
                     {
                         "type": "opsgenie",
-                        "statusIn": ["failed", "error"],
+                        "statusIn": ["failed", "error", "routed"],
                     },
                     {"type": "slack"},
                 ],
@@ -143,7 +143,7 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
     status = (ctx.get("status") or "").strip().lower()
     # By default, only route final outcomes
     final_only = when.get("finalOnly", True)
-    final_statuses = {"succeeded", "error", "failed", "timeout"}
+    final_statuses = {"succeeded", "error", "failed", "timeout", "routed"}
     if final_only and status not in final_statuses:
         return False
     if "statusIn" in when:
@@ -390,7 +390,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
             )
 
     # Fallback only for final outcomes
-    final_statuses = {"error", "failed", "timeout"}
+    final_statuses = {"error", "failed", "timeout", "routed"}
     if status in final_statuses:
         # Preferisci token/team da routing_info se disponibili
         og_team = ri_team or (defaults.get("opsgenie", {}) or {}).get("team")

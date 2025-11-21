@@ -131,7 +131,6 @@ resource "azurerm_linux_function_app" "worker" {
     "QUEUE_NAME"                          = azurerm_storage_queue.this.name
     "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
     "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
-    "RECEIVER_URL"                        = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/Receiver?code=${data.azurerm_function_app_host_keys.orchestrator.default_function_key}"
     "GITHUB_REPO"                         = var.github_repo_info.repo_name
     "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
     "GITHUB_TOKEN"                        = var.worker_image.registry_password
@@ -171,6 +170,11 @@ module "storage_account" {
 
 resource "azurerm_storage_queue" "this" {
   name                 = "queue"
+  storage_account_name = module.storage_account.name
+}
+
+resource "azurerm_storage_queue" "notification" {
+  name                 = "cloudo-notification"
   storage_account_name = module.storage_account.name
 }
 

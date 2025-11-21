@@ -3,13 +3,12 @@ import json
 import logging
 import os
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
-from zoneinfo import ZoneInfo
 
 import azure.functions as func
+import detection
 import utils
 from escalation import (
     format_opsgenie_description,
@@ -17,6 +16,7 @@ from escalation import (
     send_slack_execution,
 )
 from frontend import render_template
+from models import Schema
 from requests import request
 
 app = func.FunctionApp()
@@ -37,6 +37,10 @@ except Exception:
 TABLE_NAME = "RunbookLogs"
 TABLE_SCHEMAS = "RunbookSchemas"
 STORAGE_CONN = "AzureWebJobsStorage"
+NOTIFICATION_QUEUE_NAME = os.environ.get(
+    "NOTIFICATION_QUEUE_NAME", "cloudo-notification"
+)
+STORAGE_CONNECTION = "AzureWebJobsStorage"
 MAX_TABLE_CHARS = int(os.getenv("MAX_TABLE_LOG_CHARS", "32000"))
 APPROVAL_TTL_MIN = int(os.getenv("APPROVAL_TTL_MIN", "60"))
 APPROVAL_SECRET = (os.getenv("APPROVAL_SECRET") or "").strip()
@@ -46,55 +50,6 @@ if os.getenv("FEATURE_DEV", "false").lower() != "true":
     AUTH = func.AuthLevel.FUNCTION
 else:
     AUTH = func.AuthLevel.ANONYMOUS
-
-
-def format_requested_at() -> str:
-    # Human-readable UTC timestamp for logs (e.g., 2025-09-15 12:34:56)
-    return (
-        datetime.now(timezone.utc)
-        .astimezone(ZoneInfo("Europe/Rome"))
-        .strftime("%Y-%m-%d %H:%M:%S")
-    )
-
-
-def today_partition_key() -> str:
-    # Compact UTC date used as PartitionKey (e.g., 20250915)
-    return (
-        datetime.now(timezone.utc)
-        .astimezone(ZoneInfo("Europe/Rome"))
-        .strftime("%Y%m%d")
-    )
-
-
-def utc_now_iso() -> str:
-    # ISO-like UTC timestamp used in health endpoint
-    return (
-        datetime.now(timezone.utc)
-        .astimezone(ZoneInfo("Europe/Rome"))
-        .strftime("%Y-%m-%dT%H:%M:%SZ")
-    )
-
-
-def utc_now_iso_seconds() -> str:
-    # Generate a UTC timestamp in ISO 8601 format with seconds precision
-    return (
-        datetime.now(timezone.utc)
-        .astimezone(ZoneInfo("Europe/Rome"))
-        .isoformat(timespec="seconds")
-    )
-
-
-def utc_partition_key() -> str:
-    # Generate a compact UTC date for PartitionKey (e.g., 20250915)
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
-
-
-def _truncate_for_table(
-    s: Optional[str], max_chars: int
-) -> Union[str, tuple[str, bool]]:
-    if not s:
-        return "", False
-    return s if len(s) <= max_chars else (s[:max_chars])
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -221,6 +176,12 @@ def decode_base64(data: str) -> str:
         return data
 
 
+def _encode_logs(text: str) -> bytes:
+    """Encode log text in base64 UTF-8."""
+    raw = (text or "").encode("utf-8", errors="replace")
+    return base64.b64encode(raw)
+
+
 def get_header(
     req: func.HttpRequest, name: str, default: Optional[str] = None
 ) -> Optional[str]:
@@ -285,6 +246,7 @@ def build_headers(
         "Content-Type": "application/json",
         "MonitorCondition": monitor_condition,
         "Severity": severity,
+        "Worker": schema.worker,
     }
     if resource_info is not None:
         headers["resource_info"] = json.dumps(resource_info, ensure_ascii=False)
@@ -311,6 +273,7 @@ def build_response_body(
                 "oncall": schema.oncall,
                 "runbook": schema.runbook,
                 "run_args": schema.run_args,
+                "worker": schema.worker,
                 "monitor_condition": schema.monitor_condition,
                 "severity": schema.severity,
             },
@@ -343,6 +306,7 @@ def build_log_entry(
     url: Optional[str],
     runbook: Optional[str],
     run_args: Optional[str],
+    worker: Optional[str],
     log_msg: Optional[str],
     oncall: Optional[str],
     monitor_condition: Optional[str],
@@ -363,6 +327,7 @@ def build_log_entry(
         "Url": url,
         "Runbook": runbook,
         "Run_Args": run_args,
+        "Worker": worker,
         "Log": log_msg,
         "OnCall": oncall,
         "MonitorCondition": monitor_condition,
@@ -373,46 +338,38 @@ def build_log_entry(
     }
 
 
-# =========================
-# Schema Model
-# =========================
+def _post_status(payload: dict, status: str, log_message: str) -> str:
+    """
+    Build the status message (with base64-encoded, truncated logs) to send
+    on the notification queue. Used by the orchestrator to talk to the Receiver.
+    """
+    exec_id = payload.get("exec_id")
+    log_text = log_message or ""
+    log_bytes = _encode_logs(log_text)
 
+    MAX_LOG_BODY_BYTES = 64 * 1024
+    if len(log_bytes) > MAX_LOG_BODY_BYTES:
+        log_bytes = log_bytes[:MAX_LOG_BODY_BYTES]
 
-@dataclass
-class Schema:
-    id: str
-    entity: Optional[dict] = None
-    name: Optional[str] = None
-    description: Optional[str] = None
-    url: Optional[str] = None
-    runbook: Optional[str] = None
-    run_args: Optional[str] = None
-    oncall: Optional[str] = "false"
-    monitor_condition: Optional[str] = None
-    severity: Optional[str] = None
-    require_approval: bool = False
-
-    def __post_init__(self):
-        if not self.id or not isinstance(self.id, str):
-            raise ValueError("Schema id must be a non-empty str")
-
-        if not self.entity:
-            raise ValueError(
-                "Entity not provided: use table input binding to inject the table entity"
-            )
-
-        e = self.entity
-        self.name = (e.get("name") or "").strip()
-        self.description = (e.get("description") or "").strip() or None
-        self.url = (e.get("url") or "").strip() or None
-        self.runbook = (e.get("runbook") or "").strip() or None
-        self.run_args = (e.get("run_args") or "").strip() or ""
-        self.oncall = (
-            str(e.get("oncall", e.get("oncall", "false"))).strip().lower() or "false"
-        )
-        self.require_approval = (
-            str(e.get("require_approval", "false")).strip().lower() == "true"
-        )
+    message = {
+        "requestedAt": payload.get("requestedAt"),
+        "id": payload.get("id"),
+        "name": payload.get("name"),
+        "exec_id": exec_id,
+        "runbook": payload.get("runbook"),
+        "run_args": payload.get("run_args"),
+        "worker": payload.get("worker"),
+        "status": status,
+        "oncall": payload.get("oncall"),
+        "monitor_condition": payload.get("monitor_condition"),
+        "severity": payload.get("severity"),
+        "resource_info": payload.get("resource_info"),
+        "routing_info": payload.get("routing_info"),
+        "logs_b64": log_bytes.decode("utf-8"),
+        "content_type": "text/plain; charset=utf-8",
+        "sent_at": utils.format_requested_at(),
+    }
+    return json.dumps(message, ensure_ascii=False)
 
 
 # =========================
@@ -431,8 +388,16 @@ class Schema:
     table_name=TABLE_SCHEMAS,
     connection=STORAGE_CONN,
 )
+@app.queue_output(
+    arg_name="cloudo_notification_q",
+    queue_name=NOTIFICATION_QUEUE_NAME,
+    connection=STORAGE_CONNECTION,
+)
 def Trigger(
-    req: func.HttpRequest, log_table: func.Out[str], entities: str
+    req: func.HttpRequest,
+    log_table: func.Out[str],
+    entities: str,
+    cloudo_notification_q: func.Out[str],
 ) -> func.HttpResponse:
     # Init payload variables to None
     resource_name = resource_group = resource_id = schema_id = monitor_condition = (
@@ -441,13 +406,13 @@ def Trigger(
     route_params = getattr(req, "route_params", {}) or {}
     logging.info(route_params)
     # Pre-compute logging fields
-    requested_at = format_requested_at()
-    partition_key = today_partition_key()
+    requested_at = utils.format_requested_at()
+    partition_key = utils.today_partition_key()
     exec_id = str(uuid.uuid4())
 
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
-        schema_id = utils.extract_schema_id_from_req(req)
+        schema_id = detection.extract_schema_id_from_req(req)
         resource_info = {}
         routing_info = {
             "team": route_params.get("team") or "",
@@ -472,7 +437,7 @@ def Trigger(
             job,
             monitor_condition,
             severity,
-        ) = utils.parse_resource_fields(req).values()
+        ) = detection.parse_resource_fields(req).values()
         resource_info = (
             {
                 "_raw": _raw,
@@ -500,18 +465,6 @@ def Trigger(
         }
         logging.info(f"[{exec_id}] Resource info: %s", resource_info)
 
-    if not schema_id:
-        return func.HttpResponse(
-            json.dumps(
-                {
-                    "error": "Unable to resolve schema_id (missing route id and alertId/schemaId in request body)"
-                },
-                ensure_ascii=False,
-            ),
-            status_code=400,
-            mimetype="application/json",
-        )
-
     # Parse bound table entities (binding returns a JSON array)
     try:
         parsed = json.loads(entities) if isinstance(entities, str) else entities
@@ -532,14 +485,54 @@ def Trigger(
     schema_entity = next((e for e in parsed if get_id(e) in schema_id), None)
 
     if not schema_entity:
-        return func.HttpResponse(
-            json.dumps(
-                {"error": f"Schema with Id '{schema_id}' not found in {TABLE_SCHEMAS}"},
-                ensure_ascii=False,
-            ),
-            status_code=404,
-            mimetype="application/json",
-        )
+        if monitor_condition and severity:
+            log_msg = (
+                "routed: Alarm detected\n\n"
+                f"{json.dumps(json.loads(resource_info.get("_raw")), ensure_ascii=False, indent=2) or "{}"}\n\n"
+                "ALARM -> ROUTED"
+            )
+            payload_for_status = {
+                "requestedAt": requested_at,
+                "id": resource_name or "NaN",
+                "name": resource_name or "",
+                "exec_id": exec_id,
+                "runbook": "NaN",
+                "run_args": "NaN",
+                "worker": "NaN",
+                "oncall": "NaN",
+                "monitor_condition": monitor_condition or "",
+                "severity": severity or "",
+                "resource_info": resource_info if "resource_info" in locals() else {},
+                "routing_info": routing_info if "routing_info" in locals() else {},
+            }
+            cloudo_notification_q.set(
+                _post_status(payload_for_status, status="routed", log_message=log_msg)
+            )
+            return func.HttpResponse(
+                json.dumps(
+                    {
+                        "routed": (
+                            "Alarm detected.\n "
+                            "(This alert has not a runbook to be executed) -> ROUTED"
+                        )
+                    },
+                    ensure_ascii=False,
+                ),
+                status_code=200,
+                mimetype="application/json",
+            )
+        else:
+            return func.HttpResponse(
+                json.dumps(
+                    {
+                        "ignored": f"No alert detected for {schema_id}",
+                    },
+                    ensure_ascii=False,
+                ),
+                status_code=204,
+                mimetype="application/json",
+            )
+
     logging.info(f"[{exec_id}] Getting schema entity id '{schema_entity}'")
     # Build domain model
     schema = Schema(
@@ -572,6 +565,7 @@ def Trigger(
                 "code": func_key or "",
                 "monitorCondition": monitor_condition,
                 "severity": severity,
+                "worker": schema.worker,
             }
             payload_b64 = _b64url_encode(
                 json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -593,6 +587,7 @@ def Trigger(
                 url=schema.url,
                 runbook=schema.runbook,
                 run_args=schema.run_args,
+                worker=schema.worker,
                 log_msg=json.dumps(
                     {
                         "message": "Awaiting approval",
@@ -627,15 +622,25 @@ def Trigger(
                                 "text": {
                                     "type": "mrkdwn",
                                     "text": (
-                                        f"*Approval required*\n"
+                                        f"*Approval required* <!here>\n"
                                         f"*Name:* {schema.name}\n"
                                         f"*Id:* `{schema.id}`\n"
                                         f"*ExecId:* `{exec_id}`\n"
                                         f"*Severity:* {severity or '-'}\n"
+                                        f"*Worker:* `{schema.worker or 'unknow(?)'}`\n"
                                         f"*Runbook:* `{schema.runbook or '-'}`\n"
                                         f"*Args:* ```{(schema.run_args or '').strip() or '-'}```"
                                     ),
                                 },
+                            },
+                            {
+                                "type": "section",
+                                "fields": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Worker:* {schema.worker or 'unknow(?)'}",
+                                    }
+                                ],
                             },
                             {
                                 "type": "actions",
@@ -707,6 +712,7 @@ def Trigger(
             url=schema.url,
             runbook=schema.runbook,
             run_args=schema.run_args,
+            worker=schema.worker,
             log_msg=api_body,
             oncall=schema.oncall,
             monitor_condition=monitor_condition,
@@ -733,7 +739,6 @@ def Trigger(
             decision = route_alert(ctx)
             logging.info(f"[{exec_id}] {decision}")
             status_emoji = "✅" if status_label == "succeeded" else "❌"
-            request_origin_url = resolve_caller_url(req)
             payload = {
                 "slack": {
                     "message": f"[{exec_id}] Status: {status_label}: {schema.name or ''}",
@@ -775,11 +780,7 @@ def Trigger(
                                 },
                                 {
                                     "type": "mrkdwn",
-                                    "text": f"*MonitorCondition:*\n{schema.monitor_condition or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Origin*:\n{request_origin_url}",
+                                    "text": f"*Origin*:\n{schema.worker or 'unknown(?)'}",
                                 },
                             ],
                         },
@@ -906,6 +907,7 @@ def Trigger(
             url=schema.url,
             runbook=schema.runbook,
             run_args=schema.run_args,
+            worker=schema.worker,
             log_msg=str(e),
             oncall=schema.oncall,
             monitor_condition=monitor_condition,
@@ -953,23 +955,6 @@ def approve(
     p = (req.params.get("p") or "").strip()
     s = (req.params.get("s") or "").strip()
     approver = (req.headers.get("X-Approver") or "unknown").strip()
-
-    # from urllib.parse import parse_qs
-    # form = {k: v[0] for k, v in parse_qs(req.get_body().decode()).items()}
-    # payload = json.loads(form["payload"])
-    # user_id = payload["user"]["id"]
-    # logging.info(user_id)
-    # SLACK_BOT_TOKEN = os.environ["SLACK_TOKEN"]  # bot token xoxb- con scope users:read.email
-    # r = request(
-    #     "https://slack.com/api/users.info",
-    #     headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
-    #     params={"user": user_id},
-    #     timeout=10,
-    # )
-    # data = r.json()
-    # logging.info(data)
-    # approver = (data.get("user") or {}).get("profile", {}).get("email")
-    # logging.info(approver)
 
     if not execId:
         return func.HttpResponse(
@@ -1029,8 +1014,8 @@ def approve(
 
     schema = Schema(id=schema_entity.get("id"), entity=schema_entity)
 
-    partition_key = today_partition_key()
-    requested_at = format_requested_at()
+    partition_key = utils.today_partition_key()
+    requested_at = utils.format_requested_at()
 
     # Execute once (pass embedded resource_info and propagate the function key if needed)
     try:
@@ -1060,6 +1045,7 @@ def approve(
             url=schema.url,
             runbook=schema.runbook,
             run_args=schema.run_args,
+            worker=schema.worker,
             log_msg=json.dumps(
                 {
                     "message": "Approved and executed",
@@ -1176,6 +1162,7 @@ def approve(
             url=schema.url,
             runbook=schema.runbook,
             run_args=schema.run_args,
+            worker=schema.worker,
             log_msg=f"Approve failed: {str(e)}",
             oncall=schema.oncall,
             monitor_condition=None,
@@ -1289,8 +1276,8 @@ def reject(
 
     schema = Schema(id=schema_entity.get("id"), entity=schema_entity)
 
-    partition_key = today_partition_key()
-    requested_at = format_requested_at()
+    partition_key = utils.today_partition_key()
+    requested_at = utils.format_requested_at()
 
     log_entity = build_log_entry(
         status="rejected",
@@ -1303,6 +1290,7 @@ def reject(
         url=schema.url,
         runbook=schema.runbook,
         run_args=schema.run_args,
+        worker=schema.worker,
         log_msg=json.dumps({"message": "Rejected by approver"}, ensure_ascii=False),
         oncall=schema.oncall,
         monitor_condition=monitor_condition,
@@ -1398,114 +1386,139 @@ def reject(
 # =========================
 
 
-@app.route(route="Receiver", methods=[func.HttpMethod.POST], auth_level=AUTH)
+@app.queue_trigger(
+    arg_name="msg", queue_name=NOTIFICATION_QUEUE_NAME, connection=STORAGE_CONNECTION
+)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
     connection=STORAGE_CONN,
 )
-def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpResponse:
-    # Validate required headers
-    required_headers = ["ExecId", "Status", "Name", "Id", "runbook"]
-    missing_headers = [h for h in required_headers if not get_header(req, h)]
-    if missing_headers:
-        return func.HttpResponse(
-            json.dumps(
-                {"error": f"Missing required headers: {missing_headers}"},
-                ensure_ascii=False,
-            ),
-            status_code=400,
-            mimetype="application/json",
-        )
+def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
+    # Il messaggio in coda è JSON prodotto da _post_status
+    try:
+        body = json.loads(msg.get_body().decode("utf-8"))
+    except Exception as e:
+        logging.error(f"[Receiver] Invalid queue message: {e}")
+        return
 
-    # Log only relevant and serializable headers for observability
+    # Validazione campi obbligatori
+    required_fields = ["exec_id", "status", "name", "id", "runbook"]
+    missing = [k for k in required_fields if not (body.get(k) or "").strip()]
+    if missing:
+        logging.warning(f"[{body.get('exec_id')}] Missing required fields: {missing}")
+        return
+
+    # Log di osservabilità
     logging.info(
-        f"[{get_header(req, 'ExecId')}] Receiver invoked",
+        f"[{body.get('exec_id')}] Receiver invoked",
         extra={
             "headers": {
-                "ExecId": get_header(req, "ExecId"),
-                "Status": get_header(req, "Status"),
-                "Name": get_header(req, "Name"),
-                "Id": get_header(req, "Id"),
-                "Runbook": get_header(req, "runbook"),
-                "Run_Args": get_header(req, "run_args"),
-                "OnCall": get_header(req, "OnCall"),
-                "MonitorCondition": get_header(req, "MonitorCondition"),
-                "Severity": get_header(req, "Severity"),
+                "ExecId": body.get("exec_id"),
+                "Status": body.get("status"),
+                "Name": body.get("name"),
+                "Id": body.get("id"),
+                "Runbook": body.get("runbook"),
+                "Run_Args": body.get("run_args"),
+                "OnCall": body.get("oncall"),
+                "MonitorCondition": body.get("monitor_condition"),
+                "Severity": body.get("severity"),
             }
         },
     )
 
-    # Precompute keys and timestamps for the log
-    requested_at = format_requested_at()
-    partition_key = today_partition_key()
-    row_key = str(uuid.uuid4())  # stable hex representation for RowKey
-    request_origin_url = resolve_caller_url(req)
-    status_label = resolve_status(get_header(req, "Status"))
+    requested_at = utils.format_requested_at()
+    partition_key = utils.today_partition_key()
+    row_key = str(uuid.uuid4())
+    request_origin_url = "queue://" + NOTIFICATION_QUEUE_NAME
+    status_label = resolve_status(body.get("status"))
 
-    # Build and write the log entity
+    logs_raw = ""
+    try:
+        logs_raw = decode_base64(body.get("logs_b64") or "")
+    except Exception:
+        logs_raw = ""
     log_entity = build_log_entry(
         status=status_label,
         partition_key=partition_key,
         row_key=row_key,
-        exec_id=get_header(req, "ExecId"),
+        exec_id=body.get("exec_id"),
         requested_at=requested_at,
-        name=get_header(req, "Name"),
-        schema_id=get_header(req, "Id"),
+        name=body.get("name"),
+        schema_id=body.get("id"),
         url=request_origin_url,
-        runbook=get_header(req, "runbook"),
-        run_args=get_header(req, "run_args"),
-        log_msg=_truncate_for_table(decode_base64(req.get_body()), MAX_TABLE_CHARS),
-        oncall=get_header(req, "OnCall"),
-        monitor_condition=get_header(req, "MonitorCondition"),
-        severity=get_header(req, "Severity"),
+        runbook=body.get("runbook"),
+        run_args=body.get("run_args"),
+        worker=body.get("worker"),
+        log_msg=utils._truncate_for_table(logs_raw, MAX_TABLE_CHARS),
+        oncall=body.get("oncall"),
+        monitor_condition=body.get("monitor_condition"),
+        severity=body.get("severity"),
     )
     log_table.set(json.dumps(log_entity, ensure_ascii=False))
 
     if status_label == "running":
-        return func.HttpResponse(
-            json.dumps({"message": "Annotation completed"}, ensure_ascii=False),
-            status_code=200,
-            mimetype="application/json",
-        )
-    resource_info = parse_header_json(req, "ResourceInfo")
-    routing_info = parse_header_json(req, "RoutingInfo")
-    resource_id = get_header(req, "Resource-Id") or (
+        logging.info(f"[{body.get('exec_id')}] Status 'running' logged to table")
+        return
+
+    resource_info = body.get("resource_info") or {}
+    routing_info = body.get("routing_info") or {}
+    if isinstance(resource_info, str):
+        try:
+            parsed = json.loads(resource_info)
+            resource_info = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            resource_info = {}
+    if isinstance(routing_info, str):
+        try:
+            parsed = json.loads(routing_info)
+            routing_info = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            routing_info = {}
+
+    resource_id = (body.get("resource_id") or "") or (
         resource_info.get("resource_id") or ""
     )
-    resource_group = get_header(req, "Resource-Group") or (
+    resource_group = (body.get("resource_group") or "") or (
         resource_info.get("resource_rg") or ""
     )
-    resource_name = get_header(req, "Resource-Name") or (
+    resource_name = (body.get("resource_name") or "") or (
         resource_info.get("resource_name") or ""
     )
-    namespace = get_header(req, "Namespace") or (
+    namespace = (body.get("namespace") or "") or (
         resource_info.get("aks_namespace") or ""
     )
 
-    # smart routing (replace direct Slack/Opsgenie paths)
     if route_alert and execute_actions:
-        exec_id = get_header(req, "ExecId")
+        exec_id = body.get("exec_id")
         ctx = {
             "resourceId": resource_id or None,
             "resourceGroup": resource_group or None,
             "resourceName": resource_name or None,
-            "alertRule": get_header(req, "Name"),
-            "severity": get_header(req, "Severity"),
+            "alertRule": body.get("name"),
+            "severity": body.get("severity"),
             "namespace": namespace or None,
-            "oncall": (get_header(req, "OnCall") or "").strip().lower(),
+            "oncall": (body.get("oncall") or "").strip().lower(),
             "status": status_label,
             "execId": exec_id,
-            "name": get_header(req, "Name"),
-            "id": get_header(req, "Id"),
-            "routing_info": routing_info,
+            "name": body.get("name"),
+            "id": body.get("id"),
+            "routing_info": routing_info,  # sempre dict qui
         }
         decision = route_alert(ctx)
-        logging.info(f"[{get_header(req, 'ExecId')}] {decision}")
-        status_emoji = "✅" if status_label == "succeeded" else "❌"
+        logging.info(f"[{exec_id}] {decision}")
+        status_emojis = {
+            "succeeded": "✅",
+            "running": "🏃",
+            "skipped": "⏭️",
+            "routed": "🧭",
+            "error": "❌",
+            "failed": "❌",
+        }
+        status_emoji = status_emojis.get(status_label, "ℹ️")
         payload = {
             "slack": {
-                "message": f"[{get_header(req, 'ExecId')}] Status: {status_label}: {get_header(req, 'Name')}",
+                "message": f"[{exec_id}] Status: {status_label}: {body.get('name')}",
                 "blocks": [
                     {
                         "type": "header",
@@ -1518,34 +1531,21 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                     {
                         "type": "section",
                         "fields": [
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Name:*\n{get_header(req, 'Name')}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Id:*\n{get_header(req, 'Id')}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*ExecId:*\n{get_header(req, 'ExecId')}",
-                            },
+                            {"type": "mrkdwn", "text": f"*Name:*\n{body.get('name')}"},
+                            {"type": "mrkdwn", "text": f"*Id:*\n{body.get('id')}"},
+                            {"type": "mrkdwn", "text": f"*ExecId:*\n{exec_id}"},
                             {"type": "mrkdwn", "text": f"*Status:*\n{status_label}"},
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Severity:*\n{get_header(req, 'Severity')}",
+                                "text": f"*Severity:*\n{body.get('severity')}",
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*OnCall:*\n{get_header(req, 'OnCall')}",
+                                "text": f"*OnCall:*\n{body.get('oncall')}",
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*MonitorCondition:*\n{get_header(req, 'MonitorCondition')}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Origin*:\n{request_origin_url}",
+                                "text": f"*Worker*:\n{body.get('worker') or 'unknown(?)'}",
                             },
                         ],
                     },
@@ -1554,11 +1554,11 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                         "fields": [
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Runbook:*\n{get_header(req, 'Runbook')}",
+                                "text": f"*Runbook:*\n{body.get('runbook')}",
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*MonitorCondition:*\n{get_header(req, 'MonitorCondition')}",
+                                "text": f"*MonitorCondition:*\n{body.get('monitor_condition')}",
                             },
                         ],
                     },
@@ -1566,14 +1566,14 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Run Args:*\n```{get_header(req, 'run_args')}```",
+                            "text": f"*Run Args:*\n```{body.get('run_args')}```",
                         },
                     },
                     {
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Logs (truncated):*\n```{decode_base64(req.get_body())[:1500]}```",
+                            "text": f"*Logs (truncated):*\n```{(logs_raw or '')[:1500]}```",
                         },
                     },
                     {
@@ -1581,7 +1581,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                         "elements": [
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Severity:* {get_header(req, 'Severity')}",
+                                "text": f"*Severity:* {body.get('severity')}",
                             },
                             {
                                 "type": "mrkdwn",
@@ -1597,27 +1597,28 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                 ],
             },
             "opsgenie": {
-                "message": f"[{get_header(req, 'Id')}] [{get_header(req, 'Severity')}] {get_header(req, 'Name')}",
-                "priority": f"P{int(str(get_header(req, 'Severity')).strip().lower().replace('sev', '') or '4') + 1}",
-                "alias": get_header(req, "Id"),
-                "monitor_condition": get_header(req, "MonitorCondition") or "",
+                "message": f"[{body.get('id')}] [{body.get('severity')}] {body.get('name')}",
+                "priority": f"P{int(str(body.get('severity') or '').strip().lower().replace('sev', '') or '4') + 1}",
+                "alias": body.get("id"),
+                "monitor_condition": body.get("monitor_condition") or "",
                 "details": {
-                    "Name": get_header(req, "Name"),
-                    "Id": get_header(req, "Id"),
+                    "Name": body.get("name"),
+                    "Id": body.get("id"),
                     "ExecId": exec_id,
-                    "Status": get_header(req, "Status"),
-                    "Runbook": get_header(req, "runbook"),
-                    "Run_Args": get_header(req, "run_args"),
-                    "OnCall": get_header(req, "OnCall"),
-                    "MonitorCondition": get_header(req, "MonitorCondition"),
-                    "Severity": get_header(req, "Severity"),
+                    "Status": body.get("status"),
+                    "Runbook": body.get("runbook"),
+                    "Run_Args": body.get("run_args"),
+                    "Worker": body.get("worker"),
+                    "OnCall": body.get("oncall"),
+                    "MonitorCondition": body.get("monitor_condition"),
+                    "Severity": body.get("severity"),
                     "Teams:": ", ".join(
                         dict.fromkeys(
                             a.team for a in decision.actions if getattr(a, "team", None)
                         )
                     ),
                 },
-                "description": f"{format_opsgenie_description(exec_id, resource_info, _truncate_for_table(decode_base64(req.get_body()), MAX_TABLE_CHARS or ''))}",
+                "description": f"{format_opsgenie_description(exec_id, resource_info, utils._truncate_for_table(logs_raw, MAX_TABLE_CHARS or ''))}",
             },
         }
         try:
@@ -1631,23 +1632,10 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
                     api_key=api_key, **kw
                 ),
             )
-            # Return a coherent JSON response
-            return func.HttpResponse(
-                json.dumps({"message": "Received Boss!"}, ensure_ascii=False),
-                status_code=200,
-                mimetype="application/json",
-            )
         except Exception as e:
             logging.error(f"[{exec_id}] smart routing failed: {e}")
     else:
         logging.warning("Routing module not available, keeping legacy notifications")
-
-        # Return a coherent JSON response
-        return func.HttpResponse(
-            json.dumps({"message": "Chiamo il reperibile!"}, ensure_ascii=False),
-            status_code=200,
-            mimetype="application/json",
-        )
 
 
 # =========================
@@ -1657,7 +1645,7 @@ def Receiver(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpRespon
 
 @app.route(route="healthz", auth_level=AUTH)
 def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
-    now_utc = utc_now_iso()
+    now_utc = utils.utc_now_iso()
     body = json.dumps(
         {
             "status": "ok",
