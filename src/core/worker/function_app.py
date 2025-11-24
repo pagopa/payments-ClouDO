@@ -518,6 +518,18 @@ def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
     return func.HttpResponse(body, status_code=202, mimetype="application/json")
 
 
+def _inspect_duplicate_runs(items: list[Any], payload: Any):
+    for item in items:
+        if (
+            item["name"] == payload.get("name")
+            and item["runbook"] == payload.get("runbook")
+            and item["run_args"] == payload.get("run_args")
+        ):
+            return True
+        else:
+            return False
+
+
 @app.queue_trigger(arg_name="msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION)
 @app.queue_output(
     arg_name="cloudo_notification_q",
@@ -536,7 +548,7 @@ def process_runbook(
     # Check if this execution is already running
     with _ACTIVE_LOCK:
         items = list(_ACTIVE_RUNS.values())
-        if any(item["id"] == payload.get("id") for item in items):
+        if _inspect_duplicate_runs(items, payload):
             log_msg = f"Execution {exec_id} already in progress, skipping"
             logging.info(f"[{payload.get('exec_id')}] {log_msg}")
             cloudo_notification_q.set(
@@ -555,6 +567,7 @@ def process_runbook(
             "worker": payload.get("worker"),
             "requestedAt": payload.get("requestedAt"),
             "startedAt": started_at,
+            "resource_info": payload.get("resource_info") or {},
             "status": "running",
         }
 
