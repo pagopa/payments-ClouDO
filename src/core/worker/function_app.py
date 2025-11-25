@@ -943,11 +943,15 @@ def heartbeat_trigger(HeartBeatTimer: func.TimerRequest) -> None:
 
     url = os.getenv("ORCHESTRATOR_URL", "http://orchestrator/api/workers/register")
     key = os.getenv("CLOUDO_SECRET_KEY")
+    if not os.getenv("FEATURE_DEV") == "true":
+        host = f"https://{os.getenv('WEBSITE_HOSTNAME', 'worker')}"
+    else:
+        host = f"http://{os.getenv('WEBSITE_HOSTNAME', 'worker')}"
 
     payload = {
         "capability": os.getenv("WORKER_CAPABILITY", "local"),
         "worker_id": os.getenv("WEBSITE_SITE_NAME", "azure-func-worker"),
-        "url": f"{os.getenv('WEBSITE_HOSTNAME', 'http://worker')}/api/Runbook",
+        "url": f"{host}/api/Runbook",
         "region": os.getenv("REGION_NAME", "azure-cloud"),
     }
 

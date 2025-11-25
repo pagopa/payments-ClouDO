@@ -813,22 +813,30 @@ def Trigger(
 
         # No approval required: call downstream runbook endpoint
         # Call downstream runbook endpoint
-        response = request(
-            "POST",
-            schema.url,
-            headers=build_headers(
-                schema,
-                exec_id,
-                resource_info,
-                routing_info,
-                monitor_condition,
-                severity,
-            ),
-        )
-        api_body = safe_json(response)
+        api_body = {}
+        status_code = 202
+        try:
+            response = request(
+                "POST",
+                schema.url,
+                headers=build_headers(
+                    schema,
+                    exec_id,
+                    resource_info,
+                    routing_info,
+                    monitor_condition,
+                    severity,
+                ),
+            )
+            status_code = response.status_code
+            api_body = safe_json(response)
+        except Exception as e:
+            logging.error(f"[{exec_id}] {e}")
+            status_code = 500
+            api_body = {"error": str(e)}
 
         # Status label for logs
-        status_label = "accepted" if response.status_code == 202 else "error"
+        status_label = "accepted" if status_code == 202 else "error"
 
         # Write log entry to the table
         start_log = build_log_entry(
@@ -1004,7 +1012,7 @@ def Trigger(
 
         # Return HTTP response mirroring downstream status
         response_body = build_response_body(
-            status_code=response.status_code,
+            status_code=status_code,
             schema=schema,
             partition_key=partition_key,
             exec_id=exec_id,
@@ -1012,7 +1020,7 @@ def Trigger(
         )
         return func.HttpResponse(
             response_body,
-            status_code=response.status_code,
+            status_code=status_code,
             mimetype="application/json",
         )
     except Exception as e:

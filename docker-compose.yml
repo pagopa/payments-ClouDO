@@ -84,7 +84,7 @@ services:
       - CLOUDO_SECRET_KEY=local
       - QUEUE_NAME=alert
       - WORKER_CAPABILITY=alert
-      - WEBSITE_HOSTNAME=http://worker-2
+      - WEBSITE_HOSTNAME=worker-2
     volumes:
       - ./src/runbooks:/work/runbooks:ro
       - ./src/core/worker:/home/site/wwwroot/

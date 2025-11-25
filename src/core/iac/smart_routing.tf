@@ -15,6 +15,7 @@ locals {
         r.when.alertRule != null ? { alertRule = r.when.alertRule } : {},
         r.when.oncall != null ? { oncall = r.when.oncall } : {},
         r.when.resourceGroupPrefix != null ? { resourceGroupPrefix = r.when.resourceGroupPrefix } : {},
+        r.when.isAlert != null ? { isAlert = r.when.isAlert } : {},
         r.when.severityMin != null ? { severityMin = r.when.severityMin } : {},
         r.when.severityMax != null ? { severityMax = r.when.severityMax } : {}
       )
