@@ -196,10 +196,7 @@ variable "routing_config" {
       }))
     }))
   })
-  default = {
-    teams = {}
-    rules = []
-  }
+  default = null
 }
 
 
