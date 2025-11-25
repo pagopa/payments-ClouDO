@@ -152,7 +152,7 @@ resource "azurerm_linux_function_app" "worker" {
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
     "ORCHESTRATOR_URL"                    = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/workers/register"
     "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
-    "WORKER_CAPABILITY"                   = each.value.capability
+    "WORKER_CAPABILITY"                   = each.value
   }
 
   virtual_network_subnet_id = try(module.function_snet.id, null)
