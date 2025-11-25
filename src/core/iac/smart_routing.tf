@@ -45,5 +45,7 @@ locals {
     rules = local.sanitized_rules
   }
 
-  routing_rules_json_from_object = jsonencode(local.routing_rules_clean)
+  routing_rules_json_from_object = (
+    length(local.sanitized_teams) == 0 && length(local.sanitized_rules) == 0
+  ) ? "" : jsonencode(local.routing_rules_clean)
 }
