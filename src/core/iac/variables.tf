@@ -112,9 +112,9 @@ variable "orchestrator_image" {
 variable "workers_cfg" {
   description = ""
   type = object({
-    workers = optional(map(object({
-      capability = string
-    })), {})
+    workers = optional(map(
+      string
+    ), {})
     image_name        = string
     image_tag         = string
     registry_url      = string
