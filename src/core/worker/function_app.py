@@ -485,11 +485,22 @@ def _run_script(
                 )
 
 
-@app.route(route="Runbook", auth_level=AUTH)
+@app.route(
+    route="Runbook", methods=[func.HttpMethod.POST], auth_level=func.AuthLevel.ANONYMOUS
+)
 @app.queue_output(
     arg_name="out_msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION
 )
 def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
+    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
+    request_key = req.headers.get("x-cloudo-key")
+
+    if not expected_key or request_key != expected_key:
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
+            status_code=401,
+            mimetype="application/json",
+        )
     payload = {
         "requestedAt": _format_requested_at(),
         "id": req.headers.get("Id"),
@@ -918,3 +929,31 @@ def dev_run_script(req: func.HttpRequest) -> func.HttpResponse:
             ensure_ascii=False,
         )
         return func.HttpResponse(body, status_code=500, mimetype="application/json")
+
+
+@app.schedule(
+    schedule="0 */1 * * * *",
+    arg_name="HeartBeatTimer",
+    run_on_startup=True,
+    use_monitor=False,
+)
+def heartbeat_trigger(HeartBeatTimer: func.TimerRequest) -> None:
+    if HeartBeatTimer.past_due:
+        logging.info("The timer is past due!")
+
+    url = os.getenv("ORCHESTRATOR_URL", "http://orchestrator/api/workers/register")
+    key = os.getenv("CLOUDO_SECRET_KEY")
+
+    payload = {
+        "capability": os.getenv("WORKER_CAPABILITY", "local"),
+        "worker_id": os.getenv("WEBSITE_SITE_NAME", "azure-func-worker"),
+        "url": f"{os.getenv('WEBSITE_HOSTNAME', 'http://worker')}/api/Runbook",
+        "region": os.getenv("REGION_NAME", "azure-cloud"),
+    }
+
+    try:
+        r = requests.post(url, json=payload, headers={"x-cloudo-key": key}, timeout=10)
+        logging.info(f"request {r.status_code}")
+        logging.info("Heartbeat sent successfully")
+    except Exception as e:
+        logging.error(f"Failed to send heartbeat: {e}")

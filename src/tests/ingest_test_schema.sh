@@ -58,7 +58,7 @@ az storage entity insert \
     id="11111111-2222-3333-4444-555555555555" \
     name=test-entity-3 \
     description='Hello Test 3!' \
-    worker=local \
+    worker=alert \
     runbook=check_sys.sh \
     url="http://$WORKER/api/Runbook" \
     oncall=false \

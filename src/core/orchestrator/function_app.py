@@ -4,12 +4,14 @@ import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from random import choice
 from typing import Any, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
 
 import azure.functions as func
 import detection
 import utils
+from azure.data.tables import TableClient, UpdateMode
 from escalation import (
     format_opsgenie_description,
     send_opsgenie_alert,
@@ -36,6 +38,7 @@ except Exception:
 # Centralize configuration strings to avoid "magic strings"
 TABLE_NAME = "RunbookLogs"
 TABLE_SCHEMAS = "RunbookSchemas"
+TABLE_WORKERS_SCHEMAS = "WorkersRegistry"
 STORAGE_CONN = "AzureWebJobsStorage"
 NOTIFICATION_QUEUE_NAME = os.environ.get(
     "NOTIFICATION_QUEUE_NAME", "cloudo-notification"
@@ -247,6 +250,7 @@ def build_headers(
         "MonitorCondition": monitor_condition,
         "Severity": severity,
         "Worker": schema.worker,
+        "x-cloudo-key": os.environ.get("CLOUDO_SECRET_KEY", ""),
     }
     if resource_info is not None:
         headers["resource_info"] = json.dumps(resource_info, ensure_ascii=False)
@@ -372,6 +376,69 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
     return json.dumps(message, ensure_ascii=False)
 
 
+def get_active_workers(
+    workers_list: list[dict], timeout_minutes: int = 5
+) -> list[dict]:
+    """
+    Filters a list of workers, returning only those that sent an heartbeat
+    within the last X minutes.
+
+    Args:
+        workers_list: List of dictionaries (Azure Table entities)
+        timeout_minutes: Tolerance threshold (default 5 min)
+
+    Returns:
+        List of active workers.
+    """
+    if not workers_list:
+        return []
+
+    active_workers = []
+    now = datetime.now(timezone.utc)
+    threshold = timedelta(minutes=timeout_minutes)
+
+    for w in workers_list:
+        # 1. Safely extract LastSeen
+        # Azure Table keys can be case-sensitive, check common variations
+        last_seen_raw = w.get("LastSeen") or w.get("lastSeen") or w.get("last_seen")
+
+        if not last_seen_raw:
+            logging.warning(f"Worker '{w.get('RowKey')}' skipped: missing LastSeen")
+            continue
+
+        try:
+            # 2. Date parsing
+            # Azure Table usually saves as ISO string (e.g., '2023-10-25T10:00:00.123Z')
+            # or as a native datetime object if using the Python SDK to read.
+            if isinstance(last_seen_raw, datetime):
+                last_seen_dt = last_seen_raw
+            else:
+                # Fix for 'Z' suffix which might be problematic for older fromisoformat versions
+                clean_str = str(last_seen_raw).replace("Z", "+00:00")
+                last_seen_dt = datetime.fromisoformat(clean_str)
+
+            # Ensure it is timezone-aware for comparison
+            if last_seen_dt.tzinfo is None:
+                last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
+
+            # 3. Comparison
+            elapsed = now - last_seen_dt
+
+            if elapsed <= threshold:
+                active_workers.append(w)
+            else:
+                # Log at INFO level (or DEBUG) to avoid cluttering logs
+                logging.info(
+                    f"Worker '{w.get('RowKey')}' is inactive (Last seen: {int(elapsed.total_seconds())}s ago)"
+                )
+
+        except Exception as e:
+            logging.warning(f"Error checking worker '{w.get('RowKey')}': {e}")
+            continue
+
+    return active_workers
+
+
 # =========================
 # HTTP Function: Trigger
 # =========================
@@ -388,6 +455,11 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
     table_name=TABLE_SCHEMAS,
     connection=STORAGE_CONN,
 )
+@app.table_input(
+    arg_name="workers",
+    table_name=TABLE_WORKERS_SCHEMAS,
+    connection=STORAGE_CONN,
+)
 @app.queue_output(
     arg_name="cloudo_notification_q",
     queue_name=NOTIFICATION_QUEUE_NAME,
@@ -397,6 +469,7 @@ def Trigger(
     req: func.HttpRequest,
     log_table: func.Out[str],
     entities: str,
+    workers: str,
     cloudo_notification_q: func.Out[str],
 ) -> func.HttpResponse:
     # Init payload variables to None
@@ -488,7 +561,7 @@ def Trigger(
         if monitor_condition and severity:
             log_msg = (
                 "routed: Alarm detected\n\n"
-                f"{json.dumps(json.loads(resource_info.get("_raw")), ensure_ascii=False, indent=2) or "{}"}\n\n"
+                f"{json.dumps(json.loads(resource_info.get('_raw')), ensure_ascii=False, indent=2) or '{}'}\n\n"
                 "ALARM -> ROUTED"
             )
             payload_for_status = {
@@ -573,7 +646,7 @@ def Trigger(
             sig = _sign_payload_b64(payload_b64)
 
             base = _strip_after_api(resolve_caller_url(req))
-            approve_url = f"{base}/api/approvals/{partition_key}/{exec_id}/approve?p={payload_b64}&s={sig}&code={func_key}"
+            approve_url = f"{base}/api/approvals/{partition_key}/{exec_id}/approve?p={payload_b64}&s={sig}&code={func_key}"  # TODO Refactor with key on headers
             reject_url = f"{base}/api/approvals/{partition_key}/{exec_id}/reject?p={payload_b64}&s={sig}&code={func_key}"
 
             pending_log = build_log_entry(
@@ -681,6 +754,63 @@ def Trigger(
             )
             return func.HttpResponse(body, status_code=202, mimetype="application/json")
 
+        # ---------------------------------------------------------
+        # DYNAMIC WORKER SELECTION (Binding Version)
+        # ---------------------------------------------------------
+        target_url = ""
+
+        # 1. Parse workers from binding string to list
+        try:
+            all_workers_list = (
+                json.loads(workers) if isinstance(workers, str) else workers
+            )
+        except Exception:
+            all_workers_list = []
+
+        if not isinstance(all_workers_list, list):
+            all_workers_list = []
+
+        # 2. Filter in memory: Capability (PartitionKey) matches Schema ID
+        # Note: PartitionKey identifies the skill/alert type
+        candidates = [
+            w for w in all_workers_list if w.get("PartitionKey") == schema.worker
+        ]
+
+        # 3. Filter Active using the helper function
+        valid_workers = get_active_workers(candidates, timeout_minutes=3)
+
+        if valid_workers:
+            # 4. Load Balancing (Random Strategy)
+            selected_worker = choice(valid_workers)
+            target_url = selected_worker.get("Url")
+            worker_name = selected_worker.get("RowKey")
+            logging.info(
+                f"[{exec_id}] 🎯 Dynamic Routing: Selected '{worker_name}' at {target_url}"
+            )
+        else:
+            # FALLBACK: Check static URL if no dynamic workers are alive
+            if schema.url:
+                logging.warning(
+                    f"[{exec_id}] ⚠️ No active dynamic workers found. Falling back to static Schema URL."
+                )
+                target_url = schema.url
+            else:
+                logging.error(
+                    f"[{exec_id}] ❌ No workers available and no static URL configured."
+                )
+                return func.HttpResponse(
+                    json.dumps(
+                        {"error": f"No active workers found for {schema.id}"},
+                        ensure_ascii=False,
+                    ),
+                    status_code=503,
+                    mimetype="application/json",
+                )
+
+        # Override schema.url so downstream logic uses the chosen worker
+        schema.url = target_url
+        # ---------------------------------------------------------
+
         # No approval required: call downstream runbook endpoint
         # Call downstream runbook endpoint
         response = request(
@@ -721,144 +851,144 @@ def Trigger(
         log_table.set(json.dumps(start_log, ensure_ascii=False))
 
         # smart routing notification (if routing module available)
-        if route_alert and execute_actions:
-            ctx = {
-                "resourceId": resource_id,
-                "resourceGroup": resource_group,
-                "resourceName": resource_name,
-                "alertRule": (schema.name or ""),
-                "severity": severity,
-                "namespace": ((resource_info or {}).get("namespace") or ""),
-                "oncall": schema.oncall,
-                "status": status_label,
-                "execId": exec_id,
-                "name": schema.name or "",
-                "id": schema.id,
-                "routing_info": routing_info,
-            }
-            decision = route_alert(ctx)
-            logging.info(f"[{exec_id}] {decision}")
-            status_emoji = "✅" if status_label == "succeeded" else "❌"
-            payload = {
-                "slack": {
-                    "message": f"[{exec_id}] Status: {status_label}: {schema.name or ''}",
-                    "blocks": [
-                        {
-                            "type": "header",
-                            "text": {
-                                "type": "plain_text",
-                                "text": f"Worker Notification {status_emoji}",
-                                "emoji": True,
+        if status_label != "accepted":
+            if route_alert and execute_actions:
+                ctx = {
+                    "resourceId": resource_id,
+                    "resourceGroup": resource_group,
+                    "resourceName": resource_name,
+                    "alertRule": (schema.name or ""),
+                    "severity": severity,
+                    "namespace": ((resource_info or {}).get("namespace") or ""),
+                    "oncall": schema.oncall,
+                    "status": status_label,
+                    "execId": exec_id,
+                    "name": schema.name or "",
+                    "id": schema.id,
+                    "routing_info": routing_info,
+                }
+                decision = route_alert(ctx)
+                logging.info(f"[{exec_id}] {decision}")
+                status_emoji = "✅" if status_label == "succeeded" else "❌"
+                payload = {
+                    "slack": {
+                        "message": f"[{exec_id}] Status: {status_label}: {schema.name or ''}",
+                        "blocks": [
+                            {
+                                "type": "header",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": f"Worker Notification {status_emoji}",
+                                    "emoji": True,
+                                },
                             },
-                        },
-                        {
-                            "type": "section",
-                            "fields": [
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Name:*\n{schema.name or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Id:*\n{schema.id or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*ExecId:*\n{exec_id or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Status:*\n{status_label}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Severity:*\n{severity or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*OnCall:*\n{schema.oncall or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Origin*:\n{schema.worker or 'unknown(?)'}",
-                                },
-                            ],
-                        },
-                        {
-                            "type": "section",
-                            "fields": [
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Runbook:*\n{schema.runbook or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*MonitorCondition:*\n{schema.monitor_condition or ''}",
-                                },
-                            ],
-                        },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": f"*Run Args:*\n```{schema.run_args or ''}```",
+                            {
+                                "type": "section",
+                                "fields": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Name:*\n{schema.name or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Id:*\n{schema.id or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*ExecId:*\n{exec_id or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Status:*\n{status_label}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Severity:*\n{severity or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*OnCall:*\n{schema.oncall or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Origin*:\n{schema.worker or 'unknown(?)'}",
+                                    },
+                                ],
                             },
-                        },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": f"*Logs (truncated):*\n```{(json.dumps(api_body, ensure_ascii=False) if isinstance(api_body, (dict, list)) else str(api_body))[:1500]}```",
+                            {
+                                "type": "section",
+                                "fields": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Runbook:*\n{schema.runbook or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*MonitorCondition:*\n{schema.monitor_condition or ''}",
+                                    },
+                                ],
                             },
-                        },
-                        {
-                            "type": "context",
-                            "elements": [
-                                {
+                            {
+                                "type": "section",
+                                "text": {
                                     "type": "mrkdwn",
-                                    "text": f"*Severity:* {severity}",
+                                    "text": f"*Run Args:*\n```{schema.run_args or ''}```",
                                 },
-                                {
+                            },
+                            {
+                                "type": "section",
+                                "text": {
                                     "type": "mrkdwn",
-                                    "text": f"*Teams:* {', '.join(dict.fromkeys(a.team for a in decision.actions if getattr(a, 'team', None)))}",
+                                    "text": f"*Logs (truncated):*\n```{(json.dumps(api_body, ensure_ascii=False) if isinstance(api_body, (dict, list)) else str(api_body))[:1500]}```",
                                 },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"Timestamp: <!date^{int(__import__('time').time())}^{{date_short}} {{time}}|now>",
-                                },
-                            ],
-                        },
-                        {"type": "divider"},
-                    ],
-                },
-                "opsgenie": {
-                    "message": f"[{schema.id}] [{severity}] {schema.name}",
-                    "priority": f"P{int(str(severity).strip().lower().replace('sev', '') or '4') + 1}",
-                    "alias": schema.id,
-                    "monitor_condition": monitor_condition or "",
-                    "details": {
-                        "Name": schema.name,
-                        "Id": schema.id,
-                        "ExecId": exec_id,
-                        "Status": status_label,
-                        "Runbook": schema.runbook,
-                        "Run_Args": schema.run_args,
-                        "OnCall": schema.oncall,
-                        "MonitorCondition": monitor_condition,
-                        "Severity": severity,
-                        "Teams:": ", ".join(
-                            dict.fromkeys(
-                                a.team
-                                for a in decision.actions
-                                if getattr(a, "team", None)
-                            )
-                        ),
+                            },
+                            {
+                                "type": "context",
+                                "elements": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Severity:* {severity}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Teams:* {', '.join(dict.fromkeys(a.team for a in decision.actions if getattr(a, 'team', None)))}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"Timestamp: <!date^{int(__import__('time').time())}^{{date_short}} {{time}}|now>",
+                                    },
+                                ],
+                            },
+                            {"type": "divider"},
+                        ],
                     },
-                    "description": f"{format_opsgenie_description(exec_id, resource_info, api_body)}",
-                },
-            }
-            try:
-                if status_label != "accepted":
+                    "opsgenie": {
+                        "message": f"[{schema.id}] [{severity}] {schema.name}",
+                        "priority": f"P{int(str(severity).strip().lower().replace('sev', '') or '4') + 1}",
+                        "alias": schema.id,
+                        "monitor_condition": monitor_condition or "",
+                        "details": {
+                            "Name": schema.name,
+                            "Id": schema.id,
+                            "ExecId": exec_id,
+                            "Status": status_label,
+                            "Runbook": schema.runbook,
+                            "Run_Args": schema.run_args,
+                            "OnCall": schema.oncall,
+                            "MonitorCondition": monitor_condition,
+                            "Severity": severity,
+                            "Teams:": ", ".join(
+                                dict.fromkeys(
+                                    a.team
+                                    for a in decision.actions
+                                    if getattr(a, "team", None)
+                                )
+                            ),
+                        },
+                        "description": f"{format_opsgenie_description(exec_id, resource_info, api_body)}",
+                    },
+                }
+                try:
                     execute_actions(
                         decision,
                         payload,
@@ -869,8 +999,8 @@ def Trigger(
                             api_key=api_key, **kw
                         ),
                     )
-            except Exception as e:
-                logging.error(f"[{exec_id}] smart routing failed: {e}")
+                except Exception as e:
+                    logging.error(f"[{exec_id}] smart routing failed: {e}")
 
         # Return HTTP response mirroring downstream status
         response_body = build_response_body(
@@ -1016,14 +1146,14 @@ def approve(
 
     partition_key = utils.today_partition_key()
     requested_at = utils.format_requested_at()
-
+    # TODO Workers dispatch
     # Execute once (pass embedded resource_info and propagate the function key if needed)
     try:
         headers = build_headers(
             schema, execId, resource_info, routing_info, monitor_condition, severity
         )
         if func_key:
-            headers["x-functions-key"] = func_key
+            headers["x-cloudo-key"] = func_key
         response = request(
             "POST",
             schema.url,
@@ -1932,66 +2062,164 @@ def logs_query(req: func.HttpRequest, rows: str) -> func.HttpResponse:
         )
 
 
-@app.route(route="ui/{*path}", auth_level=AUTH)
-@app.table_input(
-    arg_name="entities",
-    table_name=TABLE_SCHEMAS,
-    connection=STORAGE_CONN,
+# @app.route(route="ui/{*path}", auth_level=AUTH)
+# @app.table_input(
+#     arg_name="entities",
+#     table_name=TABLE_SCHEMAS,
+#     connection=STORAGE_CONN,
+# )
+# def ui(req: func.HttpRequest, entities: str) -> func.HttpResponse:
+#     # Parse bound table entities (binding returns a JSON array)
+#     urls = []
+#     runbooks = []
+#     try:
+#         parsed = json.loads(entities) if isinstance(entities, str) else entities
+#
+#         for e in parsed:
+#             urls.append(e.get("url"))
+#             runbooks.append(e.get("runbook"))
+#
+#         urls = set(urls)
+#         runbooks = set(runbooks)
+#
+#         logging.info(f"urls: {urls}, runbooks: {runbooks}")
+#     except Exception:
+#         parsed = None
+#
+#     logging.info(f"ui parsed: {parsed}")
+#
+#     rel = (req.route_params.get("path") or "index.html").strip("/")
+#     root = os.path.join(os.getcwd(), "fe")
+#     file_path = os.path.normpath(os.path.join(root, rel))
+#     if not file_path.startswith(root) or not os.path.exists(file_path):
+#         file_path = os.path.join(root, "index.html")  # fallback SPA/HTML
+#     try:
+#         with open(file_path, "rb"):
+#             data = render_template(
+#                 "index.html",
+#                 {
+#                     "orchestrator_uri": req.url,
+#                     "urls": urls,
+#                     "runbooks": runbooks,
+#                 },
+#             )
+#         if file_path.endswith(".html"):
+#             mime = "text/html; charset=utf-8"
+#         elif file_path.endswith(".css"):
+#             mime = "text/css; charset=utf-8"
+#         elif file_path.endswith(".js"):
+#             mime = "application/javascript; charset=utf-8"
+#         elif file_path.endswith(".json"):
+#             mime = "application/json; charset=utf-8"
+#         elif file_path.endswith(".png"):
+#             mime = "image/png"
+#         elif file_path.endswith(".jpg") or file_path.endswith(".jpeg"):
+#             mime = "image/jpeg"
+#         elif file_path.endswith(".svg"):
+#             mime = "image/svg+xml"
+#         else:
+#             mime = "application/octet-stream"
+#         return func.HttpResponse(
+#             data, status_code=200, mimetype=mime, headers={"Cache-Control": "no-store"}
+#         )
+#     except Exception as e:
+#         logging.error("UI serving error: %s", e)
+#         return func.HttpResponse("Not found", status_code=404)
+
+
+@app.route(
+    route="workers/register",
+    methods=[func.HttpMethod.POST],
+    auth_level=func.AuthLevel.ANONYMOUS,
 )
-def ui(req: func.HttpRequest, entities: str) -> func.HttpResponse:
-    # Parse bound table entities (binding returns a JSON array)
-    urls = []
-    runbooks = []
-    try:
-        parsed = json.loads(entities) if isinstance(entities, str) else entities
+def register_worker(req: func.HttpRequest) -> func.HttpResponse:
+    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
+    request_key = req.headers.get("x-cloudo-key")
 
-        for e in parsed:
-            urls.append(e.get("url"))
-            runbooks.append(e.get("runbook"))
-
-        urls = set(urls)
-        runbooks = set(runbooks)
-
-        logging.info(f"urls: {urls}, runbooks: {runbooks}")
-    except Exception:
-        parsed = None
-
-    logging.info(f"ui parsed: {parsed}")
-
-    rel = (req.route_params.get("path") or "index.html").strip("/")
-    root = os.path.join(os.getcwd(), "fe")
-    file_path = os.path.normpath(os.path.join(root, rel))
-    if not file_path.startswith(root) or not os.path.exists(file_path):
-        file_path = os.path.join(root, "index.html")  # fallback SPA/HTML
-    try:
-        with open(file_path, "rb"):
-            data = render_template(
-                "index.html",
-                {
-                    "orchestrator_uri": req.url,
-                    "urls": urls,
-                    "runbooks": runbooks,
-                },
-            )
-        if file_path.endswith(".html"):
-            mime = "text/html; charset=utf-8"
-        elif file_path.endswith(".css"):
-            mime = "text/css; charset=utf-8"
-        elif file_path.endswith(".js"):
-            mime = "application/javascript; charset=utf-8"
-        elif file_path.endswith(".json"):
-            mime = "application/json; charset=utf-8"
-        elif file_path.endswith(".png"):
-            mime = "image/png"
-        elif file_path.endswith(".jpg") or file_path.endswith(".jpeg"):
-            mime = "image/jpeg"
-        elif file_path.endswith(".svg"):
-            mime = "image/svg+xml"
-        else:
-            mime = "application/octet-stream"
+    if not expected_key or request_key != expected_key:
         return func.HttpResponse(
-            data, status_code=200, mimetype=mime, headers={"Cache-Control": "no-store"}
+            json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
+            status_code=401,
+            mimetype="application/json",
         )
+
+    try:
+        body = req.get_json()
+
+        capability = (body.get("capability") or body.get("id") or "").strip()
+        worker_instance_id = (body.get("worker_id") or "").strip()
+        worker_url = body.get("url")
+
+        if not capability or not worker_url or not worker_instance_id:
+            return func.HttpResponse(
+                "Missing capability, worker_id or url", status_code=400
+            )
+
+        conn_str = os.environ.get("AzureWebJobsStorage")
+        table_client = TableClient.from_connection_string(
+            conn_str, table_name="WorkersRegistry"
+        )
+
+        entity = {
+            "PartitionKey": capability,
+            "RowKey": worker_instance_id,
+            "Url": worker_url,
+            "LastSeen": utils.utc_now_iso(),
+            "Region": body.get("region", "default"),
+            "Load": body.get("load", 0),
+        }
+
+        table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
+
+        return func.HttpResponse(
+            json.dumps({"status": "registered", "timestamp": entity["LastSeen"]}),
+            status_code=200,
+        )
+
     except Exception as e:
-        logging.error("UI serving error: %s", e)
-        return func.HttpResponse("Not found", status_code=404)
+        logging.error(f"Register failed: {e}")
+        return func.HttpResponse(str(e), status_code=500)
+
+
+@app.schedule(
+    schedule="0 */1 * * * *",
+    arg_name="cleanupTimer",
+    run_on_startup=False,
+    use_monitor=False,
+)
+def worker_cleanup(cleanupTimer: func.TimerRequest) -> None:
+    """
+    Garbage Collector: Cleanup old workers where LastSeen is > 5 minutes.
+    """
+    conn_str = os.environ.get("AzureWebJobsStorage")
+    table_client = TableClient.from_connection_string(
+        conn_str, table_name="WorkersRegistry"
+    )
+
+    now_str = utils.utc_now_iso()
+    now_dt = datetime.fromisoformat(now_str.replace("Z", "+00:00"))
+    limit_time = now_dt - timedelta(minutes=5)
+    limit_iso = limit_time.isoformat()
+    logging.info(f"[Cleanup] Cleaning up {limit_iso}")
+
+    filter_query = f"LastSeen lt '{limit_iso}'"
+
+    logging.info(f"[Cleanup] Searching for zombies older than {limit_iso}...")
+
+    try:
+        dead_workers = table_client.query_entities(query_filter=filter_query)
+
+        count = 0
+        for w in dead_workers:
+            table_client.delete_entity(
+                partition_key=w["PartitionKey"], row_key=w["RowKey"]
+            )
+            logging.info(
+                f"[Cleanup] Deleted zombie: {w['RowKey']} (Partition: {w['PartitionKey']})"
+            )
+            count += 1
+
+        logging.info(f"[Cleanup] Completed. Removed {count} workers.")
+
+    except Exception as e:
+        logging.error(f"[Cleanup] Failed: {e}")

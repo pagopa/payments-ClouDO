@@ -20,6 +20,11 @@ module "function_snet" {
   idh_resource_tier = "app_service"
 }
 
+resource "random_password" "internal_auth_token" {
+  length  = 32
+  special = false
+}
+
 # Service Plan
 resource "azurerm_service_plan" "this" {
   name                = "${var.prefix}-cloudo-service-plan"
@@ -63,9 +68,6 @@ resource "azurerm_linux_function_app" "orchestrator" {
     application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
     always_on                              = true
     http2_enabled                          = true
-
-    # health_check_eviction_time_in_min = 2
-    # health_check_path = "/healthz"
   }
   app_settings = merge(
     {
@@ -79,6 +81,7 @@ resource "azurerm_linux_function_app" "orchestrator" {
       "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
       "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
       "APPROVAL_SECRET"                     = var.approval_runbook.secret
+      "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
     },
     local.orchestrator_smart_routing_app_settings
   )
@@ -124,8 +127,6 @@ resource "azurerm_linux_function_app" "worker" {
     application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
     always_on                              = true
     http2_enabled                          = true
-    # health_check_eviction_time_in_min = 2
-    # health_check_path = "/healthz"
   }
   app_settings = {
     "QUEUE_NAME"                          = azurerm_storage_queue.this.name
@@ -143,6 +144,9 @@ resource "azurerm_linux_function_app" "worker" {
     "FUNCTIONS_WORKER_RUNTIME"            = "python"
     "DOTNET_RUNNING_IN_CONTAINER"         = true
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
+    "ORCHESTRATOR_URL"                    = "${azurerm_linux_function_app.orchestrator.default_hostname}/api/workers/register"
+    "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
+    "WORKER_CAPABILITY"                   = "azure"
   }
 
   virtual_network_subnet_id = try(module.function_snet.id, null)
@@ -188,6 +192,11 @@ resource "azurerm_storage_table" "runbook_schemas" {
   storage_account_name = module.storage_account.name
 }
 
+resource "azurerm_storage_table" "workers_registry" {
+  name                 = "WorkersRegistry"
+  storage_account_name = module.storage_account.name
+}
+
 resource "azurerm_storage_table_entity" "schemas" {
   for_each = {
     for i in local.entity_executor : i.entity.id => i
@@ -200,8 +209,8 @@ resource "azurerm_storage_table_entity" "schemas" {
 
   entity = merge(
     each.value.entity,
-    {
-      "url" : "https://${azurerm_linux_function_app.worker.default_hostname}/api/${each.value.entity.worker}?code=${data.azurerm_function_app_host_keys.worker.default_function_key}"
-    }
+    # {
+    #   "url" : "https://${azurerm_linux_function_app.worker.default_hostname}/api/${each.value.entity.worker}?code=${data.azurerm_function_app_host_keys.worker.default_function_key}"
+    # }
   )
 }

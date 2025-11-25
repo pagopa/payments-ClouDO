@@ -18,13 +18,6 @@ data "azurerm_function_app_host_keys" "orchestrator" {
   depends_on = [azurerm_linux_function_app.orchestrator]
 }
 
-data "azurerm_function_app_host_keys" "worker" {
-  name                = azurerm_linux_function_app.worker.name
-  resource_group_name = azurerm_linux_function_app.worker.resource_group_name
-
-  depends_on = [azurerm_linux_function_app.worker]
-}
-
 # Random UUID for RowKey
 resource "random_uuid" "uuid" {
   for_each = {
