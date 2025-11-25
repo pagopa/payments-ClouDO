@@ -24,7 +24,6 @@ az storage entity insert \
     description='Hello Test!' \
     worker=local \
     runbook=check_sys.sh \
-    url="http://$WORKER/api/Runbook" \
     oncall=false \
     require_approval=true \
   --if-exists merge \
@@ -43,7 +42,6 @@ az storage entity insert \
     worker=local \
     runbook=printenv.sh \
     run_args="" \
-    url="http://$WORKER/api/Runbook" \
     oncall=true \
   --if-exists merge \
   --connection-string "${CONN_STR}" \
@@ -60,7 +58,6 @@ az storage entity insert \
     description='Hello Test 3!' \
     worker=alert \
     runbook=check_sys.sh \
-    url="http://$WORKER/api/Runbook" \
     oncall=false \
   --if-exists merge \
   --connection-string "${CONN_STR}" \

@@ -4,7 +4,6 @@ import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from random import choice
 from typing import Any, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
 
@@ -20,6 +19,7 @@ from escalation import (
 from frontend import render_template
 from models import Schema
 from requests import request
+from worker_routing import worker_routing
 
 app = func.FunctionApp()
 
@@ -376,69 +376,6 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
     return json.dumps(message, ensure_ascii=False)
 
 
-def get_active_workers(
-    workers_list: list[dict], timeout_minutes: int = 5
-) -> list[dict]:
-    """
-    Filters a list of workers, returning only those that sent an heartbeat
-    within the last X minutes.
-
-    Args:
-        workers_list: List of dictionaries (Azure Table entities)
-        timeout_minutes: Tolerance threshold (default 5 min)
-
-    Returns:
-        List of active workers.
-    """
-    if not workers_list:
-        return []
-
-    active_workers = []
-    now = datetime.now(timezone.utc)
-    threshold = timedelta(minutes=timeout_minutes)
-
-    for w in workers_list:
-        # 1. Safely extract LastSeen
-        # Azure Table keys can be case-sensitive, check common variations
-        last_seen_raw = w.get("LastSeen") or w.get("lastSeen") or w.get("last_seen")
-
-        if not last_seen_raw:
-            logging.warning(f"Worker '{w.get('RowKey')}' skipped: missing LastSeen")
-            continue
-
-        try:
-            # 2. Date parsing
-            # Azure Table usually saves as ISO string (e.g., '2023-10-25T10:00:00.123Z')
-            # or as a native datetime object if using the Python SDK to read.
-            if isinstance(last_seen_raw, datetime):
-                last_seen_dt = last_seen_raw
-            else:
-                # Fix for 'Z' suffix which might be problematic for older fromisoformat versions
-                clean_str = str(last_seen_raw).replace("Z", "+00:00")
-                last_seen_dt = datetime.fromisoformat(clean_str)
-
-            # Ensure it is timezone-aware for comparison
-            if last_seen_dt.tzinfo is None:
-                last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
-
-            # 3. Comparison
-            elapsed = now - last_seen_dt
-
-            if elapsed <= threshold:
-                active_workers.append(w)
-            else:
-                # Log at INFO level (or DEBUG) to avoid cluttering logs
-                logging.info(
-                    f"Worker '{w.get('RowKey')}' is inactive (Last seen: {int(elapsed.total_seconds())}s ago)"
-                )
-
-        except Exception as e:
-            logging.warning(f"Error checking worker '{w.get('RowKey')}': {e}")
-            continue
-
-    return active_workers
-
-
 # =========================
 # HTTP Function: Trigger
 # =========================
@@ -646,7 +583,7 @@ def Trigger(
             sig = _sign_payload_b64(payload_b64)
 
             base = _strip_after_api(resolve_caller_url(req))
-            approve_url = f"{base}/api/approvals/{partition_key}/{exec_id}/approve?p={payload_b64}&s={sig}&code={func_key}"  # TODO Refactor with key on headers
+            approve_url = f"{base}/api/approvals/{partition_key}/{exec_id}/approve?p={payload_b64}&s={sig}&code={func_key}"
             reject_url = f"{base}/api/approvals/{partition_key}/{exec_id}/reject?p={payload_b64}&s={sig}&code={func_key}"
 
             pending_log = build_log_entry(
@@ -757,58 +694,17 @@ def Trigger(
         # ---------------------------------------------------------
         # DYNAMIC WORKER SELECTION (Binding Version)
         # ---------------------------------------------------------
-        target_url = ""
+        target_url = worker_routing(workers, schema)
+        logging.info(f"[{exec_id}] Target URL: {target_url}")
+        if target_url:
+            logging.info(f"[{exec_id}] 🎯 Dynamic Routing: Selected {target_url}")
 
-        # 1. Parse workers from binding string to list
-        try:
-            all_workers_list = (
-                json.loads(workers) if isinstance(workers, str) else workers
-            )
-        except Exception:
-            all_workers_list = []
-
-        if not isinstance(all_workers_list, list):
-            all_workers_list = []
-
-        # 2. Filter in memory: Capability (PartitionKey) matches Schema ID
-        # Note: PartitionKey identifies the skill/alert type
-        candidates = [
-            w for w in all_workers_list if w.get("PartitionKey") == schema.worker
-        ]
-
-        # 3. Filter Active using the helper function
-        valid_workers = get_active_workers(candidates, timeout_minutes=3)
-
-        if valid_workers:
-            # 4. Load Balancing (Random Strategy)
-            selected_worker = choice(valid_workers)
-            target_url = selected_worker.get("Url")
-            worker_name = selected_worker.get("RowKey")
-            logging.info(
-                f"[{exec_id}] 🎯 Dynamic Routing: Selected '{worker_name}' at {target_url}"
-            )
+            # Override schema.url so downstream logic uses the chosen worker
+            schema.url = target_url
         else:
-            # FALLBACK: Check static URL if no dynamic workers are alive
-            if schema.url:
-                logging.warning(
-                    f"[{exec_id}] ⚠️ No active dynamic workers found. Falling back to static Schema URL."
-                )
-                target_url = schema.url
-            else:
-                logging.error(
-                    f"[{exec_id}] ❌ No workers available and no static URL configured."
-                )
-                return func.HttpResponse(
-                    json.dumps(
-                        {"error": f"No active workers found for {schema.id}"},
-                        ensure_ascii=False,
-                    ),
-                    status_code=503,
-                    mimetype="application/json",
-                )
-
-        # Override schema.url so downstream logic uses the chosen worker
-        schema.url = target_url
+            logging.error(
+                f"[{exec_id}] ❌ No workers ({schema.worker}) available and no static URL configured for {schema.id}"
+            )
         # ---------------------------------------------------------
 
         # No approval required: call downstream runbook endpoint
@@ -1079,13 +975,22 @@ def Trigger(
     connection=STORAGE_CONN,
 )
 @app.table_input(
+    arg_name="workers",
+    table_name=TABLE_WORKERS_SCHEMAS,
+    connection=STORAGE_CONN,
+)
+@app.table_input(
     arg_name="today_logs",
     table_name=TABLE_NAME,
     partition_key="{partitionKey}",
     connection=STORAGE_CONN,
 )
 def approve(
-    req: func.HttpRequest, log_table: func.Out[str], schemas: str, today_logs: str
+    req: func.HttpRequest,
+    log_table: func.Out[str],
+    schemas: str,
+    today_logs: str,
+    workers: str,
 ) -> func.HttpResponse:
     route_params = getattr(req, "route_params", {}) or {}
     execId = (route_params.get("execId") or "").strip()
@@ -1154,7 +1059,23 @@ def approve(
 
     partition_key = utils.today_partition_key()
     requested_at = utils.format_requested_at()
-    # TODO Workers dispatch
+
+    # ---------------------------------------------------------
+    # DYNAMIC WORKER SELECTION (Binding Version)
+    # ---------------------------------------------------------
+    target_url = worker_routing(workers, schema)
+
+    if target_url:
+        logging.info(f"[{execId}] 🎯 Dynamic Routing: Selected {target_url}")
+
+        # Override schema.url so downstream logic uses the chosen worker
+        schema.url = target_url
+    else:
+        logging.error(
+            f"[{execId}] ❌ No workers ({schema.worker}) available and no static URL configured for {schema.id}"
+        )
+    # ---------------------------------------------------------
+
     # Execute once (pass embedded resource_info and propagate the function key if needed)
     try:
         headers = build_headers(
