@@ -8,28 +8,9 @@ from typing import Any, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
 
 import azure.functions as func
-import detection
-import utils
-from azure.data.tables import TableClient, UpdateMode
-from escalation import (
-    format_opsgenie_description,
-    send_opsgenie_alert,
-    send_slack_execution,
-)
-from frontend import render_template
 from models import Schema
-from requests import request
-from worker_routing import worker_routing
 
 app = func.FunctionApp()
-
-try:
-    from smart_routing import execute_actions  # type: ignore
-    from smart_routing import resolve_opsgenie_apikey, resolve_slack_token, route_alert
-except Exception:
-    route_alert = None  # fallback if module missing
-    execute_actions = None
-
 
 # =========================
 # Constants and Utilities
@@ -131,6 +112,8 @@ def _only_pending_for_exec(rows: list[dict], exec_id: str) -> bool:
 def _notify_slack_decision(
     exec_id: str, schema_id: str, decision: str, approver: str, extra: str = ""
 ) -> None:
+    from escalation import send_slack_execution
+
     token = (os.environ.get("SLACK_TOKEN") or "").strip()
     channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
     if not token:
@@ -347,6 +330,8 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
     Build the status message (with base64-encoded, truncated logs) to send
     on the notification queue. Used by the orchestrator to talk to the Receiver.
     """
+    from utils import format_requested_at
+
     exec_id = payload.get("exec_id")
     log_text = log_message or ""
     log_bytes = _encode_logs(log_text)
@@ -371,7 +356,7 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
         "routing_info": payload.get("routing_info"),
         "logs_b64": log_bytes.decode("utf-8"),
         "content_type": "text/plain; charset=utf-8",
-        "sent_at": utils.format_requested_at(),
+        "sent_at": format_requested_at(),
     }
     return json.dumps(message, ensure_ascii=False)
 
@@ -409,6 +394,33 @@ def Trigger(
     workers: str,
     cloudo_notification_q: func.Out[str],
 ) -> func.HttpResponse:
+    import detection
+    import utils
+    from escalation import (
+        format_opsgenie_description,
+        send_opsgenie_alert,
+        send_slack_execution,
+    )
+    from requests import request
+    from worker_routing import worker_routing
+
+    try:
+        from smart_routing import (
+            execute_actions,
+            resolve_opsgenie_apikey,
+            resolve_slack_token,
+            route_alert,
+        )
+    except ImportError:
+        route_alert = None
+        execute_actions = None
+
+        def resolve_slack_token(_):
+            return None
+
+        def resolve_opsgenie_apikey(_):
+            return None
+
     # Init payload variables to None
     resource_name = resource_group = resource_id = schema_id = monitor_condition = (
         severity
@@ -992,6 +1004,18 @@ def approve(
     today_logs: str,
     workers: str,
 ) -> func.HttpResponse:
+    import utils
+    from escalation import send_slack_execution
+    from frontend import render_template
+    from requests import request
+    from worker_routing import worker_routing
+
+    try:
+        from smart_routing import execute_actions, route_alert
+    except ImportError:
+        route_alert = None
+        execute_actions = None
+
     route_params = getattr(req, "route_params", {}) or {}
     execId = (route_params.get("execId") or "").strip()
 
@@ -1271,6 +1295,16 @@ def approve(
 def reject(
     req: func.HttpRequest, log_table: func.Out[str], schemas: str, today_logs: str
 ) -> func.HttpResponse:
+    import utils
+    from escalation import send_slack_execution
+    from frontend import render_template
+
+    try:
+        from smart_routing import execute_actions, route_alert
+    except ImportError:
+        route_alert = None
+        execute_actions = None
+
     route_params = getattr(req, "route_params", {}) or {}
     execId = (route_params.get("execId") or "").strip()
 
@@ -1454,7 +1488,19 @@ def reject(
     connection=STORAGE_CONN,
 )
 def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
-    # Il messaggio in coda è JSON prodotto da _post_status
+    import utils
+    from escalation import (
+        format_opsgenie_description,
+        send_opsgenie_alert,
+        send_slack_execution,
+    )
+
+    try:
+        from smart_routing import execute_actions, route_alert
+    except ImportError:
+        route_alert = None
+        execute_actions = None
+
     try:
         body = json.loads(msg.get_body().decode("utf-8"))
     except Exception as e:
@@ -1704,6 +1750,8 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
 
 @app.route(route="healthz", auth_level=AUTH)
 def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
+    import utils
+
     now_utc = utils.utc_now_iso()
     body = json.dumps(
         {
@@ -1763,8 +1811,10 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
 @app.route(route="logs", auth_level=func.AuthLevel.ANONYMOUS)
 # ruff: noqa
 def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
-    # --- 1. Key Extraction ---
+    from frontend import render_template
+    from requests import request
 
+    # --- 1. Key Extraction ---
     candidate_key = req.headers.get("x-functions-key") or req.params.get("code")
 
     if not candidate_key:
@@ -2062,6 +2112,9 @@ def logs_query(req: func.HttpRequest, rows: str) -> func.HttpResponse:
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 def register_worker(req: func.HttpRequest) -> func.HttpResponse:
+    import utils
+    from azure.data.tables import TableClient, UpdateMode
+
     expected_key = os.environ.get("CLOUDO_SECRET_KEY")
     request_key = req.headers.get("x-cloudo-key")
 
@@ -2120,6 +2173,9 @@ def worker_cleanup(cleanupTimer: func.TimerRequest) -> None:
     """
     Garbage Collector: Cleanup old workers where LastSeen is > 5 minutes.
     """
+    import utils
+    from azure.data.tables import TableClient
+
     conn_str = os.environ.get("AzureWebJobsStorage")
     table_client = TableClient.from_connection_string(
         conn_str, table_name="WorkersRegistry"
