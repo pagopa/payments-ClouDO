@@ -52,8 +52,8 @@ resource "azurerm_linux_function_app" "orchestrator" {
 
   site_config {
     app_service_logs {
-      disk_quota_mb         = 35
-      retention_period_days = 0
+      disk_quota_mb         = var.app_service_logs.disk_quota_mb
+      retention_period_days = var.app_service_logs.retention_period_days
     }
     application_stack {
       docker {
