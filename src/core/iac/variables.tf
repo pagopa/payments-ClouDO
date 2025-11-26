@@ -109,7 +109,7 @@ variable "orchestrator_image" {
   })
 }
 
-variable "workers_cfg" {
+variable "workers_config" {
   description = ""
   type = object({
     workers = optional(map(

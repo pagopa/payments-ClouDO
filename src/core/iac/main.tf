@@ -94,14 +94,14 @@ resource "azurerm_linux_function_app" "orchestrator" {
 }
 
 resource "azurerm_storage_queue" "this" {
-  for_each             = var.workers_cfg.workers
+  for_each             = var.workers_config.workers
   name                 = "${var.prefix}-${each.key}-queue"
   storage_account_name = module.storage_account.name
 }
 
 #Function Module
 resource "azurerm_linux_function_app" "worker" {
-  for_each                   = var.workers_cfg.workers
+  for_each                   = var.workers_config.workers
   name                       = "${var.prefix}-cloudo-${each.key}"
   location                   = var.location
   resource_group_name        = var.resource_group_name
@@ -122,11 +122,11 @@ resource "azurerm_linux_function_app" "worker" {
     }
     application_stack {
       docker {
-        image_name        = var.workers_cfg.image_name
-        image_tag         = var.workers_cfg.image_tag
-        registry_url      = var.workers_cfg.registry_url
-        registry_username = var.workers_cfg.registry_username
-        registry_password = var.workers_cfg.registry_password
+        image_name        = var.workers_config.image_name
+        image_tag         = var.workers_config.image_tag
+        registry_url      = var.workers_config.registry_url
+        registry_username = var.workers_config.registry_username
+        registry_password = var.workers_config.registry_password
       }
     }
     application_insights_connection_string = data.azurerm_application_insights.this.connection_string
@@ -140,7 +140,7 @@ resource "azurerm_linux_function_app" "worker" {
     "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
     "GITHUB_REPO"                         = var.github_repo_info.repo_name
     "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
-    "GITHUB_TOKEN"                        = var.workers_cfg.registry_password
+    "GITHUB_TOKEN"                        = var.workers_config.registry_password
     "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
     "AZURE_TENANT_ID"                     = azurerm_user_assigned_identity.identity.tenant_id
     "AZURE_CLIENT_ID"                     = azurerm_user_assigned_identity.identity.client_id
@@ -209,9 +209,6 @@ resource "azurerm_storage_table_entity" "schemas" {
   row_key       = random_uuid.uuid[each.key].result
 
   entity = merge(
-    each.value.entity,
-    # {
-    #   "url" : "https://${azurerm_linux_function_app.worker.default_hostname}/api/${each.value.entity.worker}?code=${data.azurerm_function_app_host_keys.worker.default_function_key}"
-    # }
+    each.value.entity
   )
 }

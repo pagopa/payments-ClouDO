@@ -148,7 +148,11 @@ module "cloudo" {
     registry_password = data.azurerm_key_vault_secret.github_pat.value
   }
 
-  worker_image = {
+  # (Required) You must deploy almost 1 worker with map <name> = <capability>
+  workers_config = {
+    workers = {
+      "generic-worker" = "generic"
+    }
     image_name        = "pagopa/cloudo-worker"
     image_tag         = "VERSION"
     registry_url      = "https://ghcr.io"
@@ -245,6 +249,19 @@ the runbook has the following environment variables available:
 - **MONITOR_CONDITION**: The monitor state for the alert, e.g., "Fired" or "Resolved."
 
 The runbooks have already integrated the azcli support and the python library for az management.
+
+#### Log in on azure
+
+If you need to write a runbook that works on Azure copy/paste this piece of code on top to
+ensure manage identity login of ClouDO Worker.
+
+```bash
+# Ensure Azure login
+if ! az account show >/dev/null 2>&1; then
+  echo "Logging into Azure..."
+  az login --identity --client-id "$AZURE_CLIENT_ID" >/dev/null
+fi
+```
 
 ### Example schemas
 
