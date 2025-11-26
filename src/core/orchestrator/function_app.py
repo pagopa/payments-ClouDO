@@ -515,7 +515,7 @@ def Trigger(
             )
             payload_for_status = {
                 "requestedAt": requested_at,
-                "id": resource_name or "NaN",
+                "id": "NaN",
                 "name": resource_name or "",
                 "exec_id": exec_id,
                 "runbook": "NaN",
