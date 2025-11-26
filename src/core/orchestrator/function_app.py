@@ -426,7 +426,7 @@ def Trigger(
         severity
     ) = ""
     route_params = getattr(req, "route_params", {}) or {}
-    logging.info(route_params)
+    logging.debug(route_params)
     # Pre-compute logging fields
     requested_at = utils.format_requested_at()
     partition_key = utils.today_partition_key()
@@ -485,7 +485,7 @@ def Trigger(
             "opsgenie_token": req.params.get("opsgenie_api_key")
             or resolve_opsgenie_apikey(route_params.get("team") or ""),
         }
-        logging.info(f"[{exec_id}] Resource info: %s", resource_info)
+        logging.debug(f"[{exec_id}] Resource info: %s", resource_info)
 
     # Parse bound table entities (binding returns a JSON array)
     try:
@@ -563,7 +563,7 @@ def Trigger(
         monitor_condition=monitor_condition,
         severity=severity,
     )
-    logging.info(f"[{exec_id}] Set schema: '{schema}'")
+    logging.debug(f"[{exec_id}] Set schema: '{schema}'")
     try:
         # Approval-required path: create pending with signed URL embedding resource_info and function key
         if schema.require_approval:
@@ -627,7 +627,7 @@ def Trigger(
             )
             log_table.set(json.dumps(pending_log, ensure_ascii=False))
 
-            logging.info(routing_info)
+            logging.debug(routing_info)
 
             # Optional Slack notify
             slack_token = routing_info.get("slack_token")
@@ -784,7 +784,7 @@ def Trigger(
                     "routing_info": routing_info,
                 }
                 decision = route_alert(ctx)
-                logging.info(f"[{exec_id}] {decision}")
+                logging.debug(f"[{exec_id}] {decision}")
                 status_emoji = "✅" if status_label == "succeeded" else "❌"
                 payload = {
                     "slack": {
@@ -1162,7 +1162,7 @@ def approve(
                 "routing_info": routing_info,
             }
             decision = route_alert(ctx)
-            logging.info(f"[{execId}] Approval: {decision}")
+            logging.debug(f"[{execId}] Approval: {decision}")
             payload = {
                 "slack": {
                     "message": f"[{execId}] 🚀 Approved - {schema_id}",
@@ -1410,7 +1410,7 @@ def reject(
             "routing_info": routing_info,
         }
         decision = route_alert(ctx)
-        logging.info(f"[{execId}] Reject: {decision}")
+        logging.debug(f"[{execId}] Reject: {decision}")
 
         payload = {
             "slack": {
@@ -1507,14 +1507,12 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
         logging.error(f"[Receiver] Invalid queue message: {e}")
         return
 
-    # Validazione campi obbligatori
     required_fields = ["exec_id", "status", "name", "id", "runbook"]
     missing = [k for k in required_fields if not (body.get(k) or "").strip()]
     if missing:
         logging.warning(f"[{body.get('exec_id')}] Missing required fields: {missing}")
         return
 
-    # Log di osservabilità
     logging.info(
         f"[{body.get('exec_id')}] Receiver invoked",
         extra={
@@ -1562,8 +1560,9 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
     )
     log_table.set(json.dumps(log_entity, ensure_ascii=False))
 
+    # TODO check if can be deprecated
     if status_label == "running":
-        logging.info(f"[{body.get('exec_id')}] Status 'running' logged to table")
+        logging.debug(f"[{body.get('exec_id')}] Status 'running' logged to table")
         return
 
     resource_info = body.get("resource_info") or {}
@@ -1611,7 +1610,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
             "routing_info": routing_info,  # sempre dict qui
         }
         decision = route_alert(ctx)
-        logging.info(f"[{exec_id}] {decision}")
+        logging.debug(f"[{exec_id}] {decision}")
         status_emojis = {
             "succeeded": "✅",
             "running": "🏃",
@@ -2189,7 +2188,7 @@ def worker_cleanup(cleanupTimer: func.TimerRequest) -> None:
 
     filter_query = f"LastSeen lt '{limit_iso}'"
 
-    logging.info(f"[Cleanup] Searching for zombies older than {limit_iso}...")
+    logging.debug(f"[Cleanup] Searching for zombies older than {limit_iso}...")
 
     try:
         dead_workers = table_client.query_entities(query_filter=filter_query)
@@ -2199,7 +2198,7 @@ def worker_cleanup(cleanupTimer: func.TimerRequest) -> None:
             table_client.delete_entity(
                 partition_key=w["PartitionKey"], row_key=w["RowKey"]
             )
-            logging.info(
+            logging.debug(
                 f"[Cleanup] Deleted zombie: {w['RowKey']} (Partition: {w['PartitionKey']})"
             )
             count += 1

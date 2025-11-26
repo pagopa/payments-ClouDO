@@ -26,8 +26,18 @@ resource "random_password" "internal_auth_token" {
 }
 
 # Service Plan
-resource "azurerm_service_plan" "this" {
-  name                = "${var.prefix}-cloudo-service-plan"
+resource "azurerm_service_plan" "orchestrator" {
+  name                = "${var.prefix}-cloudo-orchestrator-service-plan"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  os_type             = "Linux"
+
+  sku_name = var.service_plan_sku
+  tags     = var.tags
+}
+
+resource "azurerm_service_plan" "workers" {
+  name                = "${var.prefix}-cloudo-workers-service-plan"
   location            = var.location
   resource_group_name = var.resource_group_name
   os_type             = "Linux"
@@ -41,7 +51,7 @@ resource "azurerm_linux_function_app" "orchestrator" {
   name                       = "${var.prefix}-cloudo"
   location                   = var.location
   resource_group_name        = var.resource_group_name
-  service_plan_id            = azurerm_service_plan.this.id
+  service_plan_id            = azurerm_service_plan.orchestrator.id
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
   https_only                 = true
@@ -105,7 +115,7 @@ resource "azurerm_linux_function_app" "worker" {
   name                       = "${var.prefix}-cloudo-${each.key}"
   location                   = var.location
   resource_group_name        = var.resource_group_name
-  service_plan_id            = azurerm_service_plan.this.id
+  service_plan_id            = azurerm_service_plan.workers.id
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
   https_only                 = true

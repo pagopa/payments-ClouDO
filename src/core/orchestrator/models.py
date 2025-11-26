@@ -32,7 +32,6 @@ class Schema:
         e = self.entity
         self.name = (e.get("name") or "").strip()
         self.description = (e.get("description") or "").strip() or None
-        self.url = (e.get("url") or "").strip() or None
         self.runbook = (e.get("runbook") or "").strip() or None
         self.run_args = (e.get("run_args") or "").strip() or ""
         self.worker = (e.get("worker") or "").strip() or ""
