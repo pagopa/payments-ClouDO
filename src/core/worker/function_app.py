@@ -475,50 +475,6 @@ def _run_script(
                 )
 
 
-@app.route(
-    route="Runbook", methods=[func.HttpMethod.POST], auth_level=func.AuthLevel.ANONYMOUS
-)
-@app.queue_output(
-    arg_name="out_msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION
-)
-def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
-    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
-    request_key = req.headers.get("x-cloudo-key")
-
-    if not expected_key or request_key != expected_key:
-        return func.HttpResponse(
-            json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
-            status_code=401,
-            mimetype="application/json",
-        )
-    payload = {
-        "requestedAt": _format_requested_at(),
-        "id": req.headers.get("Id"),
-        "name": req.headers.get("Name"),
-        "runbook": req.headers.get("runbook"),
-        "run_args": req.headers.get("run_args"),
-        "exec_id": req.headers.get("ExecId"),
-        "oncall": req.headers.get("OnCall"),
-        "monitor_condition": req.headers.get("MonitorCondition"),
-        "severity": req.headers.get("Severity"),
-        "worker": req.headers.get("Worker"),
-    }
-    if "resource_info" in req.headers:
-        info = req.headers.get("resource_info")
-        if info is not None:
-            payload["resource_info"] = info
-    if "routing_info" in req.headers:
-        info = req.headers.get("routing_info")
-        if info is not None:
-            payload["routing_info"] = info
-
-    out_msg.set(json.dumps(payload, ensure_ascii=False))
-    body = json.dumps(
-        {"status": "accepted", "message": "processing scheduled"}, ensure_ascii=False
-    )
-    return func.HttpResponse(body, status_code=202, mimetype="application/json")
-
-
 def _inspect_duplicate_runs(items: list[Any], payload: Any):
     for item in items:
         if (
@@ -920,15 +876,11 @@ def heartbeat_trigger(HeartBeatTimer: func.TimerRequest) -> None:
 
     url = os.getenv("ORCHESTRATOR_URL", "http://orchestrator/api/workers/register")
     key = os.getenv("CLOUDO_SECRET_KEY")
-    if not os.getenv("FEATURE_DEV") == "true":
-        host = f"https://{os.getenv('WEBSITE_HOSTNAME', 'worker')}"
-    else:
-        host = f"http://{os.getenv('WEBSITE_HOSTNAME', 'worker')}"
 
     payload = {
         "capability": os.getenv("WORKER_CAPABILITY", "local"),
         "worker_id": os.getenv("WEBSITE_SITE_NAME", "azure-func-worker"),
-        "url": f"{host}/api/Runbook",
+        "queue": QUEUE_NAME,
         "region": os.getenv("REGION_NAME", "azure-cloud"),
     }
 

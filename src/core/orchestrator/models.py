@@ -11,7 +11,6 @@ class Schema:
     entity: Optional[dict] = None
     name: Optional[str] = None
     description: Optional[str] = None
-    url: Optional[str] = None
     runbook: Optional[str] = None
     run_args: Optional[str] = None
     worker: Optional[str] = None

@@ -87,8 +87,8 @@ def worker_routing(workers, schema):
     if valid_workers:
         # 4. Load Balancing (Random Strategy)
         selected_worker = choice(valid_workers)
-        target_url = selected_worker.get("Url")
+        target_queue = selected_worker.get("Queue")
 
-        return target_url
+        return target_queue
 
     return None

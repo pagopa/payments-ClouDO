@@ -290,7 +290,6 @@ def build_log_entry(
     requested_at: str,
     name: Optional[str],
     schema_id: Optional[str],
-    url: Optional[str],
     runbook: Optional[str],
     run_args: Optional[str],
     worker: Optional[str],
@@ -311,7 +310,6 @@ def build_log_entry(
         "RequestedAt": requested_at,
         "Name": name,
         "Id": schema_id,
-        "Url": url,
         "Runbook": runbook,
         "Run_Args": run_args,
         "Worker": worker,
@@ -401,7 +399,6 @@ def Trigger(
         send_opsgenie_alert,
         send_slack_execution,
     )
-    from requests import request
     from worker_routing import worker_routing
 
     try:
@@ -580,7 +577,6 @@ def Trigger(
             payload = {
                 "execId": exec_id,
                 "schemaId": schema.id,
-                "url": schema.url,
                 "exp": expires_at,
                 "resource_info": resource_info or {},
                 "routing_info": routing_info or {},
@@ -606,7 +602,6 @@ def Trigger(
                 requested_at=requested_at,
                 name=schema.name or "",
                 schema_id=schema.id,
-                url=schema.url,
                 runbook=schema.runbook,
                 run_args=schema.run_args,
                 worker=schema.worker,
@@ -706,42 +701,56 @@ def Trigger(
         # ---------------------------------------------------------
         # DYNAMIC WORKER SELECTION (Binding Version)
         # ---------------------------------------------------------
-        target_url = worker_routing(workers, schema)
-        logging.info(f"[{exec_id}] Target URL: {target_url}")
-        if target_url:
-            logging.info(f"[{exec_id}] 🎯 Dynamic Routing: Selected {target_url}")
+        target_queue = worker_routing(workers, schema)
 
-            # Override schema.url so downstream logic uses the chosen worker
-            schema.url = target_url
-        else:
-            logging.error(
-                f"[{exec_id}] ❌ No workers ({schema.worker}) available and no static URL configured for {schema.id}"
-            )
-        # ---------------------------------------------------------
-
-        # No approval required: call downstream runbook endpoint
-        # Call downstream runbook endpoint
         api_body = {}
         status_code = 202
-        try:
-            response = request(
-                "POST",
-                schema.url,
-                headers=build_headers(
-                    schema,
-                    exec_id,
-                    resource_info,
-                    routing_info,
-                    monitor_condition,
-                    severity,
-                ),
+
+        if target_queue:
+            logging.info(
+                f"[{exec_id}] 🎯 Dynamic Routing: Selected Queue '{target_queue}'"
             )
-            status_code = response.status_code
-            api_body = safe_json(response)
-        except Exception as e:
-            logging.error(f"[{exec_id}] {e}")
+
+            try:
+                from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+
+                # Construct the payload (formerly HTTP headers)
+                queue_payload = {
+                    "runbook": schema.runbook,
+                    "run_args": schema.run_args,
+                    "id": schema.id,
+                    "name": schema.name or "",
+                    "requestedAt": requested_at,
+                    "exec_id": exec_id,
+                    "oncall": schema.oncall,
+                    "monitor_condition": monitor_condition,
+                    "severity": severity,
+                    "worker": schema.worker,
+                    "resource_info": resource_info or {},
+                    "routing_info": routing_info or {},
+                }
+
+                # Send it to the specific dynamic queue
+                # We use TextBase64EncodePolicy because Azure Function Triggers usually expect Base64 encoded strings
+                q_client = QueueClient.from_connection_string(
+                    conn_str=os.environ.get(STORAGE_CONN),
+                    queue_name=target_queue,
+                    message_encode_policy=TextBase64EncodePolicy(),
+                )
+                q_client.send_message(json.dumps(queue_payload, ensure_ascii=False))
+
+                api_body = {"status": "accepted", "queue": target_queue}
+
+            except Exception as e:
+                logging.error(f"[{exec_id}] ❌ Queue send failed: {e}")
+                status_code = 500
+                api_body = {"error": str(e)}
+        else:
+            err_msg = f"❌ No workers ({schema.worker}) available and no static queue configured for {schema.id}"
+            logging.error(f"[{exec_id}] {err_msg}")
             status_code = 500
-            api_body = {"error": str(e)}
+            api_body = {"error": err_msg}
+        # ---------------------------------------------------------
 
         # Status label for logs
         status_label = "accepted" if status_code == 202 else "error"
@@ -755,7 +764,6 @@ def Trigger(
             requested_at=requested_at,
             name=schema.name or "",
             schema_id=schema.id,
-            url=schema.url,
             runbook=schema.runbook,
             run_args=schema.run_args,
             worker=schema.worker,
@@ -950,7 +958,6 @@ def Trigger(
             requested_at=requested_at,
             name=schema.name or "",
             schema_id=schema.id,
-            url=schema.url,
             runbook=schema.runbook,
             run_args=schema.run_args,
             worker=schema.worker,
@@ -1007,7 +1014,6 @@ def approve(
     import utils
     from escalation import send_slack_execution
     from frontend import render_template
-    from requests import request
     from worker_routing import worker_routing
 
     try:
@@ -1084,38 +1090,68 @@ def approve(
     partition_key = utils.today_partition_key()
     requested_at = utils.format_requested_at()
 
-    # ---------------------------------------------------------
-    # DYNAMIC WORKER SELECTION (Binding Version)
-    # ---------------------------------------------------------
-    target_url = worker_routing(workers, schema)
-
-    if target_url:
-        logging.info(f"[{execId}] 🎯 Dynamic Routing: Selected {target_url}")
-
-        # Override schema.url so downstream logic uses the chosen worker
-        schema.url = target_url
-    else:
-        logging.error(
-            f"[{execId}] ❌ No workers ({schema.worker}) available and no static URL configured for {schema.id}"
-        )
-    # ---------------------------------------------------------
-
     # Execute once (pass embedded resource_info and propagate the function key if needed)
     try:
-        headers = build_headers(
-            schema, execId, resource_info, routing_info, monitor_condition, severity
-        )
-        if func_key:
-            headers["x-cloudo-key"] = func_key
-        response = request(
-            "POST",
-            schema.url,
-            headers=build_headers(
-                schema, execId, resource_info, routing_info, monitor_condition, severity
-            ),
-        )
-        api_body = safe_json(response)
-        status_label = "accepted" if response.status_code == 202 else "error"
+        # ---------------------------------------------------------
+        # DYNAMIC WORKER SELECTION (Binding Version)
+        # ---------------------------------------------------------
+        target_queue = worker_routing(workers, schema)
+
+        api_body = {}
+        status_code = 202
+
+        if target_queue:
+            logging.info(
+                f"[{execId}] 🎯 Dynamic Routing: Selected Queue '{target_queue}'"
+            )
+
+            try:
+                from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+
+                # Construct the payload (formerly HTTP headers)
+                queue_payload = {
+                    "runbook": schema.runbook,
+                    "run_args": schema.run_args,
+                    "id": schema.id,
+                    "name": schema.name or "",
+                    "requestedAt": requested_at,
+                    "exec_id": execId,
+                    "oncall": schema.oncall,
+                    "monitor_condition": monitor_condition,
+                    "severity": severity,
+                    "worker": schema.worker,
+                    "resource_info": resource_info or {},
+                    "routing_info": routing_info or {},
+                }
+
+                # Send it to the specific dynamic queue
+                # We use TextBase64EncodePolicy because Azure Function Triggers usually expect Base64 encoded strings
+                q_client = QueueClient.from_connection_string(
+                    conn_str=os.environ.get(STORAGE_CONN),
+                    queue_name=target_queue,
+                    message_encode_policy=TextBase64EncodePolicy(),
+                )
+                q_client.send_message(json.dumps(queue_payload, ensure_ascii=False))
+
+                api_body = {
+                    "status": "accepted",
+                    "queue": target_queue,
+                    "payload": queue_payload,
+                }
+
+            except Exception as e:
+                logging.error(f"[{execId}] ❌ Queue send failed: {e}")
+                status_code = 500
+                api_body = {"error": str(e)}
+        else:
+            err_msg = f"❌ No workers ({schema.worker}) available and no static queue configured for {schema.id}"
+            logging.error(f"[{execId}] {err_msg}")
+            status_code = 500
+            api_body = {"error": err_msg}
+        # ---------------------------------------------------------
+
+        # Status label for logs
+        status_label = "accepted" if status_code == 202 else "error"
 
         log_entity = build_log_entry(
             status=status_label,
@@ -1125,7 +1161,6 @@ def approve(
             requested_at=requested_at,
             name=schema.name or "",
             schema_id=schema.id,
-            url=schema.url,
             runbook=schema.runbook,
             run_args=schema.run_args,
             worker=schema.worker,
@@ -1242,7 +1277,6 @@ def approve(
             requested_at=requested_at,
             name=schema.name or "",
             schema_id=schema.id,
-            url=schema.url,
             runbook=schema.runbook,
             run_args=schema.run_args,
             worker=schema.worker,
@@ -1380,7 +1414,6 @@ def reject(
         requested_at=requested_at,
         name=schema.name or "",
         schema_id=schema.id,
-        url=schema.url,
         runbook=schema.runbook,
         run_args=schema.run_args,
         worker=schema.worker,
@@ -1533,7 +1566,6 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
     requested_at = utils.format_requested_at()
     partition_key = utils.today_partition_key()
     row_key = str(uuid.uuid4())
-    request_origin_url = "queue://" + NOTIFICATION_QUEUE_NAME
     status_label = resolve_status(body.get("status"))
 
     logs_raw = ""
@@ -1549,7 +1581,6 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
         requested_at=requested_at,
         name=body.get("name"),
         schema_id=body.get("id"),
-        url=request_origin_url,
         runbook=body.get("runbook"),
         run_args=body.get("run_args"),
         worker=body.get("worker"),
@@ -2129,9 +2160,9 @@ def register_worker(req: func.HttpRequest) -> func.HttpResponse:
 
         capability = (body.get("capability") or body.get("id") or "").strip()
         worker_instance_id = (body.get("worker_id") or "").strip()
-        worker_url = body.get("url")
+        worker_queue = body.get("queue")
 
-        if not capability or not worker_url or not worker_instance_id:
+        if not capability or not worker_queue or not worker_instance_id:
             return func.HttpResponse(
                 "Missing capability, worker_id or url", status_code=400
             )
@@ -2144,7 +2175,7 @@ def register_worker(req: func.HttpRequest) -> func.HttpResponse:
         entity = {
             "PartitionKey": capability,
             "RowKey": worker_instance_id,
-            "Url": worker_url,
+            "Queue": worker_queue,
             "LastSeen": utils.utc_now_iso(),
             "Region": body.get("region", "default"),
             "Load": body.get("load", 0),
