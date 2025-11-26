@@ -5,6 +5,7 @@
       "Default": "Warning",
       "Function": "Information",
       "Functions.list_processes": "None",
+      "Function.heartbeat_trigger": "Warning",
       "Host": "Error",
       "Host.Results": "Error",
       "Microsoft": "Error",

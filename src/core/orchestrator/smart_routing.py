@@ -52,7 +52,7 @@ def load_routing_config() -> dict[str, Any]:
         "teams": {},
         "rules": [
             {
-                "when": {"any": "*"},
+                "when": {"isAlert": "true", "statusIn": ["failed", "error", "routed"]},
                 "then": [
                     {
                         "type": "opsgenie",
@@ -60,7 +60,13 @@ def load_routing_config() -> dict[str, Any]:
                     },
                     {"type": "slack"},
                 ],
-            }
+            },
+            {
+                "when": {"any": "*"},
+                "then": [
+                    {"type": "slack"},
+                ],
+            },
         ],
     }
     if not raw:
@@ -182,6 +188,19 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
 
     # Severity range
     sev = _sev_to_num(ctx.get("severity"))
+
+    if "isAlert" in when:
+        raw_val = when["isAlert"]
+        # Handle string "true"/"false" vs actual boolean
+        if isinstance(raw_val, str):
+            should_be_alert = raw_val.strip().lower() == "true"
+        else:
+            should_be_alert = bool(raw_val)
+
+        is_alert = sev is not None
+        if should_be_alert != is_alert:
+            return False
+
     if "severityMin" in when:
         minv = _sev_to_num(when["severityMin"])
         if minv is not None and (sev is None or sev < minv):

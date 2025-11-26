@@ -15,6 +15,7 @@ locals {
         r.when.alertRule != null ? { alertRule = r.when.alertRule } : {},
         r.when.oncall != null ? { oncall = r.when.oncall } : {},
         r.when.resourceGroupPrefix != null ? { resourceGroupPrefix = r.when.resourceGroupPrefix } : {},
+        r.when.isAlert != null ? { isAlert = r.when.isAlert } : {},
         r.when.severityMin != null ? { severityMin = r.when.severityMin } : {},
         r.when.severityMax != null ? { severityMax = r.when.severityMax } : {}
       )
@@ -44,5 +45,7 @@ locals {
     rules = local.sanitized_rules
   }
 
-  routing_rules_json_from_object = jsonencode(local.routing_rules_clean)
+  routing_rules_json_from_object = (
+    length(local.sanitized_teams) == 0 && length(local.sanitized_rules) == 0
+  ) ? "" : jsonencode(local.routing_rules_clean)
 }

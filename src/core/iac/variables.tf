@@ -109,9 +109,12 @@ variable "orchestrator_image" {
   })
 }
 
-variable "worker_image" {
+variable "workers_config" {
   description = ""
   type = object({
+    workers = optional(map(
+      string
+    ), {})
     image_name        = string
     image_tag         = string
     registry_url      = string

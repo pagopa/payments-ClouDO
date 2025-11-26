@@ -70,16 +70,6 @@ def _format_requested_at() -> str:
     )
 
 
-def _cors_headers():
-    return {
-        "Access-Control-Allow-Origin": os.getenv(
-            "CORS_ORIGIN", "http://localhost:7071"
-        ),
-        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        "Access-Control-Allow-Headers": "*",
-    }
-
-
 def encode_logs(value: Optional[str]) -> bytes:
     """
     Encode a string value to base64 bytes.
@@ -191,7 +181,7 @@ def _download_from_github(script_name: str) -> str:
         try:
             resp = requests.get(api_url, headers=headers, params=params, timeout=30)
             last_resp = resp
-            logging.info("GitHub GET %s -> %s", resp.url, resp.status_code)
+            logging.debug("GitHub GET %s -> %s", resp.url, resp.status_code)
             if resp.status_code == 200:
                 data = resp.json()
                 break
@@ -225,7 +215,7 @@ def _download_from_github(script_name: str) -> str:
             # Raw supports same auth headers
             try:
                 raw_resp = requests.get(raw_url, headers=headers, timeout=30)
-                logging.info("GitHub RAW %s -> %s", raw_url, raw_resp.status_code)
+                logging.debug("GitHub RAW %s -> %s", raw_url, raw_resp.status_code)
                 if raw_resp.status_code == 200:
                     content_bytes = raw_resp.content
                     raw_ok = True
@@ -375,7 +365,7 @@ def _run_script(
             return "" if x is None else str(x)
 
         info = normalize_aks_info(resource_info)
-        logging.info(f"AKS info: {info}")
+        logging.debug(f"AKS info: {info}")
 
         os.environ["RESOURCE_NAME"] = to_str(info.get("resource_name"))
         os.environ["RESOURCE_RG"] = to_str(info.get("resource_rg"))
@@ -392,7 +382,7 @@ def _run_script(
     if script_path is None:
         try:
             github_tmp_path = _download_from_github(script_name)
-            logging.info("Downloaded script from GitHub: %s", github_tmp_path)
+            logging.debug("Downloaded script from GitHub: %s", github_tmp_path)
             script_path = github_tmp_path
         except Exception as e:
             github_error = e
@@ -448,7 +438,7 @@ def _run_script(
                 if not line:
                     continue
                 collected_stdout.append(line)
-                logging.info(f"[{payload.get('exec_id')}] {line.rstrip()}")
+                logging.debug(f"[{payload.get('exec_id')}] {line.rstrip()}")
 
         stdout_data = "".join(collected_stdout)
         stderr_data = ""
@@ -485,11 +475,22 @@ def _run_script(
                 )
 
 
-@app.route(route="Runbook", auth_level=AUTH)
+@app.route(
+    route="Runbook", methods=[func.HttpMethod.POST], auth_level=func.AuthLevel.ANONYMOUS
+)
 @app.queue_output(
     arg_name="out_msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION
 )
 def runbook(req: func.HttpRequest, out_msg: func.Out[str]) -> func.HttpResponse:
+    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
+    request_key = req.headers.get("x-cloudo-key")
+
+    if not expected_key or request_key != expected_key:
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
+            status_code=401,
+            mimetype="application/json",
+        )
     payload = {
         "requestedAt": _format_requested_at(),
         "id": req.headers.get("Id"),
@@ -630,7 +631,7 @@ def process_runbook(
             cloudo_notification_q.set(
                 _post_status(payload, status="completed", log_message=log_msg)
             )
-            logging.info(
+            logging.debug(
                 f"[{payload.get('exec_id')}] Receiver response: status=queued",
             )
     except subprocess.CalledProcessError as e:
@@ -682,18 +683,7 @@ def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
         },
         ensure_ascii=False,
     )
-    return func.HttpResponse(
-        body,
-        status_code=200,
-        mimetype="application/json",
-        headers={**{"Cache-Control": "no-store"}, **_cors_headers()},
-    )
-
-
-@app.route(route="ui/opts", auth_level=func.AuthLevel.ANONYMOUS)
-def ui_opts(req: func.HttpRequest) -> func.HttpResponse:
-    # preflight CORS
-    return func.HttpResponse("", status_code=204, headers=_cors_headers())
+    return func.HttpResponse(body, status_code=200, mimetype="application/json")
 
 
 # =========================
@@ -745,7 +735,6 @@ def list_processes(req: func.HttpRequest) -> func.HttpResponse:
         mimetype="application/json",
         headers={
             **{"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
-            **_cors_headers(),
         },
     )
 
@@ -830,7 +819,6 @@ def stop_process(
         json.dumps({"status": status, "exec_id": exec_id}, ensure_ascii=False),
         status_code=code,
         mimetype="application/json",
-        headers=_cors_headers(),
     )
 
 
@@ -918,3 +906,35 @@ def dev_run_script(req: func.HttpRequest) -> func.HttpResponse:
             ensure_ascii=False,
         )
         return func.HttpResponse(body, status_code=500, mimetype="application/json")
+
+
+@app.schedule(
+    schedule="0 */1 * * * *",
+    arg_name="HeartBeatTimer",
+    run_on_startup=True,
+    use_monitor=False,
+)
+def heartbeat_trigger(HeartBeatTimer: func.TimerRequest) -> None:
+    if HeartBeatTimer.past_due:
+        logging.debug("The timer is past due!")
+
+    url = os.getenv("ORCHESTRATOR_URL", "http://orchestrator/api/workers/register")
+    key = os.getenv("CLOUDO_SECRET_KEY")
+    if not os.getenv("FEATURE_DEV") == "true":
+        host = f"https://{os.getenv('WEBSITE_HOSTNAME', 'worker')}"
+    else:
+        host = f"http://{os.getenv('WEBSITE_HOSTNAME', 'worker')}"
+
+    payload = {
+        "capability": os.getenv("WORKER_CAPABILITY", "local"),
+        "worker_id": os.getenv("WEBSITE_SITE_NAME", "azure-func-worker"),
+        "url": f"{host}/api/Runbook",
+        "region": os.getenv("REGION_NAME", "azure-cloud"),
+    }
+
+    try:
+        r = requests.post(url, json=payload, headers={"x-cloudo-key": key}, timeout=10)
+        logging.debug(f"request {r.status_code}")
+        logging.debug("Heartbeat sent successfully")
+    except Exception as e:
+        logging.error(f"Failed to send heartbeat: {e}")

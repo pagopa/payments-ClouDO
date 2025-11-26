@@ -20,9 +20,24 @@ module "function_snet" {
   idh_resource_tier = "app_service"
 }
 
+resource "random_password" "internal_auth_token" {
+  length  = 32
+  special = false
+}
+
 # Service Plan
-resource "azurerm_service_plan" "this" {
-  name                = "${var.prefix}-cloudo-service-plan"
+resource "azurerm_service_plan" "orchestrator" {
+  name                = "${var.prefix}-cloudo-orchestrator-service-plan"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  os_type             = "Linux"
+
+  sku_name = var.service_plan_sku
+  tags     = var.tags
+}
+
+resource "azurerm_service_plan" "workers" {
+  name                = "${var.prefix}-cloudo-workers-service-plan"
   location            = var.location
   resource_group_name = var.resource_group_name
   os_type             = "Linux"
@@ -36,7 +51,7 @@ resource "azurerm_linux_function_app" "orchestrator" {
   name                       = "${var.prefix}-cloudo"
   location                   = var.location
   resource_group_name        = var.resource_group_name
-  service_plan_id            = azurerm_service_plan.this.id
+  service_plan_id            = azurerm_service_plan.orchestrator.id
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
   https_only                 = true
@@ -47,8 +62,8 @@ resource "azurerm_linux_function_app" "orchestrator" {
 
   site_config {
     app_service_logs {
-      disk_quota_mb         = 35
-      retention_period_days = 0
+      disk_quota_mb         = var.app_service_logs.disk_quota_mb
+      retention_period_days = var.app_service_logs.retention_period_days
     }
     application_stack {
       docker {
@@ -63,13 +78,9 @@ resource "azurerm_linux_function_app" "orchestrator" {
     application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
     always_on                              = true
     http2_enabled                          = true
-
-    # health_check_eviction_time_in_min = 2
-    # health_check_path = "/healthz"
   }
   app_settings = merge(
     {
-      "QUEUE_NAME"                          = azurerm_storage_queue.this.name
       "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
       "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
       "SLACK_TOKEN_DEFAULT"                 = var.slack_integration.token
@@ -79,6 +90,7 @@ resource "azurerm_linux_function_app" "orchestrator" {
       "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
       "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
       "APPROVAL_SECRET"                     = var.approval_runbook.secret
+      "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
     },
     local.orchestrator_smart_routing_app_settings
   )
@@ -91,12 +103,19 @@ resource "azurerm_linux_function_app" "orchestrator" {
   tags = var.tags
 }
 
+resource "azurerm_storage_queue" "this" {
+  for_each             = var.workers_config.workers
+  name                 = "${var.prefix}-${each.key}-queue"
+  storage_account_name = module.storage_account.name
+}
+
 #Function Module
 resource "azurerm_linux_function_app" "worker" {
-  name                       = "${var.prefix}-cloudo-worker"
+  for_each                   = var.workers_config.workers
+  name                       = "${var.prefix}-cloudo-${each.key}"
   location                   = var.location
   resource_group_name        = var.resource_group_name
-  service_plan_id            = azurerm_service_plan.this.id
+  service_plan_id            = azurerm_service_plan.workers.id
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
   https_only                 = true
@@ -113,27 +132,25 @@ resource "azurerm_linux_function_app" "worker" {
     }
     application_stack {
       docker {
-        image_name        = var.worker_image.image_name
-        image_tag         = var.worker_image.image_tag
-        registry_url      = var.worker_image.registry_url
-        registry_username = var.worker_image.registry_username
-        registry_password = var.worker_image.registry_password
+        image_name        = var.workers_config.image_name
+        image_tag         = var.workers_config.image_tag
+        registry_url      = var.workers_config.registry_url
+        registry_username = var.workers_config.registry_username
+        registry_password = var.workers_config.registry_password
       }
     }
     application_insights_connection_string = data.azurerm_application_insights.this.connection_string
     application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
     always_on                              = true
     http2_enabled                          = true
-    # health_check_eviction_time_in_min = 2
-    # health_check_path = "/healthz"
   }
   app_settings = {
-    "QUEUE_NAME"                          = azurerm_storage_queue.this.name
+    "QUEUE_NAME"                          = azurerm_storage_queue.this[each.key].name
     "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
     "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
     "GITHUB_REPO"                         = var.github_repo_info.repo_name
     "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
-    "GITHUB_TOKEN"                        = var.worker_image.registry_password
+    "GITHUB_TOKEN"                        = var.workers_config.registry_password
     "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
     "AZURE_TENANT_ID"                     = azurerm_user_assigned_identity.identity.tenant_id
     "AZURE_CLIENT_ID"                     = azurerm_user_assigned_identity.identity.client_id
@@ -143,6 +160,9 @@ resource "azurerm_linux_function_app" "worker" {
     "FUNCTIONS_WORKER_RUNTIME"            = "python"
     "DOTNET_RUNNING_IN_CONTAINER"         = true
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
+    "ORCHESTRATOR_URL"                    = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/workers/register"
+    "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
+    "WORKER_CAPABILITY"                   = each.value
   }
 
   virtual_network_subnet_id = try(module.function_snet.id, null)
@@ -168,11 +188,6 @@ module "storage_account" {
   tags = var.tags
 }
 
-resource "azurerm_storage_queue" "this" {
-  name                 = "queue"
-  storage_account_name = module.storage_account.name
-}
-
 resource "azurerm_storage_queue" "notification" {
   name                 = "cloudo-notification"
   storage_account_name = module.storage_account.name
@@ -188,6 +203,11 @@ resource "azurerm_storage_table" "runbook_schemas" {
   storage_account_name = module.storage_account.name
 }
 
+resource "azurerm_storage_table" "workers_registry" {
+  name                 = "WorkersRegistry"
+  storage_account_name = module.storage_account.name
+}
+
 resource "azurerm_storage_table_entity" "schemas" {
   for_each = {
     for i in local.entity_executor : i.entity.id => i
@@ -199,9 +219,6 @@ resource "azurerm_storage_table_entity" "schemas" {
   row_key       = random_uuid.uuid[each.key].result
 
   entity = merge(
-    each.value.entity,
-    {
-      "url" : "https://${azurerm_linux_function_app.worker.default_hostname}/api/${each.value.entity.worker}?code=${data.azurerm_function_app_host_keys.worker.default_function_key}"
-    }
+    each.value.entity
   )
 }

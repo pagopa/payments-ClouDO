@@ -1,5 +1,5 @@
-# Official base image for Azure Functions Python (Functions v4, Python 3.12)
-FROM mcr.microsoft.com/azure-functions/python:4-python3.13
+# Official base image for Azure Functions Python (Functions v4, Python 3.11)
+FROM mcr.microsoft.com/azure-functions/python:4-python3.11
 
 ARG APP_PATH=.
 

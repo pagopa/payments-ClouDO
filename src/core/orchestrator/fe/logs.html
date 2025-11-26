@@ -128,27 +128,27 @@
         /* Flex Table (responsive a tutta larghezza) */
         .flex-table{display:flex; flex-direction:column; gap:8px; width:100%}
         .flex-table .ft-head{
-          display:flex; gap:12px; align-items:center;
+          display:grid; grid-template-columns: 160px 110px 330px 1fr 140px 2fr 120px auto; gap:12px; align-items:center;
           padding:10px 12px; background: linear-gradient(180deg, var(--panel-2), var(--panel));
           border:1px solid var(--border); border-radius:10px; position:sticky; top:0; z-index:2;
         }
         .flex-table .ft-row{
-          display:flex; gap:12px; align-items:flex-start;
+          display:grid; grid-template-columns: 160px 110px 330px 1fr 140px 2fr 120px auto; gap:12px; align-items:center;
           padding:12px; border:1px solid var(--border); border-radius:12px;
           background: linear-gradient(180deg, var(--panel), #0f141b);
         }
         .flex-table .ft-row:hover{ background: color-mix(in srgb, var(--accent) 8%, transparent) }
-        .flex-table .ft-cell{min-width:0; flex:1 1 140px}
-        .flex-table .ft-cell.shrink{flex:0 0 auto; white-space:nowrap}
-        .flex-table .ft-cell.xs{flex:0 0 140px}
-        .flex-table .ft-cell.lg{flex:2 1 260px}
-        .flex-table .ft-cell.actions{display:flex; justify-content:flex-end; gap:6px}
+        .flex-table .ft-cell{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+        .flex-table .ft-cell.shrink{white-space:nowrap}
+        .flex-table .ft-cell.xs{/* gestito da grid */}
+        .flex-table .ft-cell.lg{/* gestito da grid */}
+        .flex-table .ft-cell.actions{display:flex; justify-content:flex-end; gap:6px; overflow:visible}
         .ft-head .lbl{color:var(--muted); font-weight:600; font-size:13px}
 
         /* Mobile stacking */
-        @media (max-width: 860px){
+        @media (max-width: 1024px){
           .flex-table .ft-head{display:none}
-          .flex-table .ft-row{flex-direction:column; gap:6px}
+          .flex-table .ft-row{display:flex; flex-direction:column; gap:6px}
           .flex-table .ft-cell.actions{justify-content:flex-start}
         }
 

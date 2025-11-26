@@ -8,26 +8,9 @@ from typing import Any, Optional, Union
 from urllib.parse import urlsplit, urlunsplit
 
 import azure.functions as func
-import detection
-import utils
-from escalation import (
-    format_opsgenie_description,
-    send_opsgenie_alert,
-    send_slack_execution,
-)
-from frontend import render_template
 from models import Schema
-from requests import request
 
 app = func.FunctionApp()
-
-try:
-    from smart_routing import execute_actions  # type: ignore
-    from smart_routing import resolve_opsgenie_apikey, resolve_slack_token, route_alert
-except Exception:
-    route_alert = None  # fallback if module missing
-    execute_actions = None
-
 
 # =========================
 # Constants and Utilities
@@ -36,6 +19,7 @@ except Exception:
 # Centralize configuration strings to avoid "magic strings"
 TABLE_NAME = "RunbookLogs"
 TABLE_SCHEMAS = "RunbookSchemas"
+TABLE_WORKERS_SCHEMAS = "WorkersRegistry"
 STORAGE_CONN = "AzureWebJobsStorage"
 NOTIFICATION_QUEUE_NAME = os.environ.get(
     "NOTIFICATION_QUEUE_NAME", "cloudo-notification"
@@ -128,6 +112,8 @@ def _only_pending_for_exec(rows: list[dict], exec_id: str) -> bool:
 def _notify_slack_decision(
     exec_id: str, schema_id: str, decision: str, approver: str, extra: str = ""
 ) -> None:
+    from escalation import send_slack_execution
+
     token = (os.environ.get("SLACK_TOKEN") or "").strip()
     channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
     if not token:
@@ -247,6 +233,7 @@ def build_headers(
         "MonitorCondition": monitor_condition,
         "Severity": severity,
         "Worker": schema.worker,
+        "x-cloudo-key": os.environ.get("CLOUDO_SECRET_KEY", ""),
     }
     if resource_info is not None:
         headers["resource_info"] = json.dumps(resource_info, ensure_ascii=False)
@@ -343,6 +330,8 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
     Build the status message (with base64-encoded, truncated logs) to send
     on the notification queue. Used by the orchestrator to talk to the Receiver.
     """
+    from utils import format_requested_at
+
     exec_id = payload.get("exec_id")
     log_text = log_message or ""
     log_bytes = _encode_logs(log_text)
@@ -367,7 +356,7 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
         "routing_info": payload.get("routing_info"),
         "logs_b64": log_bytes.decode("utf-8"),
         "content_type": "text/plain; charset=utf-8",
-        "sent_at": utils.format_requested_at(),
+        "sent_at": format_requested_at(),
     }
     return json.dumps(message, ensure_ascii=False)
 
@@ -388,6 +377,11 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
     table_name=TABLE_SCHEMAS,
     connection=STORAGE_CONN,
 )
+@app.table_input(
+    arg_name="workers",
+    table_name=TABLE_WORKERS_SCHEMAS,
+    connection=STORAGE_CONN,
+)
 @app.queue_output(
     arg_name="cloudo_notification_q",
     queue_name=NOTIFICATION_QUEUE_NAME,
@@ -397,14 +391,42 @@ def Trigger(
     req: func.HttpRequest,
     log_table: func.Out[str],
     entities: str,
+    workers: str,
     cloudo_notification_q: func.Out[str],
 ) -> func.HttpResponse:
+    import detection
+    import utils
+    from escalation import (
+        format_opsgenie_description,
+        send_opsgenie_alert,
+        send_slack_execution,
+    )
+    from requests import request
+    from worker_routing import worker_routing
+
+    try:
+        from smart_routing import (
+            execute_actions,
+            resolve_opsgenie_apikey,
+            resolve_slack_token,
+            route_alert,
+        )
+    except ImportError:
+        route_alert = None
+        execute_actions = None
+
+        def resolve_slack_token(_):
+            return None
+
+        def resolve_opsgenie_apikey(_):
+            return None
+
     # Init payload variables to None
     resource_name = resource_group = resource_id = schema_id = monitor_condition = (
         severity
     ) = ""
     route_params = getattr(req, "route_params", {}) or {}
-    logging.info(route_params)
+    logging.debug(route_params)
     # Pre-compute logging fields
     requested_at = utils.format_requested_at()
     partition_key = utils.today_partition_key()
@@ -463,7 +485,7 @@ def Trigger(
             "opsgenie_token": req.params.get("opsgenie_api_key")
             or resolve_opsgenie_apikey(route_params.get("team") or ""),
         }
-        logging.info(f"[{exec_id}] Resource info: %s", resource_info)
+        logging.debug(f"[{exec_id}] Resource info: %s", resource_info)
 
     # Parse bound table entities (binding returns a JSON array)
     try:
@@ -488,12 +510,12 @@ def Trigger(
         if monitor_condition and severity:
             log_msg = (
                 "routed: Alarm detected\n\n"
-                f"{json.dumps(json.loads(resource_info.get("_raw")), ensure_ascii=False, indent=2) or "{}"}\n\n"
+                f"{json.dumps(json.loads(resource_info.get('_raw')), ensure_ascii=False, indent=2) or '{}'}\n\n"
                 "ALARM -> ROUTED"
             )
             payload_for_status = {
                 "requestedAt": requested_at,
-                "id": resource_name or "NaN",
+                "id": "NaN",
                 "name": resource_name or "",
                 "exec_id": exec_id,
                 "runbook": "NaN",
@@ -541,7 +563,7 @@ def Trigger(
         monitor_condition=monitor_condition,
         severity=severity,
     )
-    logging.info(f"[{exec_id}] Set schema: '{schema}'")
+    logging.debug(f"[{exec_id}] Set schema: '{schema}'")
     try:
         # Approval-required path: create pending with signed URL embedding resource_info and function key
         if schema.require_approval:
@@ -605,7 +627,7 @@ def Trigger(
             )
             log_table.set(json.dumps(pending_log, ensure_ascii=False))
 
-            logging.info(routing_info)
+            logging.debug(routing_info)
 
             # Optional Slack notify
             slack_token = routing_info.get("slack_token")
@@ -681,24 +703,48 @@ def Trigger(
             )
             return func.HttpResponse(body, status_code=202, mimetype="application/json")
 
+        # ---------------------------------------------------------
+        # DYNAMIC WORKER SELECTION (Binding Version)
+        # ---------------------------------------------------------
+        target_url = worker_routing(workers, schema)
+        logging.info(f"[{exec_id}] Target URL: {target_url}")
+        if target_url:
+            logging.info(f"[{exec_id}] 🎯 Dynamic Routing: Selected {target_url}")
+
+            # Override schema.url so downstream logic uses the chosen worker
+            schema.url = target_url
+        else:
+            logging.error(
+                f"[{exec_id}] ❌ No workers ({schema.worker}) available and no static URL configured for {schema.id}"
+            )
+        # ---------------------------------------------------------
+
         # No approval required: call downstream runbook endpoint
         # Call downstream runbook endpoint
-        response = request(
-            "POST",
-            schema.url,
-            headers=build_headers(
-                schema,
-                exec_id,
-                resource_info,
-                routing_info,
-                monitor_condition,
-                severity,
-            ),
-        )
-        api_body = safe_json(response)
+        api_body = {}
+        status_code = 202
+        try:
+            response = request(
+                "POST",
+                schema.url,
+                headers=build_headers(
+                    schema,
+                    exec_id,
+                    resource_info,
+                    routing_info,
+                    monitor_condition,
+                    severity,
+                ),
+            )
+            status_code = response.status_code
+            api_body = safe_json(response)
+        except Exception as e:
+            logging.error(f"[{exec_id}] {e}")
+            status_code = 500
+            api_body = {"error": str(e)}
 
         # Status label for logs
-        status_label = "accepted" if response.status_code == 202 else "error"
+        status_label = "accepted" if status_code == 202 else "error"
 
         # Write log entry to the table
         start_log = build_log_entry(
@@ -721,144 +767,144 @@ def Trigger(
         log_table.set(json.dumps(start_log, ensure_ascii=False))
 
         # smart routing notification (if routing module available)
-        if route_alert and execute_actions:
-            ctx = {
-                "resourceId": resource_id,
-                "resourceGroup": resource_group,
-                "resourceName": resource_name,
-                "alertRule": (schema.name or ""),
-                "severity": severity,
-                "namespace": ((resource_info or {}).get("namespace") or ""),
-                "oncall": schema.oncall,
-                "status": status_label,
-                "execId": exec_id,
-                "name": schema.name or "",
-                "id": schema.id,
-                "routing_info": routing_info,
-            }
-            decision = route_alert(ctx)
-            logging.info(f"[{exec_id}] {decision}")
-            status_emoji = "✅" if status_label == "succeeded" else "❌"
-            payload = {
-                "slack": {
-                    "message": f"[{exec_id}] Status: {status_label}: {schema.name or ''}",
-                    "blocks": [
-                        {
-                            "type": "header",
-                            "text": {
-                                "type": "plain_text",
-                                "text": f"Worker Notification {status_emoji}",
-                                "emoji": True,
+        if status_label != "accepted":
+            if route_alert and execute_actions:
+                ctx = {
+                    "resourceId": resource_id,
+                    "resourceGroup": resource_group,
+                    "resourceName": resource_name,
+                    "alertRule": (schema.name or ""),
+                    "severity": severity,
+                    "namespace": ((resource_info or {}).get("namespace") or ""),
+                    "oncall": schema.oncall,
+                    "status": status_label,
+                    "execId": exec_id,
+                    "name": schema.name or "",
+                    "id": schema.id,
+                    "routing_info": routing_info,
+                }
+                decision = route_alert(ctx)
+                logging.debug(f"[{exec_id}] {decision}")
+                status_emoji = "✅" if status_label == "succeeded" else "❌"
+                payload = {
+                    "slack": {
+                        "message": f"[{exec_id}] Status: {status_label}: {schema.name or ''}",
+                        "blocks": [
+                            {
+                                "type": "header",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": f"Worker Notification {status_emoji}",
+                                    "emoji": True,
+                                },
                             },
-                        },
-                        {
-                            "type": "section",
-                            "fields": [
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Name:*\n{schema.name or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Id:*\n{schema.id or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*ExecId:*\n{exec_id or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Status:*\n{status_label}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Severity:*\n{severity or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*OnCall:*\n{schema.oncall or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Origin*:\n{schema.worker or 'unknown(?)'}",
-                                },
-                            ],
-                        },
-                        {
-                            "type": "section",
-                            "fields": [
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*Runbook:*\n{schema.runbook or ''}",
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"*MonitorCondition:*\n{schema.monitor_condition or ''}",
-                                },
-                            ],
-                        },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": f"*Run Args:*\n```{schema.run_args or ''}```",
+                            {
+                                "type": "section",
+                                "fields": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Name:*\n{schema.name or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Id:*\n{schema.id or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*ExecId:*\n{exec_id or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Status:*\n{status_label}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Severity:*\n{severity or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*OnCall:*\n{schema.oncall or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Origin*:\n{schema.worker or 'unknown(?)'}",
+                                    },
+                                ],
                             },
-                        },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": f"*Logs (truncated):*\n```{(json.dumps(api_body, ensure_ascii=False) if isinstance(api_body, (dict, list)) else str(api_body))[:1500]}```",
+                            {
+                                "type": "section",
+                                "fields": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Runbook:*\n{schema.runbook or ''}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*MonitorCondition:*\n{schema.monitor_condition or ''}",
+                                    },
+                                ],
                             },
-                        },
-                        {
-                            "type": "context",
-                            "elements": [
-                                {
+                            {
+                                "type": "section",
+                                "text": {
                                     "type": "mrkdwn",
-                                    "text": f"*Severity:* {severity}",
+                                    "text": f"*Run Args:*\n```{schema.run_args or ''}```",
                                 },
-                                {
+                            },
+                            {
+                                "type": "section",
+                                "text": {
                                     "type": "mrkdwn",
-                                    "text": f"*Teams:* {', '.join(dict.fromkeys(a.team for a in decision.actions if getattr(a, 'team', None)))}",
+                                    "text": f"*Logs (truncated):*\n```{(json.dumps(api_body, ensure_ascii=False) if isinstance(api_body, (dict, list)) else str(api_body))[:1500]}```",
                                 },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"Timestamp: <!date^{int(__import__('time').time())}^{{date_short}} {{time}}|now>",
-                                },
-                            ],
-                        },
-                        {"type": "divider"},
-                    ],
-                },
-                "opsgenie": {
-                    "message": f"[{schema.id}] [{severity}] {schema.name}",
-                    "priority": f"P{int(str(severity).strip().lower().replace('sev', '') or '4') + 1}",
-                    "alias": schema.id,
-                    "monitor_condition": monitor_condition or "",
-                    "details": {
-                        "Name": schema.name,
-                        "Id": schema.id,
-                        "ExecId": exec_id,
-                        "Status": status_label,
-                        "Runbook": schema.runbook,
-                        "Run_Args": schema.run_args,
-                        "OnCall": schema.oncall,
-                        "MonitorCondition": monitor_condition,
-                        "Severity": severity,
-                        "Teams:": ", ".join(
-                            dict.fromkeys(
-                                a.team
-                                for a in decision.actions
-                                if getattr(a, "team", None)
-                            )
-                        ),
+                            },
+                            {
+                                "type": "context",
+                                "elements": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Severity:* {severity}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Teams:* {', '.join(dict.fromkeys(a.team for a in decision.actions if getattr(a, 'team', None)))}",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"Timestamp: <!date^{int(__import__('time').time())}^{{date_short}} {{time}}|now>",
+                                    },
+                                ],
+                            },
+                            {"type": "divider"},
+                        ],
                     },
-                    "description": f"{format_opsgenie_description(exec_id, resource_info, api_body)}",
-                },
-            }
-            try:
-                if status_label != "accepted":
+                    "opsgenie": {
+                        "message": f"[{schema.id}] [{severity}] {schema.name}",
+                        "priority": f"P{int(str(severity).strip().lower().replace('sev', '') or '4') + 1}",
+                        "alias": schema.id,
+                        "monitor_condition": monitor_condition or "",
+                        "details": {
+                            "Name": schema.name,
+                            "Id": schema.id,
+                            "ExecId": exec_id,
+                            "Status": status_label,
+                            "Runbook": schema.runbook,
+                            "Run_Args": schema.run_args,
+                            "OnCall": schema.oncall,
+                            "MonitorCondition": monitor_condition,
+                            "Severity": severity,
+                            "Teams:": ", ".join(
+                                dict.fromkeys(
+                                    a.team
+                                    for a in decision.actions
+                                    if getattr(a, "team", None)
+                                )
+                            ),
+                        },
+                        "description": f"{format_opsgenie_description(exec_id, resource_info, api_body)}",
+                    },
+                }
+                try:
                     execute_actions(
                         decision,
                         payload,
@@ -869,12 +915,12 @@ def Trigger(
                             api_key=api_key, **kw
                         ),
                     )
-            except Exception as e:
-                logging.error(f"[{exec_id}] smart routing failed: {e}")
+                except Exception as e:
+                    logging.error(f"[{exec_id}] smart routing failed: {e}")
 
         # Return HTTP response mirroring downstream status
         response_body = build_response_body(
-            status_code=response.status_code,
+            status_code=status_code,
             schema=schema,
             partition_key=partition_key,
             exec_id=exec_id,
@@ -882,7 +928,7 @@ def Trigger(
         )
         return func.HttpResponse(
             response_body,
-            status_code=response.status_code,
+            status_code=status_code,
             mimetype="application/json",
         )
     except Exception as e:
@@ -941,14 +987,35 @@ def Trigger(
     connection=STORAGE_CONN,
 )
 @app.table_input(
+    arg_name="workers",
+    table_name=TABLE_WORKERS_SCHEMAS,
+    connection=STORAGE_CONN,
+)
+@app.table_input(
     arg_name="today_logs",
     table_name=TABLE_NAME,
     partition_key="{partitionKey}",
     connection=STORAGE_CONN,
 )
 def approve(
-    req: func.HttpRequest, log_table: func.Out[str], schemas: str, today_logs: str
+    req: func.HttpRequest,
+    log_table: func.Out[str],
+    schemas: str,
+    today_logs: str,
+    workers: str,
 ) -> func.HttpResponse:
+    import utils
+    from escalation import send_slack_execution
+    from frontend import render_template
+    from requests import request
+    from worker_routing import worker_routing
+
+    try:
+        from smart_routing import execute_actions, route_alert
+    except ImportError:
+        route_alert = None
+        execute_actions = None
+
     route_params = getattr(req, "route_params", {}) or {}
     execId = (route_params.get("execId") or "").strip()
 
@@ -1017,13 +1084,29 @@ def approve(
     partition_key = utils.today_partition_key()
     requested_at = utils.format_requested_at()
 
+    # ---------------------------------------------------------
+    # DYNAMIC WORKER SELECTION (Binding Version)
+    # ---------------------------------------------------------
+    target_url = worker_routing(workers, schema)
+
+    if target_url:
+        logging.info(f"[{execId}] 🎯 Dynamic Routing: Selected {target_url}")
+
+        # Override schema.url so downstream logic uses the chosen worker
+        schema.url = target_url
+    else:
+        logging.error(
+            f"[{execId}] ❌ No workers ({schema.worker}) available and no static URL configured for {schema.id}"
+        )
+    # ---------------------------------------------------------
+
     # Execute once (pass embedded resource_info and propagate the function key if needed)
     try:
         headers = build_headers(
             schema, execId, resource_info, routing_info, monitor_condition, severity
         )
         if func_key:
-            headers["x-functions-key"] = func_key
+            headers["x-cloudo-key"] = func_key
         response = request(
             "POST",
             schema.url,
@@ -1079,7 +1162,7 @@ def approve(
                 "routing_info": routing_info,
             }
             decision = route_alert(ctx)
-            logging.info(f"[{execId}] Approval: {decision}")
+            logging.debug(f"[{execId}] Approval: {decision}")
             payload = {
                 "slack": {
                     "message": f"[{execId}] 🚀 Approved - {schema_id}",
@@ -1212,6 +1295,16 @@ def approve(
 def reject(
     req: func.HttpRequest, log_table: func.Out[str], schemas: str, today_logs: str
 ) -> func.HttpResponse:
+    import utils
+    from escalation import send_slack_execution
+    from frontend import render_template
+
+    try:
+        from smart_routing import execute_actions, route_alert
+    except ImportError:
+        route_alert = None
+        execute_actions = None
+
     route_params = getattr(req, "route_params", {}) or {}
     execId = (route_params.get("execId") or "").strip()
 
@@ -1317,7 +1410,7 @@ def reject(
             "routing_info": routing_info,
         }
         decision = route_alert(ctx)
-        logging.info(f"[{execId}] Reject: {decision}")
+        logging.debug(f"[{execId}] Reject: {decision}")
 
         payload = {
             "slack": {
@@ -1395,21 +1488,31 @@ def reject(
     connection=STORAGE_CONN,
 )
 def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
-    # Il messaggio in coda è JSON prodotto da _post_status
+    import utils
+    from escalation import (
+        format_opsgenie_description,
+        send_opsgenie_alert,
+        send_slack_execution,
+    )
+
+    try:
+        from smart_routing import execute_actions, route_alert
+    except ImportError:
+        route_alert = None
+        execute_actions = None
+
     try:
         body = json.loads(msg.get_body().decode("utf-8"))
     except Exception as e:
         logging.error(f"[Receiver] Invalid queue message: {e}")
         return
 
-    # Validazione campi obbligatori
     required_fields = ["exec_id", "status", "name", "id", "runbook"]
     missing = [k for k in required_fields if not (body.get(k) or "").strip()]
     if missing:
         logging.warning(f"[{body.get('exec_id')}] Missing required fields: {missing}")
         return
 
-    # Log di osservabilità
     logging.info(
         f"[{body.get('exec_id')}] Receiver invoked",
         extra={
@@ -1457,8 +1560,9 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
     )
     log_table.set(json.dumps(log_entity, ensure_ascii=False))
 
+    # TODO check if can be deprecated
     if status_label == "running":
-        logging.info(f"[{body.get('exec_id')}] Status 'running' logged to table")
+        logging.debug(f"[{body.get('exec_id')}] Status 'running' logged to table")
         return
 
     resource_info = body.get("resource_info") or {}
@@ -1506,7 +1610,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
             "routing_info": routing_info,  # sempre dict qui
         }
         decision = route_alert(ctx)
-        logging.info(f"[{exec_id}] {decision}")
+        logging.debug(f"[{exec_id}] {decision}")
         status_emojis = {
             "succeeded": "✅",
             "running": "🏃",
@@ -1645,6 +1749,8 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
 
 @app.route(route="healthz", auth_level=AUTH)
 def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
+    import utils
+
     now_utc = utils.utc_now_iso()
     body = json.dumps(
         {
@@ -1704,8 +1810,10 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
 @app.route(route="logs", auth_level=func.AuthLevel.ANONYMOUS)
 # ruff: noqa
 def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
-    # --- 1. Key Extraction ---
+    from frontend import render_template
+    from requests import request
 
+    # --- 1. Key Extraction ---
     candidate_key = req.headers.get("x-functions-key") or req.params.get("code")
 
     if not candidate_key:
@@ -1932,66 +2040,170 @@ def logs_query(req: func.HttpRequest, rows: str) -> func.HttpResponse:
         )
 
 
-@app.route(route="ui/{*path}", auth_level=AUTH)
-@app.table_input(
-    arg_name="entities",
-    table_name=TABLE_SCHEMAS,
-    connection=STORAGE_CONN,
+# @app.route(route="ui/{*path}", auth_level=AUTH)
+# @app.table_input(
+#     arg_name="entities",
+#     table_name=TABLE_SCHEMAS,
+#     connection=STORAGE_CONN,
+# )
+# def ui(req: func.HttpRequest, entities: str) -> func.HttpResponse:
+#     # Parse bound table entities (binding returns a JSON array)
+#     urls = []
+#     runbooks = []
+#     try:
+#         parsed = json.loads(entities) if isinstance(entities, str) else entities
+#
+#         for e in parsed:
+#             urls.append(e.get("url"))
+#             runbooks.append(e.get("runbook"))
+#
+#         urls = set(urls)
+#         runbooks = set(runbooks)
+#
+#         logging.info(f"urls: {urls}, runbooks: {runbooks}")
+#     except Exception:
+#         parsed = None
+#
+#     logging.info(f"ui parsed: {parsed}")
+#
+#     rel = (req.route_params.get("path") or "index.html").strip("/")
+#     root = os.path.join(os.getcwd(), "fe")
+#     file_path = os.path.normpath(os.path.join(root, rel))
+#     if not file_path.startswith(root) or not os.path.exists(file_path):
+#         file_path = os.path.join(root, "index.html")  # fallback SPA/HTML
+#     try:
+#         with open(file_path, "rb"):
+#             data = render_template(
+#                 "index.html",
+#                 {
+#                     "orchestrator_uri": req.url,
+#                     "urls": urls,
+#                     "runbooks": runbooks,
+#                 },
+#             )
+#         if file_path.endswith(".html"):
+#             mime = "text/html; charset=utf-8"
+#         elif file_path.endswith(".css"):
+#             mime = "text/css; charset=utf-8"
+#         elif file_path.endswith(".js"):
+#             mime = "application/javascript; charset=utf-8"
+#         elif file_path.endswith(".json"):
+#             mime = "application/json; charset=utf-8"
+#         elif file_path.endswith(".png"):
+#             mime = "image/png"
+#         elif file_path.endswith(".jpg") or file_path.endswith(".jpeg"):
+#             mime = "image/jpeg"
+#         elif file_path.endswith(".svg"):
+#             mime = "image/svg+xml"
+#         else:
+#             mime = "application/octet-stream"
+#         return func.HttpResponse(
+#             data, status_code=200, mimetype=mime, headers={"Cache-Control": "no-store"}
+#         )
+#     except Exception as e:
+#         logging.error("UI serving error: %s", e)
+#         return func.HttpResponse("Not found", status_code=404)
+
+
+@app.route(
+    route="workers/register",
+    methods=[func.HttpMethod.POST],
+    auth_level=func.AuthLevel.ANONYMOUS,
 )
-def ui(req: func.HttpRequest, entities: str) -> func.HttpResponse:
-    # Parse bound table entities (binding returns a JSON array)
-    urls = []
-    runbooks = []
-    try:
-        parsed = json.loads(entities) if isinstance(entities, str) else entities
+def register_worker(req: func.HttpRequest) -> func.HttpResponse:
+    import utils
+    from azure.data.tables import TableClient, UpdateMode
 
-        for e in parsed:
-            urls.append(e.get("url"))
-            runbooks.append(e.get("runbook"))
+    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
+    request_key = req.headers.get("x-cloudo-key")
 
-        urls = set(urls)
-        runbooks = set(runbooks)
-
-        logging.info(f"urls: {urls}, runbooks: {runbooks}")
-    except Exception:
-        parsed = None
-
-    logging.info(f"ui parsed: {parsed}")
-
-    rel = (req.route_params.get("path") or "index.html").strip("/")
-    root = os.path.join(os.getcwd(), "fe")
-    file_path = os.path.normpath(os.path.join(root, rel))
-    if not file_path.startswith(root) or not os.path.exists(file_path):
-        file_path = os.path.join(root, "index.html")  # fallback SPA/HTML
-    try:
-        with open(file_path, "rb"):
-            data = render_template(
-                "index.html",
-                {
-                    "orchestrator_uri": req.url,
-                    "urls": urls,
-                    "runbooks": runbooks,
-                },
-            )
-        if file_path.endswith(".html"):
-            mime = "text/html; charset=utf-8"
-        elif file_path.endswith(".css"):
-            mime = "text/css; charset=utf-8"
-        elif file_path.endswith(".js"):
-            mime = "application/javascript; charset=utf-8"
-        elif file_path.endswith(".json"):
-            mime = "application/json; charset=utf-8"
-        elif file_path.endswith(".png"):
-            mime = "image/png"
-        elif file_path.endswith(".jpg") or file_path.endswith(".jpeg"):
-            mime = "image/jpeg"
-        elif file_path.endswith(".svg"):
-            mime = "image/svg+xml"
-        else:
-            mime = "application/octet-stream"
+    if not expected_key or request_key != expected_key:
         return func.HttpResponse(
-            data, status_code=200, mimetype=mime, headers={"Cache-Control": "no-store"}
+            json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
+            status_code=401,
+            mimetype="application/json",
         )
+
+    try:
+        body = req.get_json()
+
+        capability = (body.get("capability") or body.get("id") or "").strip()
+        worker_instance_id = (body.get("worker_id") or "").strip()
+        worker_url = body.get("url")
+
+        if not capability or not worker_url or not worker_instance_id:
+            return func.HttpResponse(
+                "Missing capability, worker_id or url", status_code=400
+            )
+
+        conn_str = os.environ.get("AzureWebJobsStorage")
+        table_client = TableClient.from_connection_string(
+            conn_str, table_name="WorkersRegistry"
+        )
+
+        entity = {
+            "PartitionKey": capability,
+            "RowKey": worker_instance_id,
+            "Url": worker_url,
+            "LastSeen": utils.utc_now_iso(),
+            "Region": body.get("region", "default"),
+            "Load": body.get("load", 0),
+        }
+
+        table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
+
+        return func.HttpResponse(
+            json.dumps({"status": "registered", "timestamp": entity["LastSeen"]}),
+            status_code=200,
+        )
+
     except Exception as e:
-        logging.error("UI serving error: %s", e)
-        return func.HttpResponse("Not found", status_code=404)
+        logging.error(f"Register failed: {e}")
+        return func.HttpResponse(str(e), status_code=500)
+
+
+@app.schedule(
+    schedule="0 */1 * * * *",
+    arg_name="cleanupTimer",
+    run_on_startup=False,
+    use_monitor=False,
+)
+def worker_cleanup(cleanupTimer: func.TimerRequest) -> None:
+    """
+    Garbage Collector: Cleanup old workers where LastSeen is > 5 minutes.
+    """
+    import utils
+    from azure.data.tables import TableClient
+
+    conn_str = os.environ.get("AzureWebJobsStorage")
+    table_client = TableClient.from_connection_string(
+        conn_str, table_name="WorkersRegistry"
+    )
+
+    now_str = utils.utc_now_iso()
+    now_dt = datetime.fromisoformat(now_str.replace("Z", "+00:00"))
+    limit_time = now_dt - timedelta(minutes=5)
+    limit_iso = limit_time.isoformat()
+    logging.info(f"[Cleanup] Cleaning up {limit_iso}")
+
+    filter_query = f"LastSeen lt '{limit_iso}'"
+
+    logging.debug(f"[Cleanup] Searching for zombies older than {limit_iso}...")
+
+    try:
+        dead_workers = table_client.query_entities(query_filter=filter_query)
+
+        count = 0
+        for w in dead_workers:
+            table_client.delete_entity(
+                partition_key=w["PartitionKey"], row_key=w["RowKey"]
+            )
+            logging.debug(
+                f"[Cleanup] Deleted zombie: {w['RowKey']} (Partition: {w['PartitionKey']})"
+            )
+            count += 1
+
+        logging.info(f"[Cleanup] Completed. Removed {count} workers.")
+
+    except Exception as e:
+        logging.error(f"[Cleanup] Failed: {e}")
