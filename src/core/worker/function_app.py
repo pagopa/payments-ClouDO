@@ -8,14 +8,13 @@ import stat
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
 from subprocess import CompletedProcess
 from threading import Lock
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
 
 import azure.functions as func
 import requests
+from utils import _format_requested_at, _utc_now_iso, encode_logs
 
 # =========================
 # Constants and Utilities
@@ -49,35 +48,6 @@ app = func.FunctionApp()
 # In-memory registry of ongoing executions (per instance)
 _ACTIVE_RUNS = {}
 _ACTIVE_LOCK = Lock()
-
-
-def _utc_now_iso() -> str:
-    """Return the current UTC timestamp in ISO 8601 format without microseconds."""
-    return (
-        datetime.now(timezone.utc)
-        .astimezone(ZoneInfo("Europe/Rome"))
-        .replace(microsecond=0)
-        .isoformat()
-    )
-
-
-def _format_requested_at() -> str:
-    # Human-readable UTC timestamp for logs (e.g., 2025-09-15 12:34:56)
-    return (
-        datetime.now(timezone.utc)
-        .astimezone(ZoneInfo("Europe/Rome"))
-        .strftime("%Y-%m-%d %H:%M:%S")
-    )
-
-
-def encode_logs(value: Optional[str]) -> bytes:
-    """
-    Encode a string value to base64 bytes.
-    If the value is None or empty, returns empty bytes.
-    """
-    if not value:
-        return b""
-    return base64.b64encode(value.encode("utf-8"))
 
 
 def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
@@ -261,13 +231,15 @@ def _clean_path(p: Optional[str]) -> Optional[str]:
     return s
 
 
-def _run_aks_login(resource_info: dict, payload: dict = None) -> None:
+def _run_aks_login(resource_info: dict, payload: dict = None) -> str:
     """
     Runs the local AKS login script:
       src/core/worker/utils/aks-login.sh <rg> <name> <namespace>
     Accepts resource_info as dict or JSON string.
     Streams stdout lines to Receiver if payload is provided.
     """
+    import tempfile
+
     if isinstance(resource_info, str):
         try:
             resource_info = json.loads(resource_info)
@@ -293,7 +265,14 @@ def _run_aks_login(resource_info: dict, payload: dict = None) -> None:
             f"[{payload.get('exec_id')}] AKS login script not found: {script_path}"
         )
 
-    cmd = [script_path, rg, name, ns] if ns else [script_path, rg, name]
+    with tempfile.NamedTemporaryFile(prefix="kube-", delete=False) as tmp_file:
+        kubeconfig_path = tmp_file.name
+
+    cmd = (
+        [script_path, kubeconfig_path, rg, name, ns]
+        if ns
+        else [script_path, kubeconfig_path, rg, name]
+    )
     logging.info(f"[{payload.get('exec_id')}] Running AKS login: %s", " ".join(cmd))
     try:
         proc = subprocess.Popen(
@@ -329,6 +308,8 @@ def _run_aks_login(resource_info: dict, payload: dict = None) -> None:
             f"[{payload.get('exec_id')}] AKS login execution error: {e}"
         ) from e
 
+    return kubeconfig_path
+
 
 def _run_script(
     script_name: str,
@@ -337,11 +318,14 @@ def _run_script(
     resource_info: Optional[dict] = None,
     monitor_condition: Optional[str] = "",
     payload: Optional[dict] = None,
+    kubeconfig_path: Optional[str] = None,
 ) -> Optional[CompletedProcess[str]]:
     """Run the requested script fetching it from Blob Storage, falling back to the local folder, then GitHub."""
     tmp_path: Optional[str] = None
     github_tmp_path: Optional[str] = None
     github_error: Optional[Exception] = None
+
+    from utils import get_sanitized_env
 
     # Setting MONITOR_CONDITION env VAR
     os.environ["MONITOR_CONDITION"] = monitor_condition
@@ -413,6 +397,10 @@ def _run_script(
         if run_args is not None:
             cmd = cmd + shlex.split(run_args)
 
+        script_env = get_sanitized_env(os.environ.copy())
+        if kubeconfig_path:
+            script_env["KUBECONFIG"] = kubeconfig_path
+
         logging.info("Running script: %s", cmd)
         # STREAMING
         proc = subprocess.Popen(
@@ -422,6 +410,7 @@ def _run_script(
             text=True,
             bufsize=0,
             close_fds=True,
+            env=script_env,
         )
 
         # Record the process to be stopped
@@ -473,6 +462,13 @@ def _run_script(
                 logging.error(
                     f"[{payload.get('exec_id')}] remove path error ({p}): {e}"
                 )
+        try:
+            if kubeconfig_path and os.path.exists(kubeconfig_path):
+                os.remove(kubeconfig_path)
+        except Exception as e:
+            logging.warning(
+                f"[{payload.get('exec_id')}] remove kubeconfig path error ({p}): {e}"
+            )
 
 
 def _inspect_duplicate_runs(items: list[Any], payload: Any):
@@ -546,9 +542,10 @@ def process_runbook(
         ns_val = str(info.get("aks_namespace", "")).strip().lower() if info else ""
         has_valid_ns = bool(ns_val) and ns_val not in {"null", "none", "undefined"}
 
+        kubeconfig_path = None
         if info and has_valid_ns:
             try:
-                _run_aks_login(info, payload)
+                kubeconfig_path = _run_aks_login(info, payload)
                 logging.info(
                     f"[{payload.get('exec_id')}] AKS login completed successfully"
                 )
@@ -573,6 +570,7 @@ def process_runbook(
             resource_info=payload.get("resource_info"),
             monitor_condition=payload.get("monitor_condition"),
             payload=payload,
+            kubeconfig_path=kubeconfig_path,
         )
         stopped = False
         try:

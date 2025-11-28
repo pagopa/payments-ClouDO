@@ -53,6 +53,7 @@ services:
       - FUNCTIONS_WORKER_RUNTIME=python
       - DOTNET_RUNNING_IN_CONTAINER=true
       - CLOUDO_SECRET_KEY=local
+      - WEBSITE_SITE_NAME=worker
     volumes:
       - ./src/runbooks:/work/runbooks:ro
       - ./src/core/worker:/home/site/wwwroot/
@@ -84,7 +85,7 @@ services:
       - CLOUDO_SECRET_KEY=local
       - QUEUE_NAME=alert
       - WORKER_CAPABILITY=alert
-      - WEBSITE_HOSTNAME=worker-2
+      - WEBSITE_SITE_NAME=worker-2
     volumes:
       - ./src/runbooks:/work/runbooks:ro
       - ./src/core/worker:/home/site/wwwroot/
