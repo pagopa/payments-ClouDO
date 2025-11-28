@@ -2,15 +2,17 @@
 
 set -euo pipefail
 
-if [ $# -ne 3 ]; then
+if [ $# -ne 4 ]; then
   echo "Usage: $0 <resource-group> <cluster-name> <namespace>"
   exit 1
 fi
 
-RESOURCE_GROUP=$1
-CLUSTER_NAME=$2
-NAMESPACE=$3
+RESOURCE_GROUP=$2
+CLUSTER_NAME=$3
+NAMESPACE=$4
 TOKEN_TTL=600  # token valid for 10 minutes
+
+export KUBECONFIG=$1
 
 log() { echo "[aks-login] $*"; }
 
@@ -30,18 +32,18 @@ fi
 
 # Fetch kubeconfig
 log "Fetching AKS credentials for ${CLUSTER_NAME}..."
-az aks get-credentials --resource-group "$RESOURCE_GROUP" --name "$CLUSTER_NAME" --overwrite-existing
+az aks get-credentials --file "$KUBECONFIG" --resource-group "$RESOURCE_GROUP" --name "$CLUSTER_NAME" --overwrite-existing
 
 # Convert kubeconfig to MSI with token TTL 10 minutes
 log "Converting kubeconfig to MSI via kubelogin (force, token ${TOKEN_TTL}s)..."
 if [[ -n "${AZURE_CLIENT_ID:-}" ]]; then
-  kubelogin convert-kubeconfig -l msi --client-id "$AZURE_CLIENT_ID"
+  kubelogin --kubeconfig "$KUBECONFIG" convert-kubeconfig -l msi --client-id "$AZURE_CLIENT_ID"
 else
-  kubelogin convert-kubeconfig -l msi
+  kubelogin --kubeconfig "$KUBECONFIG" convert-kubeconfig -l msi
 fi
 
 # Limit context to the target namespace
-kubectl config set-context --current --namespace="$NAMESPACE"
+kubectl config set-context --kubeconfig "$KUBECONFIG" --current --namespace="$NAMESPACE"
 
 # Probe non-interactive access
 set +e
@@ -55,7 +57,7 @@ if [[ $READY_RC -ne 0 ]]; then
   USER_NAME="msi-${CLUSTER_NAME}"
 
   if [[ -n "${AZURE_CLIENT_ID:-}" ]]; then
-    kubectl config set-credentials "$USER_NAME" \
+    kubectl config --kubeconfig "$KUBECONFIG" set-credentials "$USER_NAME" \
       --exec-command=kubelogin \
       --exec-api-version=client.authentication.k8s.io/v1beta1 \
       --exec-arg=get-token \
@@ -64,7 +66,7 @@ if [[ $READY_RC -ne 0 ]]; then
       --exec-arg=--client-id \
       --exec-arg="$AZURE_CLIENT_ID"
   else
-    kubectl config set-credentials "$USER_NAME" \
+    kubectl config --kubeconfig "$KUBECONFIG" set-credentials "$USER_NAME" \
       --exec-command=kubelogin \
       --exec-api-version=client.authentication.k8s.io/v1beta1 \
       --exec-arg=get-token \
@@ -73,7 +75,7 @@ if [[ $READY_RC -ne 0 ]]; then
   fi
 
   CURRENT_CONTEXT="$(kubectl config current-context)"
-  kubectl config set-context "$CURRENT_CONTEXT" --user="$USER_NAME" --namespace="$NAMESPACE"
+  kubectl config --kubeconfig "$KUBECONFIG" set-context "$CURRENT_CONTEXT" --user="$USER_NAME" --namespace="$NAMESPACE"
 
   set +e
   kubectl get --raw=/readyz 1>/dev/null 2>&1
@@ -146,8 +148,13 @@ fi
 # Generate short-lived token (TokenRequest) with TTL 10 minutes
 log "Trying to get token (TTL ${TOKEN_TTL}s) for SA cloudo-sa-$NAMESPACE"
 if TOKEN=$(kubectl -n "$NAMESPACE" create token cloudo-sa-$NAMESPACE --duration="${TOKEN_TTL}s" 2> >(tee /dev/stderr)); then
-  kubectl config set-credentials "sa-$NAMESPACE-cloudo" --token="$TOKEN"
-  kubectl config set-context --current --user="sa-$NAMESPACE-cloudo" --namespace="$NAMESPACE"
+  kubectl config --kubeconfig "$KUBECONFIG" set-credentials "sa-$NAMESPACE-cloudo" --token="$TOKEN"
+
+  kubectl config --kubeconfig "$KUBECONFIG" set-context --current --user="sa-$NAMESPACE-cloudo" --namespace="$NAMESPACE"
+
+  kubectl config --kubeconfig "$KUBECONFIG" delete-user "msi-${CLUSTER_NAME}" >/dev/null 2>&1 || true
+  kubectl config --kubeconfig "$KUBECONFIG" delete-user "clusterUser_${RESOURCE_GROUP}_${CLUSTER_NAME}" >/dev/null 2>&1 || true
+
 else
   log "TokenRequest failed; verify RBAC and permissions."
   exit 1
