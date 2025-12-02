@@ -34,33 +34,44 @@ resource "azurerm_monitor_metric_alert" "function_duration" {
 }
 
 resource "azurerm_monitor_metric_alert" "queue_message_count" {
-  name                = "${var.prefix}-${var.env}-cloudo-queue-message-count-alert"
+  name                = "${var.prefix}-${var.env}-cloudo-queue-msg-count"
   resource_group_name = var.resource_group_name
   scopes              = [module.storage_account.id]
   description         = "Alert when queue message count exceeds threshold"
   severity            = 2
 
   criteria {
-    metric_namespace = "Microsoft.Storage/storageAccounts/queueServices"
+    metric_namespace = "Microsoft.Storage/storageAccounts"
     metric_name      = "QueueMessageCount"
     aggregation      = "Average"
     operator         = "GreaterThan"
-    threshold        = 1000
+    threshold        = 500
   }
 }
 
 resource "azurerm_monitor_metric_alert" "dead_letter_queue" {
-  name                = "${var.prefix}-${var.env}-cloudo-dead-letter-queue-alert"
+  name                = "${var.prefix}-${var.env}-cloudo-dlq-alert"
   resource_group_name = var.resource_group_name
   scopes              = [module.storage_account.id]
   description         = "Alert when dead letter queue message count exceeds threshold"
   severity            = 1
 
+
   criteria {
-    metric_namespace = "Microsoft.Storage/storageAccounts/queueServices"
-    metric_name      = "DeadLetterMessageCount"
+    metric_namespace = "Microsoft.Storage/storageAccounts"
+    metric_name      = "QueueMessageCount"
     aggregation      = "Average"
     operator         = "GreaterThan"
     threshold        = 0
+
+    dynamic "dimension" {
+      for_each = toset([azurerm_storage_queue.notification.name, azurerm_storage_queue.this[*].name])
+      content {
+        name     = "QueueName"
+        operator = "Include"
+        values   = ["${dimension.value}-poison"]
+      }
+    }
   }
+
 }
