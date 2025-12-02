@@ -65,11 +65,11 @@ resource "azurerm_monitor_metric_alert" "dead_letter_queue" {
     threshold        = 0
 
     dynamic "dimension" {
-      for_each = toset([azurerm_storage_queue.notification.name, azurerm_storage_queue.this[*].name])
+      for_each = toset([azurerm_storage_queue.notification, azurerm_storage_queue.this[*]])
       content {
         name     = "QueueName"
         operator = "Include"
-        values   = ["${dimension.value}-poison"]
+        values   = ["${dimension.value.name}-poison"]
       }
     }
   }
