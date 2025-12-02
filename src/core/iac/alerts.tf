@@ -64,14 +64,13 @@ resource "azurerm_monitor_metric_alert" "dead_letter_queue" {
     operator         = "GreaterThan"
     threshold        = 0
 
-    dynamic "dimension" {
-      for_each = toset([azurerm_storage_queue.notification, azurerm_storage_queue.this[*]])
-      content {
-        name     = "QueueName"
-        operator = "Include"
-        values   = ["${dimension.value.name}-poison"]
-      }
+    dimension {
+      name     = "QueueName"
+      operator = "Include"
+      values = concat(
+        ["${azurerm_storage_queue.notification.name}-poison"],
+        [for q in values(azurerm_storage_queue.this) : "${q.name}-poison"]
+      )
     }
   }
-
 }
