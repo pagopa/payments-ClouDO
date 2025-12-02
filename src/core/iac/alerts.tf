@@ -44,12 +44,14 @@ resource "azurerm_monitor_metric_alert" "function_duration" {
 resource "azurerm_monitor_metric_alert" "queue_message_count" {
   name                = "${var.prefix}-${var.env}-cloudo-queue-msg-count"
   resource_group_name = var.resource_group_name
-  scopes              = [module.storage_account.id]
-  description         = "Alert when queue message count exceeds threshold"
-  severity            = 2
+
+  scopes = ["${module.storage_account.id}/queueServices/default"]
+
+  description = "Alert when queue message count exceeds threshold"
+  severity    = 2
 
   criteria {
-    metric_namespace       = "Microsoft.Storage/storageAccounts"
+    metric_namespace       = "Microsoft.Storage/storageAccounts/queueServices"
     metric_name            = "QueueMessageCount"
     aggregation            = "Average"
     operator               = "GreaterThan"
@@ -61,9 +63,11 @@ resource "azurerm_monitor_metric_alert" "queue_message_count" {
 resource "azurerm_monitor_metric_alert" "dead_letter_queue" {
   name                = "${var.prefix}-${var.env}-cloudo-dlq-alert"
   resource_group_name = var.resource_group_name
-  scopes              = [module.storage_account.id]
-  description         = "Alert when dead letter queue message count exceeds threshold"
-  severity            = 1
+
+  scopes = ["${module.storage_account.id}/queueServices/default"]
+
+  description = "Alert when dead letter queue message count exceeds threshold"
+  severity    = 1
 
 
   criteria {
