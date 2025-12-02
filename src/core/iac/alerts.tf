@@ -50,6 +50,9 @@ resource "azurerm_monitor_metric_alert" "queue_message_count" {
   description = "Alert when queue message count exceeds threshold"
   severity    = 2
 
+  window_size = "PT1H"
+  frequency   = "PT1H"
+
   criteria {
     metric_namespace       = "Microsoft.Storage/storageAccounts/queueServices"
     metric_name            = "QueueMessageCount"
@@ -69,9 +72,11 @@ resource "azurerm_monitor_metric_alert" "dead_letter_queue" {
   description = "Alert when dead letter queue message count exceeds threshold"
   severity    = 1
 
+  window_size = "PT1H"
+  frequency   = "PT1H"
 
   criteria {
-    metric_namespace       = "Microsoft.Storage/storageAccounts"
+    metric_namespace       = "Microsoft.Storage/storageAccounts/queueServices"
     metric_name            = "QueueMessageCount"
     aggregation            = "Average"
     operator               = "GreaterThan"
