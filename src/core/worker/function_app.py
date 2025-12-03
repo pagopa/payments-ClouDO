@@ -645,7 +645,11 @@ def heartbeat(req: func.HttpRequest) -> func.HttpResponse:
 # =========================
 
 
-@app.route(route="processes", methods=[func.HttpMethod.GET], auth_level=AUTH)
+@app.route(
+    route="processes",
+    methods=[func.HttpMethod.GET],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
 def list_processes(req: func.HttpRequest) -> func.HttpResponse:
     """
     Lists the "in progress" runs of the RunbookTest endpoint (jobs not yet completed).
@@ -657,6 +661,16 @@ def list_processes(req: func.HttpRequest) -> func.HttpResponse:
     - GET /api/processes?q=python — Filter by text on exec_id, id, name, runbook
 
     """
+    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
+    request_key = req.headers.get("x-cloudo-key")
+
+    if not expected_key or request_key != expected_key:
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
+            status_code=401,
+            mimetype="application/json",
+        )
+
     q = (req.params.get("q") or "").lower().strip()
     with _ACTIVE_LOCK:
         items = list(_ACTIVE_RUNS.values())

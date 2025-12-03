@@ -1839,8 +1839,11 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
 
 
 @app.route(route="logs", auth_level=func.AuthLevel.ANONYMOUS)
+@app.table_input(
+    arg_name="workers", table_name="WorkersRegistry", connection=STORAGE_CONNECTION
+)
 # ruff: noqa
-def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
+def logs_frontend(req: func.HttpRequest, workers: str) -> func.HttpResponse:
     from frontend import render_template
     from requests import request
 
@@ -1886,11 +1889,17 @@ def logs_frontend(req: func.HttpRequest) -> func.HttpResponse:
     # --- 3. Response ---
 
     if is_valid:
+        try:
+            workers = json.loads(workers) if isinstance(workers, str) else workers
+            workers = list({w.get("RowKey") for w in workers if w.get("RowKey")})
+        except Exception as e:
+            logging.warning(f"Error parsing workers: {e}")
         code_js = json.dumps(candidate_key or "")
         html = render_template(
             "logs.html",
             {
                 "code_js": code_js,
+                "workers": workers,
             },
         )
         return func.HttpResponse(html, status_code=200, mimetype="text/html")
@@ -2191,6 +2200,92 @@ def register_worker(req: func.HttpRequest) -> func.HttpResponse:
     except Exception as e:
         logging.error(f"Register failed: {e}")
         return func.HttpResponse(str(e), status_code=500)
+
+
+@app.route(
+    route="workers", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS
+)
+@app.table_input(
+    arg_name="workers",
+    table_name=TABLE_WORKERS_SCHEMAS,
+    connection=STORAGE_CONN,
+)
+def list_workers(req: func.HttpRequest, workers: str) -> func.HttpResponse:
+    """
+    Returns the list of registered workers available in the registry.
+    """
+    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
+    request_key = req.headers.get("x-cloudo-key")
+
+    if not expected_key or request_key != expected_key:
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
+            status_code=401,
+            mimetype="application/json",
+        )
+
+    try:
+        # Parse binding result (can be string or list depending on extension version)
+        data = json.loads(workers) if isinstance(workers, str) else (workers or [])
+
+        return func.HttpResponse(
+            json.dumps(data, ensure_ascii=False),
+            status_code=200,
+            mimetype="application/json",
+        )
+    except Exception as e:
+        logging.error(f"Failed to list workers: {e}")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}, ensure_ascii=False),
+            status_code=500,
+            mimetype="application/json",
+        )
+
+
+@app.route(route="workers/processes", methods=[func.HttpMethod.GET], auth_level=AUTH)
+def get_worker_processes(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Proxy endpoint: calls the worker API from the backend.
+    Expected param: worker (hostname/ip:port)
+    """
+    import requests
+
+    worker = req.params.get("worker")
+    if not worker:
+        return func.HttpResponse(
+            json.dumps({"error": "Missing 'worker' param"}, ensure_ascii=False),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    # Construct target URL (assuming http protocol for internal workers)
+    # If your workers use https or a specific port logic, adjust here.
+    if os.getenv("FEATURE_DEV", "false").lower() != "true":
+        target_url = f"https://{worker}.azurewebsites.net/api/processes"
+    else:
+        target_url = f"http://{worker}/api/processes"
+
+    try:
+        # Timeout short to avoid blocking the orchestrator for too long
+        resp = requests.get(
+            target_url,
+            headers={"x-cloudo-key": os.getenv("CLOUDO_SECRET_KEY")},
+            timeout=5,
+        )
+        return func.HttpResponse(
+            resp.text,
+            status_code=resp.status_code,
+            mimetype="application/json",
+        )
+    except Exception as e:
+        logging.error(f"Failed to proxy processes for {worker}: {e}")
+        return func.HttpResponse(
+            json.dumps(
+                {"error": f"Failed to reach worker: {str(e)}"}, ensure_ascii=False
+            ),
+            status_code=502,
+            mimetype="application/json",
+        )
 
 
 @app.schedule(
