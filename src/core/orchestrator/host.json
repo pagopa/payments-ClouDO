@@ -11,6 +11,8 @@
       "Function.logs_query": "None",
       "Function.ui": "None",
       "Functions.heartbeat": "Warning",
+      "Function.list_workers": "Warning",
+      "Function.get_worker_processes": "Warning",
       "Host": "Error",
       "Host.Results": "Error",
       "Microsoft": "Error",
