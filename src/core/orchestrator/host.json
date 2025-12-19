@@ -2,13 +2,13 @@
   "version": "2.0",
   "logging": {
     "logLevel": {
-      "Default": "Warning",
+      "Default": "Information",
       "Function": "Information",
-      "Function.get_log": "None",
+      "Function.get_log": "Information",
       "Function.logs_frontend": "Warning",
       "Function.register_worker": "Warning",
       "Function.worker_cleanup": "Warning",
-      "Function.logs_query": "None",
+      "Function.logs_query": "Information",
       "Function.ui": "None",
       "Functions.heartbeat": "Warning",
       "Function.list_workers": "Warning",

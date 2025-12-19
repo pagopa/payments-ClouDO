@@ -9,6 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import azure.functions as func
 from models import Schema
+from utils import create_cors_response
 
 app = func.FunctionApp()
 
@@ -28,7 +29,6 @@ STORAGE_CONNECTION = "AzureWebJobsStorage"
 MAX_TABLE_CHARS = int(os.getenv("MAX_TABLE_LOG_CHARS", "32000"))
 APPROVAL_TTL_MIN = int(os.getenv("APPROVAL_TTL_MIN", "60"))
 APPROVAL_SECRET = (os.getenv("APPROVAL_SECRET") or "").strip()
-
 
 if os.getenv("FEATURE_DEV", "false").lower() != "true":
     AUTH = func.AuthLevel.FUNCTION
@@ -364,7 +364,11 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
 # =========================
 
 
-@app.route(route="Trigger/{team?}", methods=[func.HttpMethod.POST], auth_level=AUTH)
+@app.route(
+    route="Trigger/{team?}",
+    methods=[func.HttpMethod.POST, func.HttpMethod.OPTIONS],
+    auth_level=AUTH,
+)
 @app.table_output(
     arg_name="log_table",
     table_name=TABLE_NAME,
@@ -400,6 +404,9 @@ def Trigger(
         send_slack_execution,
     )
     from worker_routing import worker_routing
+
+    if req.method == "OPTIONS":
+        return create_cors_response()
 
     try:
         from smart_routing import (
@@ -495,6 +502,9 @@ def Trigger(
             json.dumps({"error": "Unexpected table result format"}, ensure_ascii=False),
             status_code=500,
             mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
     # Apply optional filter in code (case-insensitive fallback on 'Id'/'id')
@@ -539,6 +549,9 @@ def Trigger(
                 ),
                 status_code=200,
                 mimetype="application/json",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                },
             )
         else:
             return func.HttpResponse(
@@ -550,6 +563,9 @@ def Trigger(
                 ),
                 status_code=204,
                 mimetype="application/json",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                },
             )
 
     logging.info(f"[{exec_id}] Getting schema entity id '{schema_entity}'")
@@ -696,7 +712,14 @@ def Trigger(
                 },
                 ensure_ascii=False,
             )
-            return func.HttpResponse(body, status_code=202, mimetype="application/json")
+            return func.HttpResponse(
+                body,
+                status_code=202,
+                mimetype="application/json",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                },
+            )
 
         # ---------------------------------------------------------
         # DYNAMIC WORKER SELECTION (Binding Version)
@@ -938,6 +961,9 @@ def Trigger(
             response_body,
             status_code=status_code,
             mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
         )
     except Exception as e:
         # Build error response
@@ -972,6 +998,9 @@ def Trigger(
             response_body,
             status_code=500,
             mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
 
@@ -980,7 +1009,7 @@ def Trigger(
 # =========================
 @app.route(
     route="approvals/{partitionKey}/{execId}/approve",
-    methods=[func.HttpMethod.GET],
+    methods=[func.HttpMethod.GET, func.HttpMethod.OPTIONS],
     auth_level=AUTH,
 )
 @app.table_output(
@@ -1015,6 +1044,9 @@ def approve(
     from escalation import send_slack_execution
     from frontend import render_template
     from worker_routing import worker_routing
+
+    if req.method == "OPTIONS":
+        return create_cors_response()
 
     try:
         from smart_routing import execute_actions, route_alert
@@ -1266,7 +1298,15 @@ def approve(
             },
         )
 
-        return func.HttpResponse(html, status_code=200, mimetype="text/html")
+        return func.HttpResponse(
+            html,
+            status_code=200,
+            mimetype="text/html",
+            headers={
+                "Content-Type": "text/html",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
 
     except Exception as e:
         err_log = build_log_entry(
@@ -1351,6 +1391,9 @@ def reject(
             ),
             status_code=409,
             mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
     p = (req.params.get("p") or "").strip()
@@ -1958,20 +2001,35 @@ def logs_frontend(req: func.HttpRequest, workers: str) -> func.HttpResponse:
 
 
 # TODO Manage empty partitions
-@app.table_input(
-    arg_name="rows",
-    table_name=TABLE_NAME,
-    partition_key="{partitionKey}",
-    connection=STORAGE_CONN,
+# @app.table_input(
+#     arg_name="rows",
+#     table_name=TABLE_NAME,
+#     partition_key="{partitionKey}",
+#     connection=STORAGE_CONN,
+# )
+@app.route(
+    route="logs/query",
+    methods=[func.HttpMethod.GET, func.HttpMethod.OPTIONS],
+    auth_level=AUTH,
 )
-@app.route(route="logs/query", auth_level=AUTH)
-def logs_query(req: func.HttpRequest, rows: str) -> func.HttpResponse:
+def logs_query(req: func.HttpRequest) -> func.HttpResponse:
     """
     Query dei log via Table Input Binding:
     - partitionKey (required) -> used for the binding
     - execId, status -> filtered by memory
     - q (contains on some filed), from/to (range on RequestedAt), order, limit -> in memory
     """
+    if req.method == "OPTIONS":
+        return func.HttpResponse(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            },
+        )
+    from azure.data.tables import TableClient
+
     try:
         partition_key = (req.params.get("partitionKey") or "").strip()
         if not partition_key:
@@ -1980,27 +2038,36 @@ def logs_query(req: func.HttpRequest, rows: str) -> func.HttpResponse:
                 status_code=400,
                 mimetype="application/json",
             )
+
         exec_id = (req.params.get("execId") or "").strip()
         status = (req.params.get("status") or "").strip().lower()
         q = (req.params.get("q") or "").strip()
         from_dt = (req.params.get("from") or "").strip()
         to_dt = (req.params.get("to") or "").strip()
+
         try:
             limit = min(max(int(req.params.get("limit") or 200), 1), 5000)
         except Exception:
             limit = 200
         order = (req.params.get("order") or "desc").strip().lower()
 
-        try:
-            data = json.loads(rows) if isinstance(rows, str) else rows
-        except Exception:
-            data = None
+        conn_str = os.environ.get(STORAGE_CONN)
+        table_client = TableClient.from_connection_string(
+            conn_str, table_name=TABLE_NAME
+        )
 
-        if not isinstance(data, list):
+        filter_query = f"PartitionKey eq '{partition_key}'"
+        if exec_id:
+            filter_query += f" and ExecId eq '{exec_id}'"
+
+        try:
+            entities = table_client.query_entities(query_filter=filter_query)
+            data = list(entities)
+        except Exception as e:
+            logging.error(f"Table query failed: {e}")
             return func.HttpResponse(
                 json.dumps(
-                    {"error": "Table format unexpected"},
-                    ensure_ascii=False,
+                    {"error": "Failed to fetch data from storage"}, ensure_ascii=False
                 ),
                 status_code=500,
                 mimetype="application/json",
@@ -2070,7 +2137,15 @@ def logs_query(req: func.HttpRequest, rows: str) -> func.HttpResponse:
             filtered = filtered[:limit]
 
         body = json.dumps({"items": filtered}, ensure_ascii=False)
-        return func.HttpResponse(body, status_code=200, mimetype="application/json")
+        return func.HttpResponse(
+            body,
+            status_code=200,
+            mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+
     except Exception as e:
         logging.exception("logs_query (binding) failed")
         return func.HttpResponse(
@@ -2080,69 +2155,90 @@ def logs_query(req: func.HttpRequest, rows: str) -> func.HttpResponse:
         )
 
 
-# @app.route(route="ui/{*path}", auth_level=AUTH)
-# @app.table_input(
-#     arg_name="entities",
-#     table_name=TABLE_SCHEMAS,
-#     connection=STORAGE_CONN,
-# )
-# def ui(req: func.HttpRequest, entities: str) -> func.HttpResponse:
-#     # Parse bound table entities (binding returns a JSON array)
-#     urls = []
-#     runbooks = []
+# @app.route(route="app/_next/{*path}", methods=[func.HttpMethod.GET, func.HttpMethod.OPTIONS], auth_level=func.AuthLevel.ANONYMOUS)
+# def nextjs_static_proxy(req: func.HttpRequest) -> func.HttpResponse:
+#     """
+#     Proxy per file statici Next.js (/api/app/_next/static/*, /api/app/_next/*)
+#     """
+#     import requests
+#
+#     if req.method == "OPTIONS":
+#         return create_cors_response()
+#
+#     nextjs_url = os.getenv("NEXTJS_URL", "http://localhost:3000")
+#     path = req.route_params.get("path", "")
+#     target_url = f"{nextjs_url}/_next/{path}"
+#
 #     try:
-#         parsed = json.loads(entities) if isinstance(entities, str) else entities
+#         resp = requests.get(target_url, headers=dict(req.headers), timeout=30)
 #
-#         for e in parsed:
-#             urls.append(e.get("url"))
-#             runbooks.append(e.get("runbook"))
-#
-#         urls = set(urls)
-#         runbooks = set(runbooks)
-#
-#         logging.info(f"urls: {urls}, runbooks: {runbooks}")
-#     except Exception:
-#         parsed = None
-#
-#     logging.info(f"ui parsed: {parsed}")
-#
-#     rel = (req.route_params.get("path") or "index.html").strip("/")
-#     root = os.path.join(os.getcwd(), "fe")
-#     file_path = os.path.normpath(os.path.join(root, rel))
-#     if not file_path.startswith(root) or not os.path.exists(file_path):
-#         file_path = os.path.join(root, "index.html")  # fallback SPA/HTML
-#     try:
-#         with open(file_path, "rb"):
-#             data = render_template(
-#                 "index.html",
-#                 {
-#                     "orchestrator_uri": req.url,
-#                     "urls": urls,
-#                     "runbooks": runbooks,
-#                 },
-#             )
-#         if file_path.endswith(".html"):
-#             mime = "text/html; charset=utf-8"
-#         elif file_path.endswith(".css"):
-#             mime = "text/css; charset=utf-8"
-#         elif file_path.endswith(".js"):
-#             mime = "application/javascript; charset=utf-8"
-#         elif file_path.endswith(".json"):
-#             mime = "application/json; charset=utf-8"
-#         elif file_path.endswith(".png"):
-#             mime = "image/png"
-#         elif file_path.endswith(".jpg") or file_path.endswith(".jpeg"):
-#             mime = "image/jpeg"
-#         elif file_path.endswith(".svg"):
-#             mime = "image/svg+xml"
-#         else:
-#             mime = "application/octet-stream"
+#         response_headers = {}
+#         for header in ['Content-Type', 'Cache-Control', 'ETag', 'Last-Modified']:
+#             if header in resp.headers:
+#                 response_headers[header] = resp.headers[header]
+#         response_headers["Access-Control-Allow-Origin"] = "*"
 #         return func.HttpResponse(
-#             data, status_code=200, mimetype=mime, headers={"Cache-Control": "no-store"}
+#             resp.content,
+#             status_code=resp.status_code,
+#             headers=response_headers,
+#             mimetype=resp.headers.get("Content-Type", "application/octet-stream")
 #         )
+#
 #     except Exception as e:
-#         logging.error("UI serving error: %s", e)
-#         return func.HttpResponse("Not found", status_code=404)
+#         logging.error(f"Next.js static proxy error: {e}")
+#         return func.HttpResponse(
+#             f"Static file not found: {str(e)}",
+#             status_code=404
+#         )
+#
+#
+# @app.route(route="app/{*path}", methods=[func.HttpMethod.GET, func.HttpMethod.POST, func.HttpMethod.OPTIONS], auth_level=AUTH)
+# def nextjs_proxy(req: func.HttpRequest) -> func.HttpResponse:
+#     """
+#     Proxy per Next.js server standalone
+#     """
+#     import requests
+#
+#     if req.method == "OPTIONS":
+#         return create_cors_response()
+#
+#     nextjs_url = os.getenv("NEXTJS_URL", "http://localhost:3000")
+#
+#     path = req.route_params.get("path", "")
+#     target_url = f"{nextjs_url}/{path}" if path else f"{nextjs_url}/"
+#
+#     if req.params:
+#         query_string = "&".join([f"{k}={v}" for k, v in req.params.items()])
+#         target_url += f"?{query_string}"
+#
+#     logging.info(f"Next.js proxy request to: {target_url}")
+#     try:
+#         # Forward request a Next.js
+#         if req.method == "GET":
+#             resp = requests.get(target_url, headers=dict(req.headers), timeout=30)
+#         else:
+#             resp = requests.post(
+#                 target_url,
+#                 headers=dict(req.headers),
+#                 data=req.get_body(),
+#                 timeout=30
+#             )
+#
+#         response_headers = dict(resp.headers)
+#         response_headers["Access-Control-Allow-Origin"] = "*"
+#         return func.HttpResponse(
+#             resp.content,
+#             status_code=resp.status_code,
+#             headers=response_headers,
+#             mimetype=resp.headers.get("Content-Type", "text/html")
+#         )
+#
+#     except Exception as e:
+#         logging.error(f"Next.js proxy error: {e}")
+#         return func.HttpResponse(
+#             f"Frontend service unavailable: {str(e)}",
+#             status_code=502
+#         )
 
 
 @app.route(
@@ -2203,7 +2299,9 @@ def register_worker(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.route(
-    route="workers", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS
+    route="workers",
+    methods=[func.HttpMethod.GET, func.HttpMethod.OPTIONS],
+    auth_level=func.AuthLevel.ANONYMOUS,
 )
 @app.table_input(
     arg_name="workers",
@@ -2214,6 +2312,9 @@ def list_workers(req: func.HttpRequest, workers: str) -> func.HttpResponse:
     """
     Returns the list of registered workers available in the registry.
     """
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
     expected_key = os.environ.get("CLOUDO_SECRET_KEY")
     request_key = req.headers.get("x-cloudo-key")
 
@@ -2222,6 +2323,9 @@ def list_workers(req: func.HttpRequest, workers: str) -> func.HttpResponse:
             json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
             status_code=401,
             mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
     try:
@@ -2232,6 +2336,9 @@ def list_workers(req: func.HttpRequest, workers: str) -> func.HttpResponse:
             json.dumps(data, ensure_ascii=False),
             status_code=200,
             mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
         )
     except Exception as e:
         logging.error(f"Failed to list workers: {e}")
@@ -2239,10 +2346,17 @@ def list_workers(req: func.HttpRequest, workers: str) -> func.HttpResponse:
             json.dumps({"error": str(e)}, ensure_ascii=False),
             status_code=500,
             mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
 
-@app.route(route="workers/processes", methods=[func.HttpMethod.GET], auth_level=AUTH)
+@app.route(
+    route="workers/processes",
+    methods=[func.HttpMethod.GET, func.HttpMethod.OPTIONS],
+    auth_level=AUTH,
+)
 def get_worker_processes(req: func.HttpRequest) -> func.HttpResponse:
     """
     Proxy endpoint: calls the worker API from the backend.
@@ -2250,12 +2364,18 @@ def get_worker_processes(req: func.HttpRequest) -> func.HttpResponse:
     """
     import requests
 
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
     worker = req.params.get("worker")
     if not worker:
         return func.HttpResponse(
             json.dumps({"error": "Missing 'worker' param"}, ensure_ascii=False),
             status_code=400,
             mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
     # Construct target URL (assuming http protocol for internal workers)
@@ -2276,6 +2396,9 @@ def get_worker_processes(req: func.HttpRequest) -> func.HttpResponse:
             resp.text,
             status_code=resp.status_code,
             mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
         )
     except Exception as e:
         logging.error(f"Failed to proxy processes for {worker}: {e}")
@@ -2285,7 +2408,111 @@ def get_worker_processes(req: func.HttpRequest) -> func.HttpResponse:
             ),
             status_code=502,
             mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
         )
+
+
+@app.route(
+    route="schemas",
+    methods=[
+        func.HttpMethod.GET,
+        func.HttpMethod.POST,
+        func.HttpMethod.OPTIONS,
+        func.HttpMethod.DELETE,
+        func.HttpMethod.PUT,
+    ],
+    auth_level=AUTH,
+)
+@app.table_input(arg_name="entities", table_name=TABLE_SCHEMAS, connection=STORAGE_CONN)
+@app.table_output(
+    arg_name="outputTable", table_name=TABLE_SCHEMAS, connection=STORAGE_CONN
+)
+def runbook_schemas(
+    req: func.HttpRequest, entities: str, outputTable: func.Out[str]
+) -> func.HttpResponse:
+    logging.info(f"Processing {req.method} request for schemas.")
+
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    if req.method == "GET":
+        try:
+            schemas_data = json.loads(entities)
+            logging.info(f"schemas: {str(schemas_data)}")
+
+            return func.HttpResponse(
+                body=json.dumps(schemas_data),
+                status_code=200,
+                mimetype="application/json",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                },
+            )
+        except Exception as e:
+            logging.error(f"Error processing schemas: {str(e)}")
+            return func.HttpResponse(
+                body=json.dumps({"error": "Failed to fetch schemas"}),
+                status_code=500,
+                mimetype="application/json",
+            )
+
+    if req.method == "POST" or req.method == "PUT":
+        try:
+            body = req.get_json()
+
+            new_entity = {
+                "PartitionKey": body.get("PartitionKey", "RunbookSchema"),
+                "RowKey": body.get("id", str(uuid.uuid4())),
+                **body,
+            }
+
+            outputTable.set(json.dumps(new_entity))
+
+            return func.HttpResponse(
+                body=json.dumps(new_entity),
+                status_code=201,
+                mimetype="application/json",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Content-Type": "application/json",
+                },
+            )
+        except Exception as e:
+            logging.error(f"Error creating schema: {str(e)}")
+            return func.HttpResponse(
+                body=json.dumps({"error": "Failed to create schema"}),
+                status_code=400,
+                mimetype="application/json",
+            )
+    # if req.method == "DELETE":
+    #     try:
+    #         body = req.get_json()
+    #
+    #         outputTable.
+    #
+    #         return func.HttpResponse(
+    #             body=json.dumps(new_entity),
+    #             status_code=200,
+    #             mimetype="application/json",
+    #             headers={
+    #                 'Access-Control-Allow-Origin': '*',
+    #                 'Content-Type': 'application/json'
+    #             }
+    #         )
+    #     except Exception as e:
+    #         logging.error(f"Error creating schema: {str(e)}")
+    #         return func.HttpResponse(
+    #             body=json.dumps({"error": "Failed to create schema"}),
+    #             status_code=400,
+    #             mimetype="application/json"
+    #         )
+    return func.HttpResponse(
+        body=json.dumps({"error": "Failed to fetch schemas"}),
+        status_code=500,
+        mimetype="application/json",
+    )
 
 
 @app.schedule(

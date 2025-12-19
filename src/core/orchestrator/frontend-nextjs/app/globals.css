@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+:root {
+  --radius: 14px;
+}
+
+@theme inline {
+  /* ClouDO Colors */
+  --color-cloudo-dark: #0b0f14;
+  --color-cloudo-panel: #12161d;
+  --color-cloudo-panel-2: #171c24;
+  --color-cloudo-text: #eef2f6;
+  --color-cloudo-muted: #a7b1bf;
+  --color-cloudo-border: #26303b;
+  --color-cloudo-accent: #60a5fa;
+  --color-cloudo-ok: #22c55e;
+  --color-cloudo-warn: #f59e0b;
+  --color-cloudo-err: #ef4444;
+}
+
+body {
+  background-image:
+    radial-gradient(80vw 60vh at 5% -10%, rgba(96, 165, 250, 0.06), transparent 60%),
+    radial-gradient(80vw 60vh at 105% 10%, rgba(34, 197, 94, 0.05), transparent 60%),
+    linear-gradient(180deg, #0b0f14, #0e141b 55%, #0b0f14);
+  @apply bg-cloudo-dark text-cloudo-text;
+}
+
+/* Custom Components */
+.card {
+  @apply bg-cloudo-panel border border-cloudo-border rounded-[var(--radius)] shadow-[0_12px_28px_rgba(0,0,0,0.35)] overflow-hidden;
+}
+
+.card-header {
+  @apply p-4 border-b border-cloudo-border bg-gradient-to-b from-cloudo-panel-2 to-cloudo-panel;
+}
+
+.btn {
+  @apply inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-bold border border-cloudo-border bg-transparent text-cloudo-text cursor-pointer transition-all active:translate-y-0.5;
+}
+
+.btn-primary {
+  @apply bg-gradient-to-r from-[#5094eb] to-cloudo-accent text-[#08111b] border-0 hover:brightness-110;
+}
+
+.btn-ghost {
+  @apply bg-cloudo-muted/10 border-cloudo-border hover:bg-cloudo-muted/20;
+}
+
+.input {
+  @apply w-full px-3.5 py-3 rounded-xl border border-cloudo-border bg-[#0f141b] text-cloudo-text outline-none transition-all placeholder:text-[#7f8a97] focus:border-cloudo-accent/55 focus:shadow-[0_0_0_3px_rgba(96,165,250,0.22)] focus:bg-[#111824];
+}
+
+.status-badge {
+  @apply inline-block px-3 py-1 rounded-full text-xs font-bold;
+}
+
+.status-running {
+  @apply bg-cloudo-accent/20 text-cloudo-accent;
+}
+
+.status-succeeded {
+  @apply bg-cloudo-ok/18 text-cloudo-ok;
+}
+
+.status-failed {
+  @apply bg-cloudo-err/20 text-cloudo-err;
+}
+
+.status-pending {
+  @apply bg-cloudo-warn/18 text-cloudo-warn;
+}

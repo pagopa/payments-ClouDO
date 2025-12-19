@@ -1,6 +1,9 @@
+import json
 from datetime import datetime, timezone
 from typing import Any, Optional, Union
 from zoneinfo import ZoneInfo
+
+import azure.functions as func
 
 # =========================
 # UTILS Functions
@@ -63,3 +66,23 @@ def _truncate_for_table(
     if not s:
         return "", False
     return s if len(s) <= max_chars else (s[:max_chars])
+
+
+def create_cors_response(body=None, status_code=200, mimetype="application/json"):
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, x-cloudo-key",
+    }
+
+    if body is None and status_code == 200:
+        return func.HttpResponse(status_code=status_code, headers=headers)
+
+    return func.HttpResponse(
+        body=json.dumps(body, ensure_ascii=False)
+        if isinstance(body, (dict, list))
+        else body,
+        status_code=status_code,
+        mimetype=mimetype,
+        headers=headers,
+    )
