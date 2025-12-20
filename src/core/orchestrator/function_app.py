@@ -1347,7 +1347,7 @@ def approve(
 # =========================
 @app.route(
     route="approvals/{partitionKey}/{execId}/reject",
-    methods=[func.HttpMethod.GET],
+    methods=[func.HttpMethod.GET, func.HttpMethod.OPTIONS],
     auth_level=AUTH,
 )
 @app.table_output(
@@ -1372,6 +1372,9 @@ def reject(
     import utils
     from escalation import send_slack_execution
     from frontend import render_template
+
+    if req.method == "OPTIONS":
+        return create_cors_response()
 
     try:
         from smart_routing import execute_actions, route_alert
@@ -2458,7 +2461,7 @@ def runbook_schemas(
                 mimetype="application/json",
             )
 
-    if req.method == "POST" or req.method == "PUT":
+    if req.method == "POST":
         try:
             body = req.get_json()
 
@@ -2485,33 +2488,121 @@ def runbook_schemas(
                 body=json.dumps({"error": "Failed to create schema"}),
                 status_code=400,
                 mimetype="application/json",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                },
             )
-    # if req.method == "DELETE":
-    #     try:
-    #         body = req.get_json()
-    #
-    #         outputTable.
-    #
-    #         return func.HttpResponse(
-    #             body=json.dumps(new_entity),
-    #             status_code=200,
-    #             mimetype="application/json",
-    #             headers={
-    #                 'Access-Control-Allow-Origin': '*',
-    #                 'Content-Type': 'application/json'
-    #             }
-    #         )
-    #     except Exception as e:
-    #         logging.error(f"Error creating schema: {str(e)}")
-    #         return func.HttpResponse(
-    #             body=json.dumps({"error": "Failed to create schema"}),
-    #             status_code=400,
-    #             mimetype="application/json"
-    #         )
+
+    if req.method == "PUT":
+        try:
+            from azure.data.tables import TableClient, UpdateMode
+
+            body = req.get_json()
+            schema_id = body.get("id")
+
+            if not schema_id:
+                return func.HttpResponse(
+                    body=json.dumps({"error": "Missing 'id' field"}),
+                    status_code=400,
+                    mimetype="application/json",
+                    headers={
+                        "Access-Control-Allow-Origin": "*",
+                    },
+                )
+
+            updated_entity = {
+                "PartitionKey": body.get("PartitionKey", "RunbookSchema"),
+                "RowKey": schema_id,
+                **body,
+            }
+
+            conn_str = os.environ.get(STORAGE_CONN)
+            table_client = TableClient.from_connection_string(
+                conn_str, table_name=TABLE_SCHEMAS
+            )
+            table_client.upsert_entity(entity=updated_entity, mode=UpdateMode.REPLACE)
+
+            return func.HttpResponse(
+                body=json.dumps(updated_entity),
+                status_code=200,
+                mimetype="application/json",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Content-Type": "application/json",
+                },
+            )
+        except Exception as e:
+            logging.error(f"Error updating schema: {str(e)}")
+            return func.HttpResponse(
+                body=json.dumps({"error": f"Failed to update schema: {str(e)}"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                },
+            )
+
+    if req.method == "DELETE":
+        try:
+            from azure.data.tables import TableClient
+
+            # Try to get schema_id from query params first, then body
+            schema_id = req.params.get("id")
+            partition_key = req.params.get("PartitionKey", "RunbookSchema")
+
+            if not schema_id:
+                try:
+                    body = req.get_json()
+                    schema_id = body.get("id")
+                    partition_key = body.get("PartitionKey", "RunbookSchema")
+                except Exception:
+                    pass
+
+            if not schema_id:
+                return func.HttpResponse(
+                    body=json.dumps({"error": "Missing 'id' field in params or body"}),
+                    status_code=400,
+                    mimetype="application/json",
+                    headers={
+                        "Access-Control-Allow-Origin": "*",
+                    },
+                )
+
+            conn_str = os.environ.get(STORAGE_CONN)
+            table_client = TableClient.from_connection_string(
+                conn_str, table_name=TABLE_SCHEMAS
+            )
+            table_client.delete_entity(partition_key=partition_key, row_key=schema_id)
+
+            return func.HttpResponse(
+                body=json.dumps(
+                    {"message": "Schema deleted successfully", "id": schema_id}
+                ),
+                status_code=200,
+                mimetype="application/json",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Content-Type": "application/json",
+                },
+            )
+        except Exception as e:
+            logging.error(f"Error deleting schema: {str(e)}")
+            return func.HttpResponse(
+                body=json.dumps({"error": f"Failed to delete schema: {str(e)}"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                },
+            )
+
     return func.HttpResponse(
-        body=json.dumps({"error": "Failed to fetch schemas"}),
-        status_code=500,
+        body=json.dumps({"error": "Method not allowed"}),
+        status_code=405,
         mimetype="application/json",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+        },
     )
 
 

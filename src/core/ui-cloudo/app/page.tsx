@@ -34,6 +34,7 @@ export default function DashboardPage() {
     liveProcesses: [],
   });
   const [loading, setLoading] = useState(true);
+  const [isBackendDown, setIsBackendDown] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -48,6 +49,9 @@ export default function DashboardPage() {
       const workersRes = await fetch(`${API_URL}/workers`, {
         headers: { 'x-cloudo-key': process.env.NEXT_PUBLIC_CLOUDO_KEY || '' },
       });
+
+      if (!workersRes.ok) throw new Error('Backend unreachable');
+
       const workers = await workersRes.json();
       const activeWorkers = Array.isArray(workers) ? workers : [];
 
@@ -69,43 +73,67 @@ export default function DashboardPage() {
       const logsData = await logsRes.json();
 
       const executions = logsData.items || [];
-      const finalExecutions = executions.filter((e: any) =>
-        !['pending', 'accepted', 'skipped', 'routed'].includes((e.Status || '').toLowerCase())
-      );
 
-      const latestStatusByExecId = executions.reduce((acc: any, curr: any) => {
-        const id = curr.ExecId;
-        const currentStatus = (curr.Status || '').toLowerCase();
+      // Group by ExecId and keep only the final status
+      const groupedByExecId = new Map<string, any>();
+      const statusPriority: Record<string, number> = {
+        'succeeded': 5,
+        'completed': 5,
+        'failed': 4,
+        'error': 4,
+        'running': 3,
+        'accepted': 2,
+        'pending': 1,
+        'skipped': 1,
+        'routed': 1,
+      };
 
-        if (!acc[id] || !['pending', 'accepted'].includes(currentStatus)) {
-          acc[id] = currentStatus;
+      executions.forEach((log: any) => {
+        const execId = log.ExecId;
+        const existing = groupedByExecId.get(execId);
+
+        if (!existing) {
+          groupedByExecId.set(execId, log);
+        } else {
+          const currentPriority = statusPriority[log.Status?.toLowerCase()] || 0;
+          const existingPriority = statusPriority[existing.Status?.toLowerCase()] || 0;
+
+          if (currentPriority > existingPriority) {
+            groupedByExecId.set(execId, log);
+          } else if (currentPriority === existingPriority) {
+            if (new Date(log.RequestedAt).getTime() > new Date(existing.RequestedAt).getTime()) {
+              groupedByExecId.set(execId, log);
+            }
+          }
         }
-        return acc;
-      }, {});
+      });
 
-      const succeeded = executions.filter((e: any) =>
-        (e.Status || '').toLowerCase() === 'succeeded'
+      const finalExecutions = Array.from(groupedByExecId.values());
+
+      const succeeded = finalExecutions.filter((e: any) =>
+        ['succeeded', 'completed'].includes((e.Status || '').toLowerCase())
       ).length;
 
-      const pending = Object.values(latestStatusByExecId).filter((status: any) =>
-        ['pending', 'accepted'].includes(status)
+      const pending = finalExecutions.filter((e: any) =>
+        ['pending', 'accepted'].includes((e.Status || '').toLowerCase())
       ).length;
 
-
-      const sortedExecutions = [...executions]
+      const sortedExecutions = [...finalExecutions]
         .sort((a, b) => new Date(b.RequestedAt || 0).getTime() - new Date(a.RequestedAt || 0).getTime())
         .slice(0, 5);
 
       setStats({
-        totalExecutions: executions.length,
+        totalExecutions: finalExecutions.length,
             successRate: finalExecutions.length > 0 ? (succeeded / finalExecutions.length) * 100 : 0,
         activeWorkers: activeWorkers.length,
         pendingApprovals: pending,
         recentExecutions: sortedExecutions,
         liveProcesses: allLiveProcesses,
       });
+      setIsBackendDown(false);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+      setIsBackendDown(true);
     } finally {
       setLoading(false);
     }
@@ -135,10 +163,12 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cloudo-ok opacity-40"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-cloudo-ok"></span>
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-40 ${isBackendDown ? 'bg-cloudo-err' : 'bg-cloudo-ok'}`}></span>
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${isBackendDown ? 'bg-cloudo-err' : 'bg-cloudo-ok'}`}></span>
           </span>
-          <span className="text-[10px] font-black uppercase tracking-widest text-cloudo-muted italic">Live Stream • 30s</span>
+          <span className={`text-[10px] font-black uppercase tracking-widest italic ${isBackendDown ? 'text-cloudo-err animate-pulse' : 'text-cloudo-muted'}`}>
+            {isBackendDown ? 'Connection Lost • Retry' : 'Live Stream • 30s'}
+          </span>
         </div>
       </div>
 
@@ -175,7 +205,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Recent Activity Table (Operational Stream) - RIMANE QUI */}
+            {/* Recent Activity Table (Operational Stream) */}
             <div className="lg:col-span-2 space-y-4">
               <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-muted border-b border-cloudo-border/10 pb-2">Operational Stream</h2>
               <div className="bg-[#0d1117]/40 border border-cloudo-border/20 rounded-xl overflow-hidden shadow-2xl">
@@ -196,13 +226,24 @@ export default function DashboardPage() {
                         <tr key={exec.RowKey} className="group hover:bg-cloudo-accent/[0.02] transition-colors">
                           <td className="px-6 py-4">
                             <div className="font-bold text-white tracking-tight">{exec.Name || 'Runtime Task'}</div>
-                            <div className="text-[9px] font-mono text-cloudo-muted mt-1 opacity-50">{exec.ExecId?.slice(0, 16)}</div>
+                            <div className="text-[10px] font-mono text-cloudo-accent/80 font-bold mt-0.5">
+                              {exec.Id || '--'}
+                            </div>
                           </td>
                           <td className="px-6 py-4 font-mono text-cloudo-accent/60 italic text-[11px]">
                             {exec.Runbook || '--'}
                           </td>
                           <td className="px-6 py-4">
-                            <StatusIndicator status={exec.Status} />
+                            <div className="flex flex-col gap-1">
+                              <StatusIndicator status={exec.Status} />
+                              <div
+                                className="text-[8px] font-mono text-cloudo-muted/40 group-hover:text-cloudo-muted/80 transition-colors cursor-help flex items-center gap-1"
+                                title={`Full ID: ${exec.ExecId}`}
+                                onClick={() => navigator.clipboard.writeText(exec.ExecId)}
+                              >
+                                <span className="opacity-50">HEX:</span> {exec.ExecId?.slice(0, 12)}...
+                              </div>
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-right">
                              <div className="text-white font-mono">{new Date(exec.RequestedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}</div>

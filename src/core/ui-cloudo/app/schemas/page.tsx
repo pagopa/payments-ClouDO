@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   HiOutlinePlus, HiOutlineSearch, HiOutlineChip, HiOutlineTerminal,
   HiOutlineUserGroup, HiOutlineShieldCheck, HiOutlineTrash,
-  HiOutlinePlay, HiOutlinePencil, HiOutlineX, HiOutlineClipboardCopy, HiOutlineCheck
+  HiOutlinePlay, HiOutlinePencil, HiOutlineX, HiOutlineClipboardCopy, HiOutlineCheck,
+  HiOutlineCheckCircle, HiOutlineExclamationCircle
 } from "react-icons/hi";
 import { MdOutlineSchema } from "react-icons/md";
 
@@ -22,6 +23,12 @@ interface Schema {
   severity?: string;
 }
 
+interface Notification {
+  id: string;
+  type: 'success' | 'error';
+  message: string;
+}
+
 export default function SchemasPage() {
   const [schemas, setSchemas] = useState<Schema[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +38,15 @@ export default function SchemasPage() {
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [selectedSchema, setSelectedSchema] = useState<Schema | null>(null);
   const [schemaToDelete, setSchemaToDelete] = useState<Schema | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const addNotification = (type: 'success' | 'error', message: string) => {
+    const id = Date.now().toString();
+    setNotifications(prev => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 4000);
+  };
 
   useEffect(() => { fetchSchemas(); }, []);
 
@@ -59,6 +75,29 @@ export default function SchemasPage() {
 
   return (
     <div className="flex flex-col h-full bg-[#0a0c10] text-cloudo-text font-sans selection:bg-cloudo-accent/30">
+      {/* Notification Toast Container */}
+      <div className="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none">
+        {notifications.map((notif) => (
+          <div
+            key={notif.id}
+            className={`pointer-events-auto min-w-[320px] p-4 rounded-lg border shadow-2xl animate-in slide-in-from-right-5 duration-300 ${
+              notif.type === 'success'
+                ? 'bg-[#0b0e14] border-green-500/30 text-green-400'
+                : 'bg-[#0b0e14] border-red-500/30 text-red-400'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              {notif.type === 'success' ? (
+                <HiOutlineCheckCircle className="w-5 h-5 flex-shrink-0" />
+              ) : (
+                <HiOutlineExclamationCircle className="w-5 h-5 flex-shrink-0" />
+              )}
+              <p className="text-xs font-bold uppercase tracking-wider">{notif.message}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Top Bar - High Density UI */}
       <div className="flex items-center justify-between px-8 py-4 border-b border-cloudo-border/20 bg-[#0d1117]/80 backdrop-blur-xl sticky top-0 z-20">
         <div className="flex items-center gap-4">
@@ -183,8 +222,9 @@ export default function SchemasPage() {
             <SchemaForm
               initialData={selectedSchema}
               mode={modalMode}
-              onSuccess={() => { fetchSchemas(); setModalMode(null); }}
+              onSuccess={(message) => { fetchSchemas(); setModalMode(null); addNotification('success', message); }}
               onCancel={() => setModalMode(null)}
+              onError={(message) => addNotification('error', message)}
             />
           </div>
         </div>
@@ -192,13 +232,24 @@ export default function SchemasPage() {
 
       {/* Delete Confirmation Modal */}
       {schemaToDelete && (
-        <DeleteConfirmationModal schema={schemaToDelete} onClose={() => setSchemaToDelete(null)} onSuccess={fetchSchemas} />
+        <DeleteConfirmationModal
+          schema={schemaToDelete}
+          onClose={() => setSchemaToDelete(null)}
+          onSuccess={(message) => { fetchSchemas(); addNotification('success', message); }}
+          onError={(message) => addNotification('error', message)}
+        />
       )}
     </div>
   );
 }
 
-function SchemaForm({ initialData, mode, onSuccess, onCancel }: { initialData?: Schema | null, mode: 'create' | 'edit', onSuccess: () => void, onCancel: () => void }) {
+function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
+  initialData?: Schema | null,
+  mode: 'create' | 'edit',
+  onSuccess: (message: string) => void,
+  onCancel: () => void,
+  onError: (message: string) => void
+}) {
   const [formData, setFormData] = useState({
     id: initialData?.id || '',
     name: initialData?.name || '',
@@ -212,16 +263,30 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel }: { initialData?: 
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setSubmitting(true);
+    e.preventDefault();
+    setSubmitting(true);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      await fetch(`${API_URL}/schemas`, {
+      const response = await fetch(`${API_URL}/schemas`, {
         method: mode === 'create' ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ PartitionKey: 'RunbookSchema', RowKey: formData.id, ...formData }),
       });
-      onSuccess();
-    } catch (e) { console.error(e); } finally { setSubmitting(false); }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        onError(data.error || 'Operation failed');
+        setSubmitting(false);
+        return;
+      }
+
+      onSuccess(mode === 'create' ? 'Schema created successfully' : 'Schema updated successfully');
+    } catch (e) {
+      onError('Network error. Please try again.');
+      console.error(e);
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -340,13 +405,33 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel }: { initialData?: 
   );
 }
 
-function DeleteConfirmationModal({ schema, onClose, onSuccess }: { schema: Schema, onClose: () => void, onSuccess: () => void }) {
+function DeleteConfirmationModal({ schema, onClose, onSuccess, onError }: {
+  schema: Schema,
+  onClose: () => void,
+  onSuccess: (message: string) => void,
+  onError: (message: string) => void
+}) {
   const [isDeleting, setIsDeleting] = useState(false);
+
   const handleDelete = async () => {
     setIsDeleting(true);
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-    await fetch(`${API_URL}/schemas?id=${schema.id}`, { method: 'DELETE' });
-    onSuccess(); onClose();
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
+      const response = await fetch(`${API_URL}/schemas?id=${schema.id}`, { method: 'DELETE' });
+      const data = await response.json();
+
+      if (!response.ok) {
+        onError(data.error || 'Delete failed');
+        setIsDeleting(false);
+        return;
+      }
+
+      onSuccess(`Schema "${schema.name}" deleted successfully`);
+      onClose();
+    } catch (e) {
+      onError('Network error. Please try again.');
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -361,9 +446,12 @@ function DeleteConfirmationModal({ schema, onClose, onSuccess }: { schema: Schem
             Resource: <span className="text-white">{schema.name}</span>
           </p>
         </div>
+
         <div className="flex flex-col gap-2 pt-2">
-          <button onClick={handleDelete} disabled={isDeleting} className="bg-red-600 hover:bg-red-700 text-white py-3 rounded-md text-[10px] font-black uppercase tracking-[0.2em] transition-all">Destroy Entry</button>
-          <button onClick={onClose} className="text-cloudo-muted hover:text-white py-2 text-[10px] font-black uppercase tracking-[0.2em] transition-all">Cancel Action</button>
+          <button onClick={handleDelete} disabled={isDeleting} className="bg-red-600 hover:bg-red-700 text-white py-3 rounded-md text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50">
+            {isDeleting ? 'Destroying...' : 'Destroy Entry'}
+          </button>
+          <button onClick={onClose} disabled={isDeleting} className="text-cloudo-muted hover:text-white py-2 text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50">Cancel Action</button>
         </div>
       </div>
     </div>

@@ -84,9 +84,18 @@ export function TriggerPanel() {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      if (!loading && isJsonValid) {
+        executeTrigger();
+      }
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="bg-[#0d1117]/40 border border-cloudo-border/20 rounded-xl overflow-hidden shadow-2xl">
+      <form onSubmit={(e) => { e.preventDefault(); if (!loading && isJsonValid) executeTrigger(); }} className="bg-[#0d1117]/40 border border-cloudo-border/20 rounded-xl overflow-hidden shadow-2xl">
         {/* Panel Header */}
         <div className="px-6 py-4 border-b border-cloudo-border/20 flex justify-between items-center bg-white/[0.02]">
           <div className="flex items-center gap-3">
@@ -95,6 +104,7 @@ export function TriggerPanel() {
           </div>
           <div className="flex gap-4">
             <button
+              type="button"
               onClick={() => loadTemplate('azure_alert')}
               className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-cloudo-muted hover:text-cloudo-accent transition-colors"
             >
@@ -102,6 +112,7 @@ export function TriggerPanel() {
               Azure Alert
             </button>
             <button
+              type="button"
               onClick={() => setTriggerBody('')}
               className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-cloudo-muted hover:text-red-400 transition-colors"
             >
@@ -142,6 +153,7 @@ export function TriggerPanel() {
                   placeholder='{ "action": "test", "params": {} }'
                   value={triggerBody}
                   onChange={(e) => setTriggerBody(e.target.value)}
+                  onKeyDown={handleKeyDown}
                 />
               </div>
             </div>
@@ -149,7 +161,7 @@ export function TriggerPanel() {
 
           <div className="flex justify-end pt-4 border-t border-cloudo-border/10">
             <button
-              onClick={executeTrigger}
+              type="submit"
               disabled={loading || !isJsonValid}
               className="bg-cloudo-accent hover:bg-cloudo-accent/90 text-white min-w-[180px] h-11 rounded-md text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-xl shadow-cloudo-accent/10 disabled:opacity-30"
             >
@@ -162,7 +174,7 @@ export function TriggerPanel() {
             </button>
           </div>
         </div>
-      </div>
+      </form>
 
       {/* Terminal Response Section */}
       {response && (

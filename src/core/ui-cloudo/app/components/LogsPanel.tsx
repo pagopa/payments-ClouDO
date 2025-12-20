@@ -58,7 +58,45 @@ export function LogsPanel() {
 
       const res = await fetch(`${API_URL}/logs/query?${params}`);
       const data = await res.json();
-      setLogs(data.items || []);
+      const rawLogs = data.items || [];
+
+      // Group by ExecId and keep only the final status
+      const groupedByExecId = new Map<string, LogEntry>();
+      const statusPriority: Record<string, number> = {
+        'succeeded': 5,
+        'completed': 5,
+        'failed': 4,
+        'error': 4,
+        'running': 3,
+        'accepted': 2,
+        'pending': 1,
+      };
+
+      rawLogs.forEach((log: LogEntry) => {
+        const execId = log.ExecId;
+        const existing = groupedByExecId.get(execId);
+
+        if (!existing) {
+          groupedByExecId.set(execId, log);
+        } else {
+          // Keep the entry with higher priority status
+          const currentPriority = statusPriority[log.Status?.toLowerCase()] || 0;
+          const existingPriority = statusPriority[existing.Status?.toLowerCase()] || 0;
+
+          if (currentPriority > existingPriority) {
+            groupedByExecId.set(execId, log);
+          } else if (currentPriority === existingPriority) {
+            // If same priority, keep the most recent
+            if (log.RequestedAt > existing.RequestedAt) {
+              groupedByExecId.set(execId, log);
+            }
+          }
+        }
+      });
+
+      setLogs(Array.from(groupedByExecId.values()).sort((a, b) =>
+        b.RequestedAt.localeCompare(a.RequestedAt)
+      ));
     } catch (error) {
       console.error('Error fetching logs:', error);
       setLogs([]);

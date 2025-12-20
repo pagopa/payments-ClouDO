@@ -99,11 +99,15 @@ dev:
 	( cd $(WORKER_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ exec func start -p 7072 ) & \
 	wait
 
+.PHONY: test-env-build
+test-env-build:
+	docker-compose build
 
 .PHONY: test-env-start
 test-env-start:
-	docker-compose build && docker-compose up -d && sleep 2 && bash src/tests/ingest_test_schema.sh
-	@echo "Test with -> http://localhost:7071/api/Trigger?id=test"
+	docker-compose up -d && sleep 2 && bash src/tests/ingest_test_schema.sh
+	@echo "Test with -> curl --location 'http://localhost:7071/api/Trigger?id=test-2' --header 'Content-Type: application/json'"
+	@echo "ClouDO UI -> http://localhost:3000"
 
 .PHONY: test-env-stop
 test-env-stop:

@@ -14,7 +14,7 @@ services:
   frontend:
     platform: linux/amd64
     build:
-      context: ./src/core/orchestrator/frontend-nextjs
+      context: src/core/ui-cloudo
       dockerfile: Dockerfile.frontend
     ports:
       - "3000:3000"
@@ -25,7 +25,7 @@ services:
     networks:
       - azure-functions
     volumes:
-      - ./src/core/orchestrator/frontend-nextjs:/app
+      - ./src/core/ui-cloudo:/app
       - /app/node_modules
       - /app/.next
     command: npm run dev
@@ -37,13 +37,15 @@ services:
     build:
       context: ./src/core/orchestrator
       dockerfile: Dockerfile
-    ports:
-      - "7071:80"
+    deploy:
+      mode: replicated
+      replicas: 3
     env_file:
       - path: .env.local
         required: false
     environment:
       - AzureWebJobsStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
+      - DOTNET_SYSTEM_NET_HTTP_USESOCKETSHTTPHANDLER=0
       - AzureWebJobsFeatureFlags=EnableWorkerIndexing
       - AzureWebJobs_CORS_AllowedOrigins=http://localhost:3000
       - AzureWebJobs_CORS_AllowCredentials=true
@@ -60,7 +62,18 @@ services:
     volumes:
       - ./src/core/orchestrator:/home/site/wwwroot/
 
-  worker:
+  gateway:
+    image: nginx:alpine
+    ports:
+      - "7071:80"
+    volumes:
+      - ./src/tests/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - orchestrator
+    networks:
+      - azure-functions
+
+  worker-local:
     platform: linux/amd64
     build:
       context: ./src/core/worker
@@ -78,19 +91,17 @@ services:
       - FUNCTIONS_WORKER_RUNTIME=python
       - DOTNET_RUNNING_IN_CONTAINER=true
       - CLOUDO_SECRET_KEY=local
-      - WEBSITE_SITE_NAME=worker
+      - WEBSITE_SITE_NAME=worker-local
     volumes:
       - ./src/runbooks:/work/runbooks:ro
       - ./src/core/worker:/home/site/wwwroot/
-    ports:
-      - "7072:80"
     depends_on:
       - azurite
       - orchestrator
     networks:
       - azure-functions
 
-  worker-2:
+  worker-alert:
     platform: linux/amd64
     build:
       context: ./src/core/worker
@@ -110,44 +121,10 @@ services:
       - CLOUDO_SECRET_KEY=local
       - QUEUE_NAME=alert
       - WORKER_CAPABILITY=alert
-      - WEBSITE_SITE_NAME=worker-2
+      - WEBSITE_SITE_NAME=worker-alert
     volumes:
       - ./src/runbooks:/work/runbooks:ro
       - ./src/core/worker:/home/site/wwwroot/
-    ports:
-      - "7073:80"
-    depends_on:
-      - azurite
-      - orchestrator
-    networks:
-      - azure-functions
-
-  worker-3:
-    platform: linux/amd64
-    build:
-      context: ./src/core/worker
-      dockerfile: Dockerfile
-    env_file:
-      - path: .env.local
-        required: false
-    environment:
-      - AzureWebJobsStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
-      - FEATURE_DEV=true
-      - DEV_SCRIPT_PATH=/work/runbooks/
-      - RECEIVER_URL=http://orchestrator/api/Receiver
-      - AzureWebJobsFeatureFlags=EnableWorkerIndexing
-      - FUNCTIONS_WORKER_PROCESS_COUNT=1
-      - FUNCTIONS_WORKER_RUNTIME=python
-      - DOTNET_RUNNING_IN_CONTAINER=true
-      - CLOUDO_SECRET_KEY=local
-      - QUEUE_NAME=alert
-      - WORKER_CAPABILITY=alert
-      - WEBSITE_SITE_NAME=worker-3
-    volumes:
-      - ./src/runbooks:/work/runbooks:ro
-      - ./src/core/worker:/home/site/wwwroot/
-    ports:
-      - "7074:80"
     depends_on:
       - azurite
       - orchestrator
