@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import {
   HiOutlineChevronDoubleLeft,
   HiOutlineChevronDoubleRight,
@@ -10,53 +10,82 @@ import {
   HiOutlineChartBar,
   HiOutlineCog,
   HiOutlineTerminal,
+  HiOutlineCode,
   HiOutlineCollection,
   HiOutlineChip,
   HiOutlineLightningBolt,
   HiOutlineViewGrid,
-  HiOutlineShieldCheck
+  HiOutlineShieldCheck,
+  HiOutlineUsers,
+  HiOutlineClipboardList,
+  HiOutlineClock,
 } from "react-icons/hi";
 
 interface NavItem {
   name: string;
   href: string;
-  icon: JSX.Element;
+  icon: React.ReactNode;
   badge?: number;
+  adminOnly?: boolean;
 }
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: <HiOutlineViewGrid /> },
   { name: 'Execute Trigger', href: '/trigger', icon: <HiOutlineLightningBolt /> },
   { name: 'Governance Gate', href: '/approvals', icon: <HiOutlineShieldCheck /> },
+  { name: 'Schedules', href: '/schedules', icon: <HiOutlineClock /> },
   { name: 'Registry', href: '/schemas', icon: <HiOutlineCollection /> },
+  { name: 'Runbook Studio', href: '/studio', icon: <HiOutlineCode /> },
   { name: 'Executions', href: '/executions', icon: <HiOutlineTerminal /> },
   { name: 'Compute Nodes', href: '/workers', icon: <HiOutlineChip /> },
+  { name: 'Users', href: '/users', icon: <HiOutlineUsers />, adminOnly: true },
+  { name: 'Audit Logs', href: '/audit', icon: <HiOutlineClipboardList />, adminOnly: true },
+  { name: 'Settings', href: '/settings', icon: <HiOutlineCog />, adminOnly: true },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [user, setUser] = useState<{username: string, email: string, role: string} | null>(null);
+
+  useEffect(() => {
+    const userData = localStorage.getItem('cloudo_user');
+    if (userData) {
+      try {
+        setUser(JSON.parse(userData));
+      } catch (e) {
+        console.error("Failed to parse user data", e);
+      }
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('cloudo_auth');
+    localStorage.removeItem('cloudo_user');
+    router.push('/login');
+  };
 
   return (
     <div
       className={`${
         collapsed ? 'w-20' : 'w-64'
-      } bg-[#0d1117] border-r border-cloudo-border/20 flex flex-col transition-all duration-300 h-screen sticky top-0 z-30 font-sans`}
+      } bg-cloudo-dark border-r border-cloudo-border flex flex-col transition-all duration-300 h-screen sticky top-0 z-30 font-mono`}
     >
       {/* Header - Brand Layer */}
-      <div className="p-6 border-b border-cloudo-border/10 flex items-center justify-between bg-white/[0.01]">
+      <div className="p-6 border-b border-cloudo-border flex items-center justify-between bg-black/20">
         {!collapsed && (
           <div className="animate-in fade-in duration-500">
-            <h1 className="text-lg font-black text-white tracking-tighter flex items-center gap-2 uppercase">
+            <h1 className="text-xl font-black text-white tracking-[0.1em] flex items-center gap-2 uppercase">
               <span className="text-cloudo-accent">Clou</span>DO
             </h1>
-            <p className="text-[10px] text-cloudo-muted font-black uppercase tracking-[0.3em] opacity-60">Runbook Automation</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40 mt-1">Runbook Engine</p>
           </div>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-2 hover:bg-white/5 rounded-md text-cloudo-muted hover:text-white transition-all border border-transparent hover:border-cloudo-border/20"
-          title={collapsed ? 'Expand Workspace' : 'Collapse Workspace'}
+          className="p-2 hover:bg-cloudo-accent hover:text-cloudo-dark text-cloudo-muted transition-all border border-cloudo-border"
+          title={collapsed ? 'Expand' : 'Collapse'}
         >
           {collapsed ? <HiOutlineChevronDoubleRight className="w-4 h-4" /> : <HiOutlineChevronDoubleLeft className="w-4 h-4" />}
         </button>
@@ -64,69 +93,107 @@ export function Sidebar() {
 
       {/* Navigation - Strategic Layer */}
       <nav className="flex-1 p-4 space-y-6 overflow-y-auto custom-scrollbar">
+        {/* Core Section */}
         <div className="space-y-1">
           {!collapsed && (
-            <p className="px-3 text-[9px] font-black text-cloudo-muted uppercase tracking-[0.2em] mb-3 opacity-40">Main Operations</p>
+            <p className="px-3 text-[11px] font-black text-cloudo-muted/40 uppercase tracking-[0.2em] mb-4">Core Systems</p>
           )}
-          {navigation.map((item) => {
+          {navigation.filter(item => !item.adminOnly).map((item) => {
             const isActive = pathname === item.href;
             return (
               <Link
                 key={item.name}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all group relative ${
+                className={`flex items-center gap-3 px-3 py-3 transition-all group relative border ${
                   isActive
-                    ? 'bg-cloudo-accent/10 text-cloudo-accent border border-cloudo-accent/20'
-                    : 'text-cloudo-muted hover:bg-white/[0.03] hover:text-white border border-transparent'
+                    ? 'bg-cloudo-accent/5 text-cloudo-accent border-cloudo-accent/30 shadow-[inset_0_0_10px_rgba(88,166,255,0.05)]'
+                    : 'text-cloudo-muted hover:bg-white/5 hover:text-white border-transparent'
                 }`}
               >
-                <span className={`text-xl transition-transform group-hover:scale-110 ${isActive ? 'text-cloudo-accent' : 'opacity-70'}`}>
+                <span className={`text-lg shrink-0 ${isActive ? 'text-cloudo-accent' : 'opacity-50'}`}>
                   {item.icon}
                 </span>
                 {!collapsed && (
-                  <>
-                    <span className={`text-[11px] font-black uppercase tracking-widest flex-1 ${isActive ? 'text-white' : ''}`}>
-                      {item.name}
-                    </span>
-                    {item.badge && (
-                      <span className="bg-cloudo-accent text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-[0_0_10px_rgba(var(--cloudo-accent-rgb),0.3)]">
-                        {item.badge}
-                      </span>
-                    )}
-                  </>
+                  <span className={`text-sm font-bold uppercase tracking-[0.2em] flex-1 ${isActive ? 'text-white' : ''}`}>
+                    {item.name}
+                  </span>
                 )}
                 {isActive && (
-                  <div className="absolute left-0 w-[2px] h-4 bg-cloudo-accent rounded-full -ml-[1px]" />
+                  <div className="absolute left-[-1px] w-[2px] h-6 bg-cloudo-accent" />
                 )}
               </Link>
             );
           })}
         </div>
+
+        {/* Admin Section */}
+        {user?.role === 'ADMIN' && (
+          <div className="space-y-1 pt-4">
+            {!collapsed && (
+              <p className="px-3 text-[11px] font-black text-cloudo-muted/40 uppercase tracking-[0.2em] mb-4">Administration</p>
+            )}
+            {navigation.filter(item => item.adminOnly).map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-3 py-3 transition-all group relative border ${
+                    isActive
+                      ? 'bg-cloudo-accent/5 text-cloudo-accent border-cloudo-accent/30 shadow-[inset_0_0_10px_rgba(88,166,255,0.05)]'
+                      : 'text-cloudo-muted hover:bg-white/5 hover:text-white border-transparent'
+                  }`}
+                >
+                  <span className={`text-lg shrink-0 ${isActive ? 'text-cloudo-accent' : 'opacity-50'}`}>
+                    {item.icon}
+                  </span>
+                  {!collapsed && (
+                    <span className={`text-sm font-bold uppercase tracking-[0.2em] flex-1 ${isActive ? 'text-white' : ''}`}>
+                      {item.name}
+                    </span>
+                  )}
+                  {isActive && (
+                    <div className="absolute left-[-1px] w-[2px] h-6 bg-cloudo-accent" />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </nav>
 
       {/* Footer - Identity Layer */}
-      <div className="p-4 border-t border-cloudo-border/10 bg-white/[0.01]">
+      <div className="p-4 border-t border-cloudo-border bg-black/20">
         {!collapsed ? (
-          <div className="flex items-center gap-4 p-2 rounded-lg bg-black/20 border border-white/[0.03]">
-            <div className="w-9 h-9 bg-cloudo-accent/10 border border-cloudo-accent/30 rounded flex items-center justify-center text-cloudo-accent font-black text-xs">
-              AD
+          <div className="flex items-center gap-4 p-3 bg-black/40 border border-cloudo-border">
+            <div className="w-8 h-8 bg-cloudo-accent text-cloudo-dark flex items-center justify-center font-black text-[11px] shrink-0 uppercase">
+              {user?.username?.slice(0, 2) || '??'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-black text-white uppercase tracking-wider truncate">Administrator</p>
-              <p className="text-[9px] text-cloudo-muted uppercase font-bold tracking-tighter opacity-60">System Root</p>
+              <p className="text-[12px] font-black text-white uppercase tracking-widest truncate">
+                {user?.username || 'Unknown User'}
+              </p>
+              <p className="text-[11px] text-cloudo-muted uppercase font-bold tracking-widest opacity-40">
+                {user?.role || 'L-GUEST'}
+              </p>
             </div>
             <button
-              className="p-2 hover:bg-red-500/10 rounded text-cloudo-muted hover:text-red-500 transition-colors"
-              title="Terminate Session"
+              onClick={handleLogout}
+              className="p-2 hover:bg-cloudo-err hover:text-white text-cloudo-muted transition-colors border border-cloudo-border"
+              title="Logout"
             >
               <HiOutlineLogout className="w-4 h-4" />
             </button>
           </div>
         ) : (
           <div className="flex justify-center py-2">
-            <div className="w-9 h-9 bg-cloudo-accent/10 border border-cloudo-accent/30 rounded flex items-center justify-center text-cloudo-accent font-black text-xs hover:bg-cloudo-accent/20 cursor-pointer transition-all">
-              AD
-            </div>
+            <button
+              onClick={handleLogout}
+              className="w-10 h-10 bg-black/40 border border-cloudo-border flex items-center justify-center text-cloudo-muted hover:bg-cloudo-err hover:text-white transition-all"
+              title="Logout"
+            >
+              <HiOutlineLogout className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>

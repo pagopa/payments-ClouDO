@@ -74,17 +74,25 @@ export default function SchemasPage() {
     );
   }, [schemas, searchQuery]);
 
+  const stats = useMemo(() => {
+    return {
+      total: schemas.length,
+      approvalRequired: schemas.filter(s => s.require_approval).length,
+      onCall: schemas.filter(s => s.oncall === 'true').length,
+    };
+  }, [schemas]);
+
   return (
-    <div className="flex flex-col h-full bg-[#0a0c10] text-cloudo-text font-sans selection:bg-cloudo-accent/30">
+    <div className="flex flex-col h-full bg-cloudo-dark text-cloudo-text font-mono selection:bg-cloudo-accent/30">
       {/* Notification Toast Container */}
       <div className="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none">
         {notifications.map((notif) => (
           <div
             key={notif.id}
-            className={`pointer-events-auto min-w-[320px] p-4 rounded-lg border shadow-2xl animate-in slide-in-from-right-5 duration-300 ${
+            className={`pointer-events-auto min-w-[320px] p-4 border shadow-2xl animate-in slide-in-from-right-5 duration-300 ${
               notif.type === 'success'
-                ? 'bg-[#0b0e14] border-green-500/30 text-green-400'
-                : 'bg-[#0b0e14] border-red-500/30 text-red-400'
+                ? 'bg-cloudo-panel border-cloudo-ok/30 text-cloudo-ok'
+                : 'bg-cloudo-panel border-cloudo-err/30 text-cloudo-err'
             }`}
           >
             <div className="flex items-center gap-3">
@@ -93,118 +101,150 @@ export default function SchemasPage() {
               ) : (
                 <HiOutlineExclamationCircle className="w-5 h-5 flex-shrink-0" />
               )}
-              <p className="text-xs font-bold uppercase tracking-wider">{notif.message}</p>
+              <p className="text-[10px] font-black uppercase tracking-widest">{notif.message}</p>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Top Bar - High Density UI */}
-      <div className="flex items-center justify-between px-8 py-4 border-b border-cloudo-border/20 bg-[#0d1117]/80 backdrop-blur-xl sticky top-0 z-20">
-        <div className="flex items-center gap-4">
-          <div className="p-2 bg-cloudo-accent/10 rounded-lg border border-cloudo-accent/20">
-            <MdOutlineSchema className="text-cloudo-accent w-5 h-5" />
+      {/* Top Bar - Solid Technical Style */}
+      <div className="flex items-center justify-between px-8 py-4 border-b border-cloudo-border bg-cloudo-panel sticky top-0 z-20">
+        <div className="flex items-center gap-4 shrink-0">
+          <div className="p-2 bg-cloudo-accent/5 border border-cloudo-accent/20 shrink-0">
+            <MdOutlineSchema className="text-cloudo-accent w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight text-white uppercase">Runbook Registry</h1>
-            <p className="text-[10px] text-cloudo-muted font-bold uppercase tracking-[0.2em] opacity-60">System Inventory</p>
+            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Runbook Registry</h1>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">System Inventory // ASSET_DB</p>
           </div>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="relative group">
-            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted w-3.5 h-3.5 group-focus-within:text-cloudo-accent transition-colors" />
+            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
             <input
               type="text"
               placeholder="Search registry..."
-              className="bg-black/40 border border-cloudo-border/30 rounded-md pl-9 pr-4 py-1.5 text-xs w-64 focus:border-cloudo-accent/50 focus:ring-1 ring-cloudo-accent/20 outline-none transition-all placeholder:text-cloudo-muted/40"
+              className="input pl-10 w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
           <button
             onClick={() => { setSelectedSchema(null); setModalMode('create'); }}
-            className="bg-cloudo-accent hover:bg-cloudo-accent/90 text-white px-4 py-1.5 rounded-md text-[11px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-cloudo-accent/10"
+            className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
           >
-            <HiOutlinePlus className="w-4 h-4" /> New Schema
+            <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> New Schema
           </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-8">
-        <div className="max-w-[1400px] mx-auto">
-          <div className="border border-cloudo-border/20 rounded-xl bg-[#0d1117]/40 shadow-2xl overflow-hidden">
-            <table className="w-full text-left border-collapse table-fixed text-xs">
+      <div className="flex-1 overflow-auto p-8 space-y-8">
+        <div className="max-w-[1400px] mx-auto space-y-8">
+
+          {/* Statistics Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatSmall title="Total Assets" value={stats.total} icon={<HiOutlineTerminal />} label="REGISTRY_LOAD" />
+            <StatSmall title="Gate Required" value={stats.approvalRequired} icon={<HiOutlineShieldCheck />} label="AUTH_PENDING" color="text-cloudo-warn" />
+            <StatSmall title="Active On-Call" value={stats.onCall} icon={<HiOutlineUserGroup />} label="CRITICAL_PATH" color="text-cloudo-accent" />
+          </div>
+
+          <div className="border border-cloudo-border bg-cloudo-panel overflow-hidden relative group/table">
+            {/* Decorative corners for table container */}
+            <div className="absolute top-0 left-0 w-8 h-8 border-t border-l border-cloudo-accent/20 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-8 h-8 border-b border-r border-cloudo-accent/20 pointer-events-none" />
+
+            <table className="w-full text-left border-collapse table-fixed text-sm">
               <thead>
-                <tr className="border-b border-cloudo-border/20 bg-white/[0.02]">
-                  <th className="w-[30%] px-8 py-4 text-[10px] font-black text-cloudo-muted uppercase tracking-[0.2em]">Identification</th>
-                  <th className="w-[25%] px-8 py-4 text-[10px] font-black text-cloudo-muted uppercase tracking-[0.2em]">Runbook Asset</th>
-                  <th className="w-[15%] px-8 py-4 text-[10px] font-black text-cloudo-muted uppercase tracking-[0.2em]">Worker Pool</th>
-                  <th className="w-[15%] px-8 py-4 text-[10px] font-black text-cloudo-muted uppercase tracking-[0.2em]">Compliance</th>
-                  <th className="w-[15%] px-8 py-4 text-[10px] font-black text-cloudo-muted uppercase tracking-[0.2em] text-right">Actions</th>
+                <tr className="border-b border-cloudo-border bg-black/40">
+                  <th className="w-[30%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Identification</th>
+                  <th className="w-[25%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Execution Path</th>
+                  <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Node Cluster</th>
+                  <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Policy</th>
+                  <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-right text-[11px]">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-cloudo-border/10">
+              <tbody className="divide-y divide-cloudo-border/30">
                 {loading ? (
-                  <tr><td colSpan={5} className="py-24 text-center text-cloudo-muted italic animate-pulse">Syncing Registry Data...</td></tr>
+                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-20">Syncing Registry Data...</td></tr>
                 ) : filteredSchemas.length === 0 ? (
-                  <tr><td colSpan={5} className="py-24 text-center text-[10px] font-black uppercase tracking-widest opacity-20">No Entries</td></tr>
+                  <tr key="empty-row"><td colSpan={5} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-10 italic">NO_ENTRIES_FOUND</td></tr>
                 ) : (
                   filteredSchemas.map((schema) => (
-                    <tr key={schema.RowKey} className="group hover:bg-cloudo-accent/[0.02] transition-colors">
-                      <td className="px-8 py-5">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-sm font-bold text-white tracking-tight">{schema.name}</span>
+                    <tr key={schema.RowKey} className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40">
+                      <td className="px-8 py-6">
+                        <div className="flex flex-col gap-2">
+                          <span className="text-sm font-black text-white tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">{schema.name}</span>
                           <button
                             onClick={() => copyToClipboard(schema.id)}
-                            className="text-[10px] font-mono text-cloudo-muted flex items-center gap-2 hover:text-cloudo-accent w-fit transition-colors"
+                            className="text-xs font-mono text-cloudo-muted/40 flex items-center gap-2 hover:text-white w-fit transition-colors group/id"
                           >
-                            {schema.id}
-                            {copiedId === schema.id ? <HiOutlineCheck className="text-cloudo-ok" /> : <HiOutlineClipboardCopy className="opacity-0 group-hover:opacity-100" />}
+                            <span className="opacity-40">ID:</span>
+                            <span className="font-bold">{schema.id}</span>
+                            {copiedId === schema.id ? <HiOutlineCheck className="text-cloudo-ok" /> : <HiOutlineClipboardCopy className="opacity-0 group-hover/id:opacity-100" />}
                           </button>
                         </div>
                       </td>
-                      <td className="px-8 py-5 text-cloudo-accent/70 font-mono">
-                        <div className="flex items-center gap-2">
-                          <HiOutlineTerminal className="opacity-30 w-3.5 h-3.5" />
-                          <span className="truncate">{schema.runbook}</span>
-                        </div>
-                      </td>
-                      <td className="px-8 py-5 font-bold text-white/80">
-                        <div className="flex items-center gap-2">
-                          <HiOutlineChip className="opacity-30 w-3.5 h-3.5" />
-                          {schema.worker}
-                        </div>
-                      </td>
-                      <td className="px-8 py-5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {/* Approval Badge */}
-                          <div
-                            title={schema.require_approval ? "Approval Gate Active" : "Auto-Execute"}
-                            className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tight border ${
-                              schema.require_approval
-                                ? 'bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.1)]'
-                                : 'bg-green-500/10 text-green-500 border-green-500/20'
-                            }`}
-                          >
-                            <HiOutlineShieldCheck className="w-3 h-3" />
-                            {schema.require_approval ? 'Approval' : 'Auto'}
+                      <td className="px-8 py-6 text-cloudo-accent/60 font-mono">
+                        <div className="flex items-center gap-3">
+                          <div className="p-1.5 bg-black/40 border border-cloudo-border group-hover:border-cloudo-accent/20 transition-colors">
+                            <HiOutlineTerminal className="opacity-40 w-4 h-4" />
                           </div>
-
-                          {/* OnCall Badge */}
-                          {schema.oncall === 'true' && (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-black bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-tight">
-                              <HiOutlineUserGroup className="w-3 h-3" />
-                              OnCall Active
-                            </div>
-                          )}
+                          <div className="flex flex-col min-w-0">
+                            <span className="truncate text-white/80 font-bold">{schema.runbook}</span>
+                            <span className="text-[11px] text-cloudo-muted/40 uppercase tracking-widest mt-1">Asset_Source</span>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-8 py-5 text-right">
-                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                          <button onClick={() => { setSelectedSchema(schema); setModalMode('edit'); }} className="p-2 hover:bg-white/5 rounded text-cloudo-muted hover:text-white"><HiOutlinePencil className="w-4 h-4" /></button>
-                          <button className="p-2 hover:bg-cloudo-accent/10 rounded text-cloudo-accent"><HiOutlinePlay className="w-4 h-4" /></button>
-                          <button onClick={() => setSchemaToDelete(schema)} className="p-2 hover:bg-red-500/10 rounded text-red-400"><HiOutlineTrash className="w-4 h-4" /></button>
+                      <td className="px-8 py-6 font-bold text-white/70">
+                        <div className="flex items-center gap-3">
+                          <HiOutlineChip className="opacity-30 w-4 h-4 text-cloudo-accent" />
+                          <div className="flex flex-col">
+                            <span className="uppercase tracking-[0.1em]">{schema.worker}</span>
+                            <span className="text-[10px] text-cloudo-muted/40 uppercase mt-0.5 font-black tracking-widest">CLUSTER_ID</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {/* Approval Badge */}
+                            <div
+                              title={schema.require_approval ? "Approval Gate Active" : "Auto-Execute"}
+                              className={`status-badge ${
+                                schema.require_approval ? 'status-pending' : 'status-succeeded'
+                              } flex items-center gap-1.5 px-2 py-0.5 text-[11px] border-cloudo-border/40`}
+                            >
+                              <HiOutlineShieldCheck className="w-3.5 h-3.5" />
+                              {schema.require_approval ? 'Gate' : 'Auto'}
+                            </div>
+
+                            {/* OnCall Badge */}
+                            {schema.oncall === 'true' && (
+                              <div className="status-badge status-running flex items-center gap-1.5 px-2 py-0.5 text-[11px] border-cloudo-accent/40">
+                                <HiOutlineUserGroup className="w-3.5 h-3.5" />
+                                OnCall
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => { setSelectedSchema(schema); setModalMode('edit'); }}
+                            className="p-2.5 bg-black/40 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-white transition-all group/btn"
+                            title="Edit Configuration"
+                          >
+                            <HiOutlinePencil className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                          </button>
+                          <button
+                            onClick={() => setSchemaToDelete(schema)}
+                            className="p-2.5 bg-black/40 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-white transition-all group/btn"
+                            title="Delete Registry Entry"
+                          >
+                            <HiOutlineTrash className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -218,16 +258,22 @@ export default function SchemasPage() {
 
       {/* Form Modal */}
       {modalMode && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setModalMode(null)}>
-          <div className="bg-[#0b0e14] border border-cloudo-border shadow-2xl rounded-xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-            <div className="px-8 py-6 border-b border-cloudo-border/30 flex justify-between items-center bg-white/[0.02]">
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white">
-                  {modalMode === 'create' ? 'Register New Schema' : 'Edit Configuration'}
+        <div className="fixed inset-0 bg-cloudo-dark/90 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setModalMode(null)}>
+          <div className="bg-cloudo-panel border border-cloudo-border shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-200 relative" onClick={e => e.stopPropagation()}>
+             {/* Decorative corner */}
+            <div className="absolute top-0 right-0 w-12 h-12 overflow-hidden pointer-events-none">
+              <div className="absolute top-[-24px] right-[-24px] w-12 h-12 bg-cloudo-border rotate-45" />
+            </div>
+
+            <div className="px-8 py-5 border-b border-cloudo-border flex justify-between items-center bg-black/20">
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-1.5 bg-cloudo-accent animate-pulse" />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white">
+                  {modalMode === 'create' ? 'Register New Schema' : 'Update Configuration'}
                 </h3>
               </div>
-              <button onClick={() => setModalMode(null)} className="p-1 hover:bg-white/5 rounded text-cloudo-muted hover:text-white transition-colors">
-                <HiOutlineX className="w-5 h-5" />
+              <button onClick={() => setModalMode(null)} className="p-1.5 hover:bg-cloudo-err hover:text-white border border-cloudo-border text-cloudo-muted transition-colors">
+                <HiOutlineX className="w-4 h-4" />
               </button>
             </div>
 
@@ -251,6 +297,24 @@ export default function SchemasPage() {
           onError={(message) => addNotification('error', message)}
         />
       )}
+    </div>
+  );
+}
+
+function StatSmall({ title, value, icon, label, color = "text-white" }: { title: string, value: number, icon: React.ReactNode, label: string, color?: string }) {
+  return (
+    <div className="bg-cloudo-panel border border-cloudo-border p-5 flex items-center justify-between relative overflow-hidden group">
+      <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-accent/10 group-hover:bg-cloudo-accent transition-colors" />
+      <div className="relative z-10">
+        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/60 mb-1">{title}</p>
+        <p className={`text-2xl font-black ${color} tracking-tighter`}>{value}</p>
+        <p className="text-[11px] font-bold text-cloudo-muted/30 uppercase mt-1 tracking-widest">{label}</p>
+      </div>
+      <div className="p-2.5 bg-black/40 border border-cloudo-border text-lg shrink-0 group-hover:border-cloudo-accent/30 transition-colors opacity-40 group-hover:opacity-100">
+        <div className="text-cloudo-accent w-5 h-5 flex items-center justify-center">
+          {icon}
+        </div>
+      </div>
     </div>
   );
 }
@@ -295,35 +359,35 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
         return;
       }
 
-      onSuccess(mode === 'create' ? 'Schema created successfully' : 'Schema updated successfully');
+      onSuccess(mode === 'create' ? 'Schema registered' : 'Configuration updated');
     } catch (e) {
-      onError('Network error. Please try again.');
+      onError('Network error // uplink failed');
       console.error(e);
       setSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={submit} className="p-8 space-y-6">
-      <div className="grid grid-cols-2 gap-6">
+    <form onSubmit={submit} className="p-8 space-y-8">
+      <div className="grid grid-cols-2 gap-8">
         <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Registry ID *</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Registry ID *</label>
           <input
             type="text"
             required
             disabled={mode === 'edit'}
-            className="w-full bg-black/40 border border-cloudo-border/50 rounded-md px-4 py-2.5 text-xs font-mono text-cloudo-accent outline-none focus:border-cloudo-accent/60 focus:ring-1 focus:ring-cloudo-accent/20 transition-all disabled:opacity-50"
+            className="input font-mono text-cloudo-accent h-11"
             value={formData.id}
             onChange={e => setFormData({...formData, id: e.target.value})}
             placeholder="e.g. aks-pod-restart"
           />
         </div>
         <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Schema Name *</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Schema Name *</label>
           <input
             type="text"
             required
-            className="w-full bg-black/40 border border-cloudo-border/50 rounded-md px-4 py-2.5 text-xs text-white outline-none focus:border-cloudo-accent/60 focus:ring-1 focus:ring-cloudo-accent/20 transition-all"
+            className="input h-11"
             value={formData.name}
             onChange={e => setFormData({...formData, name: e.target.value})}
             placeholder="e.g. AKS Cleanup Task"
@@ -332,24 +396,26 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
       </div>
 
       <div className="space-y-2">
-        <label className="text-[10px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Purpose Description</label>
+        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Purpose Description</label>
         <textarea
-          className="w-full bg-black/40 border border-cloudo-border/50 rounded-md px-4 py-2.5 text-xs text-cloudo-text min-h-[80px] outline-none focus:border-cloudo-accent/60 focus:ring-1 focus:ring-cloudo-accent/20 transition-all resize-none"
+          className="input min-h-[80px] py-3 resize-none"
           value={formData.description}
           onChange={e => setFormData({...formData, description: e.target.value})}
-          placeholder="What is the objective of this automation?"
+          placeholder="Objective of this automation..."
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-8">
         <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Runbook Path *</label>
-          <div className="relative">
-            <HiOutlineTerminal className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4" />
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Runbook Path *</label>
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-black/20">
+              <HiOutlineTerminal className="text-cloudo-muted/40 w-4 h-4" />
+            </div>
             <input
               type="text"
               required
-              className="w-full bg-black/40 border border-cloudo-border/50 rounded-md pl-10 pr-4 py-2.5 text-xs font-mono text-white/90 outline-none focus:border-cloudo-accent/60 focus:ring-1 focus:ring-cloudo-accent/20 transition-all"
+              className="input pl-14 h-11 font-mono"
               value={formData.runbook}
               onChange={e => setFormData({...formData, runbook: e.target.value})}
               placeholder="script.sh"
@@ -357,13 +423,15 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
           </div>
         </div>
         <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Worker Pool *</label>
-          <div className="relative">
-            <HiOutlineChip className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4" />
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Worker Pool *</label>
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-black/20">
+              <HiOutlineChip className="text-cloudo-muted/40 w-4 h-4" />
+            </div>
             <input
               type="text"
               required
-              className="w-full bg-black/40 border border-cloudo-border/50 rounded-md pl-10 pr-4 py-2.5 text-xs font-mono text-white/90 outline-none focus:border-cloudo-accent/60 focus:ring-1 focus:ring-cloudo-accent/20 transition-all"
+              className="input pl-14 h-11 font-mono"
               value={formData.worker}
               onChange={e => setFormData({...formData, worker: e.target.value})}
               placeholder="pool-01"
@@ -373,57 +441,50 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
       </div>
 
       <div className="space-y-2">
-        <label className="text-[10px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Run Arguments</label>
+        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Run Arguments</label>
         <input
           type="text"
-          className="w-full bg-black/40 border border-cloudo-border/50 rounded-md px-4 py-2.5 text-xs font-mono text-amber-500/90 outline-none focus:border-cloudo-accent/60 focus:ring-1 focus:ring-cloudo-accent/20 transition-all"
+          className="input h-11 font-mono text-cloudo-warn/80"
           value={formData.run_args}
           onChange={e => setFormData({...formData, run_args: e.target.value})}
-          placeholder="--force --silent (optional arguments)"
+          placeholder="--force --silent"
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-6 items-start">
-        <div className="flex items-center justify-between p-4 bg-white/[0.02] rounded-lg border border-cloudo-border/20 group hover:border-cloudo-accent/30 transition-all cursor-pointer" onClick={() => setFormData({...formData, require_approval: !formData.require_approval})}>
+      <div className="grid grid-cols-2 gap-8 items-start">
+        <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, require_approval: !formData.require_approval})}>
           <div className="space-y-1">
-            <p className="text-[11px] font-black text-white uppercase tracking-wider">Approval Gate</p>
-            <p className="text-[9px] text-cloudo-muted uppercase font-bold opacity-50">Manual Authorization</p>
+            <p className="text-[11px] font-black text-white uppercase tracking-widest">Approval Gate</p>
+            <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-40">Manual Auth</p>
           </div>
-          <input
-            type="checkbox"
-            checked={formData.require_approval}
-            onChange={() => {}}
-            className="w-5 h-5 rounded border-cloudo-border/50 bg-black text-cloudo-accent focus:ring-0 focus:ring-offset-0 transition-all pointer-events-none"
-          />
+          <div className={`w-5 h-5 border flex items-center justify-center transition-all ${formData.require_approval ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
+            {formData.require_approval && <HiOutlineCheck className="w-4 h-4" />}
+          </div>
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-white/[0.02] rounded-lg border border-cloudo-border/20 group hover:border-cloudo-accent/30 transition-all cursor-pointer" onClick={() => setFormData({...formData, oncall: formData.oncall === 'true' ? 'false' : 'true'})}>
+        <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, oncall: formData.oncall === 'true' ? 'false' : 'true'})}>
           <div className="space-y-1">
-            <p className="text-[11px] font-black text-white uppercase tracking-wider">On-Call Flow</p>
-            <p className="text-[9px] text-cloudo-muted uppercase font-bold opacity-50">Notify On-Call Team</p>
+            <p className="text-[11px] font-black text-white uppercase tracking-widest">On-Call Flow</p>
+            <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-40">Notify Team</p>
           </div>
-          <input
-            type="checkbox"
-            checked={formData.oncall === 'true'}
-            onChange={() => {}}
-            className="w-5 h-5 rounded border-cloudo-border/50 bg-black text-blue-500 focus:ring-0 focus:ring-offset-0 transition-all pointer-events-none"
-          />
+          <div className={`w-5 h-5 border flex items-center justify-center transition-all ${formData.oncall === 'true' ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
+            {formData.oncall === 'true' && <HiOutlineCheck className="w-4 h-4" />}
+          </div>
         </div>
       </div>
 
-
-      <div className="flex gap-4 pt-4 border-t border-cloudo-border/10">
+      <div className="flex gap-4 pt-6 border-t border-cloudo-border">
         <button
           type="button"
           onClick={onCancel}
-          className="px-6 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted hover:text-white transition-all"
+          className="btn btn-ghost px-8 h-12"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={submitting}
-          className="flex-1 bg-cloudo-accent text-white px-6 py-2.5 rounded-md text-[10px] font-black uppercase tracking-[0.2em] hover:bg-cloudo-accent/90 shadow-xl shadow-cloudo-accent/10 disabled:opacity-50 transition-all"
+          className="btn btn-primary flex-1 h-12"
         >
           {submitting ? 'Committing...' : 'Commit Registry Entry'}
         </button>
@@ -453,32 +514,46 @@ function DeleteConfirmationModal({ schema, onClose, onSuccess, onError }: {
         return;
       }
 
-      onSuccess(`Schema "${schema.name}" deleted successfully`);
+      onSuccess(`Entry "${schema.id}" destroyed`);
       onClose();
     } catch (e) {
-      onError('Network error. Please try again.');
+      onError('Network error // destruction failed');
       setIsDeleting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-      <div className="bg-[#0b0e14] border border-red-500/30 rounded-xl max-w-sm w-full p-8 text-center space-y-6 shadow-2xl animate-in zoom-in-95">
-        <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
-          <HiOutlineTrash className="w-6 h-6 text-red-500" />
+    <div className="fixed inset-0 bg-cloudo-dark/95 backdrop-blur-md flex items-center justify-center z-[60] p-4">
+      <div className="bg-cloudo-panel border border-cloudo-err/30 max-w-sm w-full p-10 text-center space-y-8 animate-in zoom-in-95 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-1 bg-cloudo-err/50" />
+
+        <div className="w-14 h-14 bg-cloudo-err/10 border border-cloudo-err/20 flex items-center justify-center mx-auto text-cloudo-err">
+          <HiOutlineTrash className="w-7 h-7" />
         </div>
-        <div className="space-y-2">
-          <h3 className="text-xs font-black text-white uppercase tracking-[0.2em]">Delete Registry Entry</h3>
-          <p className="text-[10px] text-cloudo-muted uppercase font-bold leading-relaxed opacity-60">
-            Resource: <span className="text-white">{schema.name}</span>
+
+        <div className="space-y-3">
+          <h3 className="text-[11px] font-black text-white uppercase tracking-[0.3em]">Destructive Action</h3>
+          <p className="text-[9px] text-cloudo-muted uppercase font-bold leading-relaxed">
+            Permanently delete registry entry:<br/>
+            <span className="text-cloudo-err mt-2 block font-mono">{schema.id}</span>
           </p>
         </div>
 
-        <div className="flex flex-col gap-2 pt-2">
-          <button onClick={handleDelete} disabled={isDeleting} className="bg-red-600 hover:bg-red-700 text-white py-3 rounded-md text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50">
-            {isDeleting ? 'Destroying...' : 'Destroy Entry'}
+        <div className="flex flex-col gap-3 pt-4">
+          <button
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="w-full bg-cloudo-err text-white py-4 text-[10px] font-black uppercase tracking-[0.3em] hover:bg-cloudo-err/90 transition-all disabled:opacity-50"
+          >
+            {isDeleting ? 'Destroying...' : 'Confirm Destruction'}
           </button>
-          <button onClick={onClose} disabled={isDeleting} className="text-cloudo-muted hover:text-white py-2 text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50">Cancel Action</button>
+          <button
+            onClick={onClose}
+            disabled={isDeleting}
+            className="text-[9px] font-black text-cloudo-muted hover:text-white uppercase tracking-widest py-2 transition-all"
+          >
+            Cancel Action
+          </button>
         </div>
       </div>
     </div>

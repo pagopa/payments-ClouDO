@@ -142,34 +142,36 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-[#0a0c10]">
+      <div className="flex flex-col items-center justify-center h-full bg-cloudo-dark">
         <div className="w-8 h-8 border-2 border-cloudo-accent/30 border-t-cloudo-accent rounded-full animate-spin mb-4" />
-        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-muted">Booting Systems...</span>
+        <span className="text-xs font-black uppercase tracking-[0.3em] text-cloudo-muted">Booting Systems...</span>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0c10] text-cloudo-text font-sans selection:bg-cloudo-accent/30">
+    <div className="flex flex-col h-full bg-cloudo-dark text-cloudo-text font-mono selection:bg-cloudo-accent/30">
       {/* Header Bar */}
-      <div className="flex items-center justify-between px-8 py-4 border-b border-cloudo-border/20 bg-[#0d1117]/80 backdrop-blur-xl sticky top-0 z-20">
-        <div className="flex items-center gap-4">
-          <div className="p-2 bg-cloudo-accent/10 rounded-lg border border-cloudo-accent/20">
+      <div className="flex items-center justify-between px-8 py-4 border-b border-cloudo-border bg-cloudo-panel sticky top-0 z-20">
+        <div className="flex items-center gap-4 shrink-0">
+          <div className="p-2 bg-cloudo-accent/5 border border-cloudo-accent/20 shrink-0">
             <MdOutlineSpaceDashboard className="text-cloudo-accent w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight text-white uppercase">Operations Dashboard</h1>
-            <p className="text-[10px] text-cloudo-muted font-bold uppercase tracking-[0.2em] opacity-60">Fleet Telemetry</p>
+            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Operations Dashboard</h1>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">System Telemetry // LIVE</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="relative flex h-2 w-2">
-            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-40 ${isBackendDown ? 'bg-cloudo-err' : 'bg-cloudo-ok'}`}></span>
-            <span className={`relative inline-flex rounded-full h-2 w-2 ${isBackendDown ? 'bg-cloudo-err' : 'bg-cloudo-ok'}`}></span>
-          </span>
-          <span className={`text-[10px] font-black uppercase tracking-widest italic ${isBackendDown ? 'text-cloudo-err animate-pulse' : 'text-cloudo-muted'}`}>
-            {isBackendDown ? 'Connection Lost • Retry' : 'Live Stream • 30s'}
-          </span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 px-3 py-1 bg-black/40 border border-cloudo-border">
+            <span className="relative flex h-2 w-2">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-40 ${isBackendDown ? 'bg-cloudo-err' : 'bg-cloudo-ok'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${isBackendDown ? 'bg-cloudo-err' : 'bg-cloudo-ok'}`}></span>
+            </span>
+            <span className={`text-[11px] font-black uppercase tracking-widest ${isBackendDown ? 'text-cloudo-err animate-pulse' : 'text-cloudo-muted'}`}>
+              {isBackendDown ? 'CONNECTION_LOST' : 'UPLINK_STABLE | Live Stream • 30s'}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -181,73 +183,69 @@ export default function DashboardPage() {
             <StatCard
               title="Workload Executions"
               value={stats.totalExecutions}
-              icon={<HiOutlineTerminal className="text-blue-400" />}
-              status="Today's Load"
+              icon={<HiOutlineTerminal className="text-cloudo-accent" />}
+              status="TOTAL_LOAD"
+              trend={[10, 20, 15, 30, 25, 40, 35]}
             />
             <StatCard
-              title="Executions Success Rate"
+              title="Success Rate"
               value={`${stats.successRate.toFixed(1)}%`}
               icon={<HiOutlineCheckCircle className="text-cloudo-ok" />}
-              status="Success Ratio"
+              status="COMPLIANCE_RATIO"
+              trend={[95, 98, 97, 99, 100, 98, 99]}
             />
             <StatCard
               title="Compute Nodes"
               value={stats.activeWorkers}
               icon={<HiOutlineServer className="text-cloudo-accent" />}
-              status="Active Capacity"
+              status="ACTIVE_CAPACITY"
+              trend={[2, 3, 3, 4, 4, 4, 4]}
             />
             <StatCard
               title="Governance Queue"
               value={stats.pendingApprovals}
               icon={<HiOutlineClock className="text-cloudo-warn" />}
-              status="Manual Actions"
+              status="AWAITING_SIG"
               highlight={stats.pendingApprovals > 0}
+              trend={[5, 2, 4, 1, 0, 2, 1]}
             />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Recent Activity Table (Operational Stream) */}
+            {/* Operational Stream e Live Worker Processes */}
             <div className="lg:col-span-2 space-y-4">
-              <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-muted border-b border-cloudo-border/10 pb-2">Operational Stream</h2>
-              <div className="bg-[#0d1117]/40 border border-cloudo-border/20 rounded-xl overflow-hidden shadow-2xl">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-white/[0.02] border-b border-cloudo-border/20">
-                    <tr className="text-[9px] font-black text-cloudo-muted uppercase tracking-widest">
-                      <th className="px-6 py-3">Event</th>
-                      <th className="px-6 py-3">Asset Path</th>
-                      <th className="px-6 py-3">Status</th>
-                      <th className="px-6 py-3 text-right">Time</th>
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-4 bg-cloudo-accent" />
+                <h2 className="text-sm font-black uppercase tracking-[0.4em] text-white">Operational Stream</h2>
+              </div>
+              <div className="bg-cloudo-panel border border-cloudo-border overflow-hidden">
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead className="bg-cloudo-panel-2 border-b border-cloudo-border">
+                    <tr className="text-[11px] font-black text-cloudo-muted uppercase tracking-[0.3em]">
+                      <th className="px-6 py-4">Event_ID</th>
+                      <th className="px-6 py-4">Asset_Path</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4 text-right">Timestamp</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-cloudo-border/10">
+                  <tbody className="divide-y divide-cloudo-border/50">
                     {stats.recentExecutions.length === 0 ? (
-                      <tr><td colSpan={4} className="py-20 text-center text-[10px] uppercase font-bold text-cloudo-muted italic opacity-40 text-center">Empty Stream Output</td></tr>
+                      <tr><td colSpan={4} className="py-20 text-center text-sm uppercase font-bold text-cloudo-muted italic opacity-30">NO_DATA_STREAM</td></tr>
                     ) : (
                       stats.recentExecutions.map((exec: any) => (
-                        <tr key={exec.RowKey} className="group hover:bg-cloudo-accent/[0.02] transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-white tracking-tight">{exec.Name || 'Runtime Task'}</div>
-                            <div className="text-[10px] font-mono text-cloudo-accent/80 font-bold mt-0.5">
-                              {exec.Id || '--'}
-                            </div>
+                        <tr key={exec.RowKey} className="group hover:bg-white/[0.02] transition-colors">
+                          <td className="px-6 py-4 font-mono">
+                            <div className="text-white font-bold">{exec.ExecId?.slice(0, 8)}</div>
+                            <div className="text-[11px] text-cloudo-muted/60">{exec.Name || 'SYS_TASK'}</div>
                           </td>
-                          <td className="px-6 py-4 font-mono text-cloudo-accent/60 italic text-[11px]">
+                          <td className="px-6 py-4 font-mono text-cloudo-accent/60">
                             {exec.Runbook || '--'}
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex flex-col gap-1">
-                              <StatusIndicator status={exec.Status} />
-                              <div
-                                className="text-[8px] font-mono text-cloudo-muted/40 group-hover:text-cloudo-muted/80 transition-colors cursor-help flex items-center gap-1"
-                                title={`Full ID: ${exec.ExecId}`}
-                                onClick={() => navigator.clipboard.writeText(exec.ExecId)}
-                              >
-                                <span className="opacity-50">HEX:</span> {exec.ExecId?.slice(0, 12)}...
-                              </div>
-                            </div>
+                            <StatusIndicator status={exec.Status} />
                           </td>
-                          <td className="px-6 py-4 text-right">
-                             <div className="text-white font-mono">{new Date(exec.RequestedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}</div>
+                          <td className="px-6 py-4 text-right font-mono text-cloudo-muted">
+                             {new Date(exec.RequestedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit', hour12: false})}
                           </td>
                         </tr>
                       ))
@@ -257,60 +255,60 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Live Worker Processes */}
             <div className="space-y-4">
-              <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-muted border-b border-cloudo-border/10 pb-2">Live Worker Processes</h2>
-              <div className="bg-[#0d1117]/40 border border-cloudo-border/20 rounded-xl p-4 space-y-3 min-h-[320px] max-h-[500px] overflow-y-auto custom-scrollbar">
-                    {stats.liveProcesses.length === 0 ? (
-                      <div className="py-20 text-center opacity-20 flex flex-col items-center gap-2">
-                        <HiOutlineServer className="w-8 h-8" />
-                        <span className="text-[10px] font-black uppercase tracking-widest">No active workloads detected</span>
-                      </div>
-                    ) : (
-                      stats.liveProcesses.map((proc: any) => (
-                        <div key={proc.exec_id} className="bg-black/40 border border-cloudo-border/20 rounded-lg p-3 group hover:border-cloudo-accent/30 transition-all border-l-2 border-l-blue-500/50">
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="flex items-center gap-2">
-                              <div className="relative flex items-center justify-center">
-                                <span className="absolute animate-ping h-2 w-2 rounded-full bg-blue-400 opacity-40"></span>
-                                <div className="relative w-1.5 h-1.5 rounded-full bg-blue-500" />
-                              </div>
-                              <span className="text-[11px] font-bold text-white truncate max-w-[140px]">{proc.name}</span>
-                            </div>
-                            <span className="text-[9px] font-mono text-cloudo-accent/60 italic">{proc.workerNode}</span>
-                          </div>
-                          <div className="flex justify-between items-center text-[9px] text-cloudo-muted uppercase font-bold tracking-tighter">
-                            <span className="flex items-center gap-1"><HiOutlineTerminal className="w-3 h-3"/> {proc.runbook}</span>
-                            <span className="opacity-40">{proc.exec_id.slice(0, 8)}</span>
-                          </div>
-                        </div>
-                      ))
-                    )}
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-4 bg-cloudo-accent" />
+                <h2 className="text-sm font-black uppercase tracking-[0.4em] text-white">Runtime Processes</h2>
+              </div>
+              <div className="bg-cloudo-panel border border-cloudo-border p-4 space-y-3 min-h-[320px] max-h-[500px] overflow-y-auto custom-scrollbar">
+                {stats.liveProcesses.length === 0 ? (
+                  <div className="py-20 text-center opacity-20 flex flex-col items-center gap-3">
+                    <HiOutlineServer className="w-8 h-8" />
+                    <span className="text-[11px] font-black uppercase tracking-widest text-center">IDLE_STATE<br/>NO_ACTIVE_WORKLOADS</span>
                   </div>
+                ) : (
+                  stats.liveProcesses.map((proc: any) => (
+                    <div key={proc.exec_id} className="bg-black/40 border border-cloudo-border p-3 border-l-2 border-l-cloudo-accent group hover:bg-cloudo-accent/5 transition-all">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 bg-cloudo-accent animate-pulse" />
+                          <span className="text-sm font-bold text-white truncate max-w-[140px] uppercase tracking-widest">{proc.name}</span>
+                        </div>
+                        <span className="text-[11px] font-mono text-cloudo-muted/60">{proc.workerNode}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] text-cloudo-muted uppercase font-bold tracking-widest">
+                        <span className="flex items-center gap-1 opacity-60"><HiOutlineTerminal className="w-4 h-4"/> {proc.runbook}</span>
+                        <span className="opacity-30">{proc.exec_id.slice(0, 8)}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
 
-                  <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-muted border-b border-cloudo-border/10 pb-2 pt-4">Direct Actions</h2>
-              <div className="grid grid-cols-1 gap-2">
+              <div className="grid grid-cols-1 gap-2 pt-4">
                 <QuickLink icon={<HiOutlineLightningBolt />} label="Trigger Engine" href="/trigger" />
                 <QuickLink icon={<HiOutlineDatabase />} label="Registry" href="/schemas" />
                 <QuickLink icon={<HiOutlineServer />} label="Compute" href="/workers" />
               </div>
             </div>
           </div>
+
+          </div>
         </div>
       </div>
-    </div>
   );
 }
 
 function StatCard({ title, value, icon, status, highlight = false }: any) {
   return (
-    <div className="bg-[#0d1117]/60 border border-cloudo-border/20 rounded-xl p-6 flex items-center justify-between shadow-xl">
-      <div>
-        <p className="text-[9px] font-black uppercase tracking-[0.15em] text-cloudo-muted">{title}</p>
-        <p className={`text-2xl font-black mt-1 ${highlight ? 'text-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.1)]' : 'text-white'}`}>{value}</p>
-        <p className="text-[9px] font-bold text-cloudo-muted uppercase mt-2 opacity-50 tracking-tighter">{status}</p>
+    <div className="bg-cloudo-panel border border-cloudo-border p-6 flex items-center justify-between relative overflow-hidden group">
+      <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-accent/20 group-hover:bg-cloudo-accent transition-colors" />
+      <div className="relative z-10">
+        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/60">{title}</p>
+        <p className={`text-3xl font-black mt-1 ${highlight ? 'text-cloudo-warn' : 'text-white'} tracking-tighter`}>{value}</p>
+        <p className="text-[11px] font-bold text-cloudo-muted/40 uppercase mt-2 tracking-[0.1em]">{status}</p>
       </div>
-      <div className="p-3 bg-white/[0.03] rounded-lg border border-white/[0.05] text-xl">
+      <div className="p-3 bg-black/40 border border-cloudo-border text-xl shrink-0 group-hover:border-cloudo-accent/30 transition-colors">
         {icon}
       </div>
     </div>
@@ -320,51 +318,33 @@ function StatCard({ title, value, icon, status, highlight = false }: any) {
 function StatusIndicator({ status }: { status: string }) {
   const s = (status || '').toLowerCase();
   const colors: Record<string, string> = {
-    succeeded: 'bg-cloudo-ok shadow-[0_0_8px_rgba(34,197,94,0.3)]',
-    running: 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]',
-    routed: 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]',
-    failed: 'bg-cloudo-err shadow-[0_0_8px_rgba(239,68,68,0.3)]',
-    error: 'bg-cloudo-err shadow-[0_0_8px_rgba(239,68,68,0.3)]',
-    pending: 'bg-amber-500/50',
-    accepted: 'bg-amber-500/50',
+    succeeded: 'bg-cloudo-ok',
+    running: 'bg-cloudo-accent',
+    routed: 'bg-cloudo-accent',
+    failed: 'bg-cloudo-err',
+    error: 'bg-cloudo-err',
+    pending: 'bg-cloudo-warn',
+    accepted: 'bg-cloudo-warn',
   };
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="relative flex items-center justify-center">
-        {s === 'running' && (
-          <span className="absolute animate-ping h-3 w-3 rounded-full bg-blue-500 opacity-40"></span>
-        )}
-        <div className={`relative w-2 h-2 rounded-full ${colors[s] || 'bg-cloudo-muted'}`} />
-      </div>
-      <span className="text-[9px] font-black uppercase tracking-widest text-white/80">{status}</span>
-    </div>
-  );
-}
-
-function HealthMetric({ name, status, uptime }: any) {
-  const isHealthy = status === 'healthy';
-  return (
-    <div className="flex items-center justify-between p-3 bg-black/40 border border-cloudo-border/20 rounded-lg group hover:border-cloudo-accent/20 transition-all">
-      <div className="flex items-center gap-3">
-        <div className={`w-1.5 h-1.5 rounded-full ${isHealthy ? 'bg-cloudo-ok shadow-[0_0_8px_rgba(34,197,94,0.3)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.3)] animate-pulse'}`} />
-        <span className="text-[10px] font-bold text-white/90 uppercase tracking-tight">{name}</span>
-      </div>
-      <span className="text-[9px] font-mono text-cloudo-muted uppercase tracking-tighter">{uptime}</span>
+    <div className="flex items-center gap-2">
+      <div className={`w-2 h-2 ${colors[s] || 'bg-cloudo-muted'} ${s === 'running' ? 'animate-pulse' : ''}`} />
+      <span className="text-xs font-black uppercase tracking-widest text-white/80">{status}</span>
     </div>
   );
 }
 
 function QuickLink({ icon, label, href }: any) {
   return (
-    <a href={href} className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border/20 rounded-lg hover:bg-cloudo-accent/[0.05] hover:border-cloudo-accent/30 transition-all group">
-      <div className="flex items-center gap-3">
-        <div className="text-cloudo-muted group-hover:text-cloudo-accent transition-colors">
+    <a href={href} className="flex items-center justify-between p-4 bg-cloudo-panel border border-cloudo-border hover:bg-cloudo-accent/5 hover:border-cloudo-accent transition-all group">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="text-cloudo-muted group-hover:text-cloudo-accent transition-colors shrink-0">
           {icon}
         </div>
-        <span className="text-[10px] font-black text-white uppercase tracking-widest">{label}</span>
+        <span className="text-xs font-black text-white uppercase tracking-[0.2em] truncate">{label}</span>
       </div>
-      <HiOutlineArrowRight className="text-cloudo-muted group-hover:text-white transition-all transform group-hover:translate-x-1" />
+      <HiOutlineArrowRight className="text-cloudo-muted/40 group-hover:text-cloudo-accent transition-all transform group-hover:translate-x-1 shrink-0 w-4 h-4" />
     </a>
   );
 }

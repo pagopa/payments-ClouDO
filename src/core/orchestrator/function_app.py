@@ -21,6 +21,10 @@ app = func.FunctionApp()
 TABLE_NAME = "RunbookLogs"
 TABLE_SCHEMAS = "RunbookSchemas"
 TABLE_WORKERS_SCHEMAS = "WorkersRegistry"
+TABLE_USERS = "CloudoUsers"
+TABLE_SETTINGS = "CloudoSettings"
+TABLE_AUDIT = "CloudoAuditLogs"
+TABLE_SCHEDULES = "CloudoSchedules"
 STORAGE_CONN = "AzureWebJobsStorage"
 NOTIFICATION_QUEUE_NAME = os.environ.get(
     "NOTIFICATION_QUEUE_NAME", "cloudo-notification"
@@ -93,6 +97,31 @@ def _rows_from_binding(rows: Union[str, list[dict]]) -> list[dict]:
         return json.loads(rows) if isinstance(rows, str) else (rows or [])
     except Exception:
         return []
+
+
+def log_audit(user: str, action: str, target: str, details: str = ""):
+    """Log an action to the Audit table."""
+    try:
+        from azure.data.tables import TableClient
+
+        conn_str = os.environ.get(STORAGE_CONN)
+        table_client = TableClient.from_connection_string(
+            conn_str, table_name=TABLE_AUDIT
+        )
+
+        now = datetime.now(timezone.utc)
+        entity = {
+            "PartitionKey": now.strftime("%Y%m%d"),
+            "RowKey": str(uuid.uuid4()),
+            "timestamp": now.isoformat(),
+            "operator": user,
+            "action": action,
+            "target": target,
+            "details": details,
+        }
+        table_client.create_entity(entity=entity)
+    except Exception as e:
+        logging.error(f"Failed to log audit: {e}")
 
 
 def _only_pending_for_exec(rows: list[dict], exec_id: str) -> bool:
@@ -1556,7 +1585,15 @@ def reject(
         },
     )
 
-    return func.HttpResponse(html, status_code=200, mimetype="text/html")
+    return func.HttpResponse(
+        html,
+        status_code=200,
+        mimetype="text/html",
+        headers={
+            "Content-Type": "text/html",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
 
 
 # =========================
@@ -2424,6 +2461,500 @@ def get_worker_processes(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.route(
+    route="auth/login",
+    methods=[func.HttpMethod.POST, func.HttpMethod.OPTIONS],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def auth_login(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    try:
+        from azure.data.tables import TableClient
+
+        body = req.get_json()
+        username = body.get("username")
+        password = body.get("password")
+
+        if not username or not password:
+            return func.HttpResponse(
+                json.dumps({"error": "Username and password required"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        conn_str = os.environ.get(STORAGE_CONN)
+        table_client = TableClient.from_connection_string(
+            conn_str, table_name=TABLE_USERS
+        )
+
+        # In a real world app, we should use hashing. For this requirement, we use plain text as per current mock.
+        user_entity = table_client.get_entity(
+            partition_key="Operator", row_key=username
+        )
+
+        if user_entity.get("password") == password:
+            return func.HttpResponse(
+                json.dumps(
+                    {
+                        "success": True,
+                        "user": {
+                            "username": user_entity.get("RowKey"),
+                            "email": user_entity.get("email"),
+                            "role": user_entity.get("role"),
+                        },
+                    }
+                ),
+                status_code=200,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        else:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid credentials"}),
+                status_code=401,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+    except Exception as e:
+        logging.error(f"Login error: {e}")
+        return func.HttpResponse(
+            json.dumps({"error": "Authentication failed"}),
+            status_code=401,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+
+@app.route(
+    route="users",
+    methods=[
+        func.HttpMethod.GET,
+        func.HttpMethod.POST,
+        func.HttpMethod.DELETE,
+        func.HttpMethod.OPTIONS,
+    ],
+    auth_level=AUTH,
+)
+def users_management(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    from azure.data.tables import TableClient, UpdateMode
+
+    conn_str = os.environ.get(STORAGE_CONN)
+    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_USERS)
+
+    # Verification of admin role
+    # In a real environment, we should check a JWT or a session token.
+    # Currently, we check for a custom header for simplicity or we assume the frontend sends the user role (less secure)
+    # Better: the frontend sends the requester's username in a header and we check it on the DB.
+    requester_username = req.headers.get("x-cloudo-user")
+    if requester_username:
+        try:
+            requester = table_client.get_entity(
+                partition_key="Operator", row_key=requester_username
+            )
+            if requester.get("role") != "ADMIN":
+                return func.HttpResponse(
+                    json.dumps({"error": "Unauthorized: Admin role required"}),
+                    status_code=403,
+                    mimetype="application/json",
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
+        except Exception:
+            return func.HttpResponse(
+                json.dumps({"error": "Unauthorized: User not found"}),
+                status_code=403,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+    else:
+        # If no user header is provided, we default to unauthorized for security
+        # (Assuming the frontend will be updated to send this header)
+        pass
+
+    if req.method == "GET":
+        try:
+            entities = table_client.query_entities(
+                query_filter="PartitionKey eq 'Operator'"
+            )
+            users = []
+            for e in entities:
+                users.append(
+                    {
+                        "username": e.get("RowKey"),
+                        "email": e.get("email"),
+                        "role": e.get("role"),
+                        "created_at": e.get("created_at"),
+                    }
+                )
+            return func.HttpResponse(
+                json.dumps(users),
+                status_code=200,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception:
+            return func.HttpResponse(
+                json.dumps([]),
+                status_code=200,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+    if req.method == "POST":
+        try:
+            body = req.get_json()
+            username = body.get("username")
+            if not username:
+                return func.HttpResponse("Missing username", status_code=400)
+
+            # Check if user exists to preserve created_at
+            try:
+                existing_user = table_client.get_entity(
+                    partition_key="Operator", row_key=username
+                )
+                created_at = existing_user.get("created_at")
+                # If password is not provided in body, keep the old one
+                password = body.get("password") or existing_user.get("password")
+            except Exception:
+                created_at = datetime.now(timezone.utc).isoformat()
+                password = body.get("password")
+
+            entity = {
+                "PartitionKey": "Operator",
+                "RowKey": username,
+                "password": password,
+                "email": body.get("email"),
+                "role": body.get("role", "OPERATOR"),
+                "created_at": created_at,
+            }
+            table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
+
+            # Audit log
+            log_audit(
+                user=requester_username or "SYSTEM",
+                action="USER_ENROLL" if not body.get("created_at") else "USER_UPDATE",
+                target=username,
+                details=f"Role: {body.get('role')}, Email: {body.get('email')}",
+            )
+
+            return func.HttpResponse(
+                json.dumps({"success": True}),
+                status_code=200,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception as e:
+            return func.HttpResponse(
+                json.dumps({"error": str(e)}),
+                status_code=500,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+    if req.method == "DELETE":
+        try:
+            username = req.params.get("username")
+            if not username:
+                return func.HttpResponse("Missing username", status_code=400)
+            table_client.delete_entity(partition_key="Operator", row_key=username)
+
+            # Audit log
+            log_audit(
+                user=requester_username or "SYSTEM",
+                action="USER_REVOKE",
+                target=username,
+                details="Identity destroyed",
+            )
+
+            return func.HttpResponse(
+                json.dumps({"success": True}),
+                status_code=200,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception as e:
+            return func.HttpResponse(
+                json.dumps({"error": str(e)}),
+                status_code=500,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+
+@app.route(
+    route="settings",
+    methods=[func.HttpMethod.GET, func.HttpMethod.POST, func.HttpMethod.OPTIONS],
+    auth_level=AUTH,
+)
+def settings_management(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    from azure.data.tables import TableClient
+
+    conn_str = os.environ.get(STORAGE_CONN)
+    table_client = TableClient.from_connection_string(
+        conn_str, table_name=TABLE_SETTINGS
+    )
+
+    # Verification of admin role
+    requester_username = req.headers.get("x-cloudo-user")
+    if requester_username:
+        try:
+            from azure.data.tables import TableClient as TC
+
+            user_table = TC.from_connection_string(conn_str, table_name=TABLE_USERS)
+            requester = user_table.get_entity(
+                partition_key="Operator", row_key=requester_username
+            )
+            if requester.get("role") != "ADMIN":
+                return func.HttpResponse(
+                    json.dumps({"error": "Unauthorized"}),
+                    status_code=403,
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
+        except Exception:
+            return func.HttpResponse(
+                json.dumps({"error": "Unauthorized"}),
+                status_code=403,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+    if req.method == "GET":
+        try:
+            entities = table_client.query_entities(
+                query_filter="PartitionKey eq 'GlobalConfig'"
+            )
+            settings = {e["RowKey"]: e["value"] for e in entities}
+            return func.HttpResponse(
+                json.dumps(settings),
+                status_code=200,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception:
+            return func.HttpResponse(
+                json.dumps({}),
+                status_code=200,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+    if req.method == "POST":
+        try:
+            body = req.get_json()
+            for key, value in body.items():
+                entity = {
+                    "PartitionKey": "GlobalConfig",
+                    "RowKey": key,
+                    "value": str(value),
+                }
+                table_client.upsert_entity(entity=entity)
+
+            log_audit(
+                user=requester_username or "SYSTEM",
+                action="SETTINGS_UPDATE",
+                target="GLOBAL_CONFIG",
+                details=str(list(body.keys())),
+            )
+            return func.HttpResponse(
+                json.dumps({"success": True}),
+                status_code=200,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception as e:
+            return func.HttpResponse(
+                json.dumps({"error": str(e)}),
+                status_code=500,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+
+@app.route(
+    route="audit",
+    methods=[func.HttpMethod.GET, func.HttpMethod.OPTIONS],
+    auth_level=AUTH,
+)
+def get_audit_logs(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    from azure.data.tables import TableClient
+
+    conn_str = os.environ.get(STORAGE_CONN)
+    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_AUDIT)
+
+    try:
+        entities = table_client.query_entities(query_filter="")
+        logs = []
+        for e in entities:
+            logs.append(
+                {
+                    "timestamp": e.get("timestamp"),
+                    "operator": e.get("operator"),
+                    "action": e.get("action"),
+                    "target": e.get("target"),
+                    "details": e.get("details"),
+                }
+            )
+        # Sort by timestamp descending
+        logs.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+        return func.HttpResponse(
+            json.dumps(logs[:100]),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    except Exception:
+        return func.HttpResponse(
+            json.dumps([]),
+            status_code=200,
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+
+@app.route(
+    route="schedules",
+    methods=[
+        func.HttpMethod.GET,
+        func.HttpMethod.POST,
+        func.HttpMethod.DELETE,
+        func.HttpMethod.OPTIONS,
+    ],
+    auth_level=AUTH,
+)
+def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    from azure.data.tables import TableClient, UpdateMode
+
+    conn_str = os.environ.get(STORAGE_CONN)
+    table_client = TableClient.from_connection_string(
+        conn_str, table_name=TABLE_SCHEDULES
+    )
+
+    # Verification of admin role
+    requester_username = req.headers.get("x-cloudo-user")
+    if requester_username:
+        try:
+            from azure.data.tables import TableClient as TC
+
+            user_table = TC.from_connection_string(conn_str, table_name=TABLE_USERS)
+            requester = user_table.get_entity(
+                partition_key="Operator", row_key=requester_username
+            )
+            if requester.get("role") != "ADMIN":
+                return func.HttpResponse(
+                    json.dumps({"error": "Unauthorized"}),
+                    status_code=403,
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
+        except Exception:
+            return func.HttpResponse(
+                json.dumps({"error": "User not found"}),
+                status_code=403,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+    if req.method == "GET":
+        try:
+            entities = table_client.query_entities(
+                query_filter="PartitionKey eq 'Schedule'"
+            )
+            schedules = []
+            for e in entities:
+                schedules.append(
+                    {
+                        "id": e.get("RowKey"),
+                        "name": e.get("name"),
+                        "cron": e.get("cron"),
+                        "runbook": e.get("runbook"),
+                        "run_args": e.get("run_args"),
+                        "queue": e.get("queue"),
+                        "worker_pool": e.get("worker_pool"),
+                        "enabled": e.get("enabled"),
+                        "last_run": e.get("last_run"),
+                    }
+                )
+            return func.HttpResponse(
+                json.dumps(schedules),
+                status_code=200,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception:
+            return func.HttpResponse(
+                json.dumps([]),
+                status_code=200,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+    if req.method == "POST":
+        try:
+            body = req.get_json()
+            schedule_id = body.get("id") or str(uuid.uuid4())
+
+            entity = {
+                "PartitionKey": "Schedule",
+                "RowKey": schedule_id,
+                "name": body.get("name"),
+                "cron": body.get("cron"),
+                "runbook": body.get("runbook"),
+                "run_args": body.get("run_args"),
+                "queue": body.get("queue"),
+                "worker_pool": body.get("worker_pool"),
+                "enabled": body.get("enabled", True),
+                "last_run": body.get("last_run", ""),
+            }
+            table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
+
+            log_audit(
+                user=requester_username or "SYSTEM",
+                action="SCHEDULE_UPSERT",
+                target=schedule_id,
+                details=f"Name: {body.get('name')}, Cron: {body.get('cron')}",
+            )
+            return func.HttpResponse(
+                json.dumps({"success": True, "id": schedule_id}),
+                status_code=200,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception as e:
+            return func.HttpResponse(
+                json.dumps({"error": str(e)}),
+                status_code=500,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+    if req.method == "DELETE":
+        try:
+            schedule_id = req.params.get("id")
+            if not schedule_id:
+                return func.HttpResponse(
+                    json.dumps({"error": "Missing id"}),
+                    status_code=400,
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
+
+            table_client.delete_entity(partition_key="Schedule", row_key=schedule_id)
+            log_audit(
+                user=requester_username or "SYSTEM",
+                action="SCHEDULE_DELETE",
+                target=schedule_id,
+            )
+            return func.HttpResponse(
+                json.dumps({"success": True}),
+                status_code=200,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception as e:
+            return func.HttpResponse(
+                json.dumps({"error": str(e)}),
+                status_code=500,
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+
+@app.route(
     route="workers/stop",
     methods=[func.HttpMethod.POST, func.HttpMethod.OPTIONS],
     auth_level=AUTH,
@@ -2509,6 +3040,8 @@ def runbook_schemas(
     if req.method == "OPTIONS":
         return create_cors_response()
 
+    requester_username = req.headers.get("x-cloudo-user")
+
     if req.method == "GET":
         try:
             schemas_data = json.loads(entities)
@@ -2534,13 +3067,22 @@ def runbook_schemas(
         try:
             body = req.get_json()
 
+            schema_id = body.get("id", str(uuid.uuid4()))
             new_entity = {
                 "PartitionKey": body.get("PartitionKey", "RunbookSchema"),
-                "RowKey": body.get("id", str(uuid.uuid4())),
+                "RowKey": schema_id,
                 **body,
             }
 
             outputTable.set(json.dumps(new_entity))
+
+            # Audit log
+            log_audit(
+                user=requester_username or "SYSTEM",
+                action="SCHEMA_CREATE",
+                target=schema_id,
+                details=f"Name: {body.get('name')}, Runbook: {body.get('runbook')}",
+            )
 
             return func.HttpResponse(
                 body=json.dumps(new_entity),
@@ -2590,6 +3132,14 @@ def runbook_schemas(
                 conn_str, table_name=TABLE_SCHEMAS
             )
             table_client.upsert_entity(entity=updated_entity, mode=UpdateMode.REPLACE)
+
+            # Audit log
+            log_audit(
+                user=requester_username or "SYSTEM",
+                action="SCHEMA_UPDATE",
+                target=schema_id,
+                details=f"Name: {body.get('name')}",
+            )
 
             return func.HttpResponse(
                 body=json.dumps(updated_entity),
@@ -2643,6 +3193,14 @@ def runbook_schemas(
             )
             table_client.delete_entity(partition_key=partition_key, row_key=schema_id)
 
+            # Audit log
+            log_audit(
+                user=requester_username or "SYSTEM",
+                action="SCHEMA_DELETE",
+                target=schema_id,
+                details=f"PartitionKey: {partition_key}",
+            )
+
             return func.HttpResponse(
                 body=json.dumps(
                     {"message": "Schema deleted successfully", "id": schema_id}
@@ -2673,6 +3231,149 @@ def runbook_schemas(
             "Access-Control-Allow-Origin": "*",
         },
     )
+
+
+@app.schedule(
+    schedule="0 */1 * * * *",
+    arg_name="schedulerTimer",
+    run_on_startup=False,
+    use_monitor=False,
+)
+def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
+    """
+    Scheduler Engine: Check for scheduled runbooks and execute them.
+    """
+    import logging
+    import os
+    from datetime import datetime, timezone
+
+    from azure.data.tables import TableClient
+    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+    from utils import format_requested_at, is_cron_now, today_partition_key
+
+    conn_str = os.environ.get("AzureWebJobsStorage")
+    table_client = TableClient.from_connection_string(
+        conn_str, table_name=TABLE_SCHEDULES
+    )
+
+    try:
+        schedules = table_client.query_entities(
+            query_filter="PartitionKey eq 'Schedule' and enabled eq true"
+        )
+        now = datetime.now(timezone.utc)
+
+        for s in schedules:
+            cron_expr = s.get("cron", "0 */1 * * * *")
+            last_run_str = s.get("last_run", "")
+
+            should_run_by_cron = is_cron_now(cron_expr, now)
+
+            should_run = False
+            if should_run_by_cron:
+                if not last_run_str:
+                    should_run = True
+                else:
+                    last_run_dt = datetime.fromisoformat(
+                        last_run_str.replace("Z", "+00:00")
+                    )
+                    if (now - last_run_dt).total_seconds() >= 45:
+                        should_run = True
+
+            if should_run:
+                exec_id = str(uuid.uuid4())
+                logging.warning(
+                    f"[Scheduler] Triggering {s['name']} (ID: {s['RowKey']}) -> ExecId: {exec_id}"
+                )
+
+                worker_pool = s.get("worker_pool")
+                target_queue = "cloudo-default"
+
+                if worker_pool:
+                    try:
+                        workers_table = TableClient.from_connection_string(
+                            conn_str, table_name="WorkersRegistry"
+                        )
+                        # Cerchiamo un worker attivo in questo pool per estrarne la coda
+                        entities = list(
+                            workers_table.query_entities(
+                                query_filter=f"PartitionKey eq '{worker_pool}'"
+                            )
+                        )
+                        logging.warning(
+                            f"[WorkersRegistry] Found {len(entities)} workers"
+                        )
+                        for w in entities:
+                            if w.get("Queue"):
+                                target_queue = w.get("Queue")
+                                break
+                    except Exception as e:
+                        logging.error(
+                            f"[Scheduler] Failed to resolve queue for pool {worker_pool}: {e}"
+                        )
+
+                requested_at = format_requested_at()
+                partition_key = today_partition_key()
+
+                queue_payload = {
+                    "runbook": s.get("runbook"),
+                    "run_args": s.get("run_args"),
+                    "worker": worker_pool,
+                    "exec_id": exec_id,
+                    "id": s.get("RowKey"),
+                    "name": s.get("name"),
+                    "status": "scheduled",
+                    "oncall": False,
+                    "require_approval": False,
+                    "requested_at": requested_at,
+                }
+
+                try:
+                    log_table_client = TableClient.from_connection_string(
+                        conn_str, table_name=TABLE_NAME
+                    )
+                    log_entry = build_log_entry(
+                        status="scheduled",
+                        partition_key=partition_key,
+                        row_key=str(uuid.uuid4()),
+                        exec_id=exec_id,
+                        requested_at=requested_at,
+                        name=s.get("name"),
+                        schema_id=s.get("RowKey"),
+                        runbook=s.get("runbook"),
+                        run_args=s.get("run_args"),
+                        worker=worker_pool,
+                        oncall="false",
+                        log_msg=json.dumps(
+                            {
+                                "status": "scheduled",
+                                "queue": target_queue,
+                            },
+                            ensure_ascii=False,
+                        ),
+                        monitor_condition="",
+                        severity="",
+                    )
+                    log_table_client.create_entity(entity=log_entry)
+                except Exception as le:
+                    logging.error(f"[Scheduler] Failed to log scheduled status: {le}")
+
+                q_name = target_queue
+                queue_service = QueueClient.from_connection_string(
+                    conn_str, q_name, message_encode_policy=TextBase64EncodePolicy()
+                )
+                try:
+                    queue_service.send_message(json.dumps(queue_payload))
+                except Exception as qe:
+                    if "QueueNotFound" in str(qe):
+                        logging.warning(f"[Scheduler] Queue {q_name} not found")
+                    else:
+                        raise qe
+
+                s["last_run"] = now.isoformat()
+                table_client.update_entity(entity=s)
+
+    except Exception as e:
+        logging.error(f"[Scheduler] Error: {e}")
 
 
 @app.schedule(

@@ -327,8 +327,24 @@ def _run_script(
 
     from utils import get_sanitized_env
 
+    def to_str(x) -> str:
+        return "" if x is None else str(x)
+
     # Setting MONITOR_CONDITION env VAR
-    os.environ["MONITOR_CONDITION"] = monitor_condition
+    os.environ["MONITOR_CONDITION"] = to_str(monitor_condition)
+
+    # ClouDO Execution Standard Variables
+    if payload:
+        os.environ["CLOUDO_PAYLOAD"] = json.dumps(payload)
+        os.environ["CLOUDO_EXEC_ID"] = to_str(payload.get("exec_id"))
+        os.environ["CLOUDO_REQUESTED_AT"] = to_str(
+            payload.get("requestedAt") or payload.get("requested_at")
+        )
+        os.environ["CLOUDO_NAME"] = to_str(payload.get("name"))
+        os.environ["CLOUDO_RUNBOOK"] = to_str(payload.get("runbook"))
+        os.environ["CLOUDO_WORKER"] = to_str(payload.get("worker"))
+        os.environ["CLOUDO_ONCALL"] = to_str(payload.get("oncall")).lower()
+
     TERMINATED_CODES = {-signal.SIGTERM} if hasattr(signal, "SIGTERM") else set()
 
     try:
@@ -344,9 +360,6 @@ def _run_script(
                 except json.JSONDecodeError:
                     logging.warning("AKS info string non JSON: %r", val)
             return {}
-
-        def to_str(x) -> str:
-            return "" if x is None else str(x)
 
         info = normalize_aks_info(resource_info)
         logging.debug(f"AKS info: {info}")
