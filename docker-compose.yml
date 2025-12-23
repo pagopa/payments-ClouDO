@@ -37,14 +37,14 @@ services:
     build:
       context: ./src/core/orchestrator
       dockerfile: Dockerfile
-    deploy:
-      mode: replicated
-      replicas: 3
+    restart: on-failure
     env_file:
       - path: .env.local
         required: false
     environment:
       - AzureWebJobsStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
+      - AzureFunctionsJobHost__logging__logLevel__Default=Warning
+      - AzureFunctionsJobHost__logging__logLevel__Function=Warning
       - DOTNET_SYSTEM_NET_HTTP_USESOCKETSHTTPHANDLER=0
       - AzureWebJobsFeatureFlags=EnableWorkerIndexing
       - AzureWebJobs_CORS_AllowedOrigins=http://localhost:3000

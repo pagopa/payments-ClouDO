@@ -33,7 +33,7 @@ interface Worker {
 
 export function WorkersPanel() {
   const [workers, setWorkers] = useState<Worker[]>([]);
-  const [selectedWorker, setSelectedWorker] = useState<string>('');
+  const [selectedWorker, setSelectedWorker] = useState<string>('all');
   const [processes, setProcesses] = useState<WorkerProcess[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingWorkers, setLoadingWorkers] = useState(true);
@@ -41,6 +41,12 @@ export function WorkersPanel() {
   useEffect(() => {
     fetchWorkers();
   }, []);
+
+  useEffect(() => {
+    if (workers.length > 0 && selectedWorker === 'all') {
+      fetchProcesses('all');
+    }
+  }, [workers]);
 
   const fetchWorkers = async () => {
     setLoadingWorkers(true);
@@ -66,18 +72,69 @@ export function WorkersPanel() {
     setLoading(true);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const res = await fetch(`${API_URL}/workers/processes?worker=${encodeURIComponent(worker)}`, {
+
+      if (worker === 'all') {
+        const allProcesses = await Promise.all(
+          workers.map(async (w) => {
+            try {
+              const res = await fetch(`${API_URL}/workers/processes?worker=${encodeURIComponent(w.RowKey)}`, {
+                headers: {
+                  'x-cloudo-key': process.env.NEXT_PUBLIC_CLOUDO_KEY || '',
+                },
+              });
+              if (!res.ok) return [];
+              const data = await res.json();
+              const items = Array.isArray(data) ? data : (data.runs || data.processes || []);
+              return items.map((item: any) => ({ ...item, workerNode: w.RowKey }));
+            } catch (e) {
+              console.error(`Error fetching processes for ${w.RowKey}:`, e);
+              return [];
+            }
+          })
+        );
+        setProcesses(allProcesses.flat());
+      } else {
+        const res = await fetch(`${API_URL}/workers/processes?worker=${encodeURIComponent(worker)}`, {
+          headers: {
+            'x-cloudo-key': process.env.NEXT_PUBLIC_CLOUDO_KEY || '',
+          },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const processesData = Array.isArray(data) ? data : (data.runs || data.processes || []);
+        setProcesses(processesData.map((p: any) => ({ ...p, workerNode: worker })));
+      }
+    } catch (error) {
+      console.error('Error fetching processes:', error);
+      setProcesses([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const stopProcess = async (worker: string, execId: string) => {
+    if (!confirm(`Are you sure you want to stop process ${execId} on ${worker}?`)) return;
+
+    setLoading(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
+      const res = await fetch(`${API_URL}/workers/stop?worker=${encodeURIComponent(worker)}&exec_id=${encodeURIComponent(execId)}`, {
+        method: 'POST',
         headers: {
           'x-cloudo-key': process.env.NEXT_PUBLIC_CLOUDO_KEY || '',
         },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const processesData = Array.isArray(data) ? data : (data.runs || data.processes || []);
-      setProcesses(processesData);
+
+      if (res.ok) {
+        // Refresh processes after stop
+        fetchProcesses(selectedWorker);
+      } else {
+        const data = await res.json();
+        alert(`Failed to stop process: ${data.error || res.statusText}`);
+      }
     } catch (error) {
-      console.error('Error fetching processes:', error);
-      setProcesses([]);
+      console.error('Error stopping process:', error);
+      alert('Network error while stopping process');
     } finally {
       setLoading(false);
     }
@@ -200,6 +257,7 @@ export function WorkersPanel() {
                     disabled={workers.length === 0}
                   >
                     <option value="">Select an active node...</option>
+                    <option value="all" className="font-bold text-cloudo-accent">ALL WORKERS (Full Cluster Scan)</option>
                     {workers.map((worker) => (
                       <option key={worker.RowKey} value={worker.RowKey}>
                         {worker.RowKey} — {worker.PartitionKey}
@@ -227,6 +285,7 @@ export function WorkersPanel() {
                         <th className="px-6 py-3">Asset</th>
                         <th className="px-6 py-3">Status</th>
                         <th className="px-6 py-3 text-right">Timestamp</th>
+                        <th className="px-6 py-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-cloudo-border/10">
@@ -238,6 +297,9 @@ export function WorkersPanel() {
                           <td className="px-6 py-4">
                             <div className="font-bold text-white">{proc.name}</div>
                             <div className="text-[9px] text-cloudo-muted font-mono">{proc.id}</div>
+                            {selectedWorker === 'all' && (
+                              <div className="text-[8px] text-cloudo-accent/50 uppercase mt-1">Node: {(proc as any).workerNode}</div>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2 text-cloudo-accent/70 font-mono">
@@ -252,6 +314,16 @@ export function WorkersPanel() {
                           </td>
                           <td className="px-6 py-4 text-right text-cloudo-muted opacity-60">
                             {(proc.startedAt || proc.requestedAt || '-').replace('T', ' ').split('.')[0]}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            {proc.status.toLowerCase() === 'running' && (
+                              <button
+                                onClick={() => stopProcess((proc as any).workerNode, proc.exec_id)}
+                                className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest transition-all"
+                              >
+                                Stop
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}

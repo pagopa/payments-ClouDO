@@ -606,7 +606,13 @@ def Trigger(
             )
             sig = _sign_payload_b64(payload_b64)
 
-            base = _strip_after_api(resolve_caller_url(req))
+            base_env = os.getenv("ORCHESTRATOR_BASE_URL")
+            if not base_env:
+                hostname = os.getenv("WEBSITE_HOSTNAME", "localhost:7071")
+                scheme = "https" if "localhost" not in hostname else "http"
+                base = f"{scheme}://{hostname}"
+            else:
+                base = base_env.rstrip("/")
             approve_url = f"{base}/api/approvals/{partition_key}/{exec_id}/approve?p={payload_b64}&s={sig}&code={func_key}"
             reject_url = f"{base}/api/approvals/{partition_key}/{exec_id}/reject?p={payload_b64}&s={sig}&code={func_key}"
 
@@ -2405,6 +2411,69 @@ def get_worker_processes(req: func.HttpRequest) -> func.HttpResponse:
         )
     except Exception as e:
         logging.error(f"Failed to proxy processes for {worker}: {e}")
+        return func.HttpResponse(
+            json.dumps(
+                {"error": f"Failed to reach worker: {str(e)}"}, ensure_ascii=False
+            ),
+            status_code=502,
+            mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+
+
+@app.route(
+    route="workers/stop",
+    methods=[func.HttpMethod.POST, func.HttpMethod.OPTIONS],
+    auth_level=AUTH,
+)
+def stop_worker_process(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Proxy endpoint: calls the worker STOP API from the backend.
+    Expected param: worker (hostname/ip:port), exec_id
+    """
+    import requests
+
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    worker = req.params.get("worker")
+    exec_id = req.params.get("exec_id")
+
+    if not worker or not exec_id:
+        return func.HttpResponse(
+            json.dumps(
+                {"error": "Missing 'worker' or 'exec_id' param"}, ensure_ascii=False
+            ),
+            status_code=400,
+            mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+
+    if os.getenv("FEATURE_DEV", "false").lower() != "true":
+        target_url = f"https://{worker}.azurewebsites.net/api/stop?exec_id={exec_id}"
+    else:
+        target_url = f"http://{worker}/api/stop?exec_id={exec_id}"
+
+    try:
+        resp = requests.post(
+            target_url,
+            headers={"x-cloudo-key": os.getenv("CLOUDO_SECRET_KEY")},
+            timeout=5,
+        )
+        return func.HttpResponse(
+            resp.text,
+            status_code=resp.status_code,
+            mimetype="application/json",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+    except Exception as e:
+        logging.error(f"Failed to proxy stop for {worker}/{exec_id}: {e}")
         return func.HttpResponse(
             json.dumps(
                 {"error": f"Failed to reach worker: {str(e)}"}, ensure_ascii=False

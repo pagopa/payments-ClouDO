@@ -82,6 +82,7 @@ export default function DashboardPage() {
         'failed': 4,
         'error': 4,
         'running': 3,
+        'rejected': 3,
         'accepted': 2,
         'pending': 1,
         'skipped': 1,

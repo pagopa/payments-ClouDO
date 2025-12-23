@@ -68,6 +68,7 @@ export function LogsPanel() {
         'failed': 4,
         'error': 4,
         'running': 3,
+        'rejected': 3,
         'accepted': 2,
         'pending': 1,
       };
@@ -110,6 +111,7 @@ export function LogsPanel() {
     if (s === 'succeeded' || s === 'completed') return 'status-succeeded shadow-[0_0_8px_rgba(34,197,94,0.2)]';
     if (s === 'running') return 'status-running shadow-[0_0_8px_rgba(59,130,246,0.2)]';
     if (s === 'failed' || s === 'error') return 'status-failed shadow-[0_0_8px_rgba(239,68,68,0.2)]';
+    if (s === 'rejected') return 'status-rejected shadow-[0_0_8px_rgba(239,68,68,0.2)]';
     return 'status-pending opacity-70';
   };
 
