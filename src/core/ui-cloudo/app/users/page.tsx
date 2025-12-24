@@ -241,7 +241,7 @@ export default function UsersPage() {
                         </span>
                       </td>
                       <td className="px-8 py-6 text-cloudo-muted opacity-40 font-mono">
-                        {user.createdAt || user.created_at}
+                        {user.createdAt}
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">

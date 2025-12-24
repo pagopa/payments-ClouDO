@@ -43,6 +43,7 @@ export default function SchedulesPage() {
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const addNotification = (type: 'success' | 'error', message: string) => {
     const id = Date.now().toString();
@@ -96,6 +97,38 @@ export default function SchedulesPage() {
       }
     } catch (e) {
       addNotification('error', 'Destruction failed');
+    }
+  };
+
+  const toggleSchedule = async (schedule: Schedule) => {
+    setTogglingId(schedule.id);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
+      const userData = localStorage.getItem('cloudo_user');
+      const currentUser = userData ? JSON.parse(userData) : null;
+
+      const updatedSchedule = { ...schedule, enabled: !schedule.enabled };
+
+      const res = await fetch(`${API_URL}/schedules`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-cloudo-user': currentUser?.username || ''
+        },
+        body: JSON.stringify(updatedSchedule)
+      });
+
+      if (res.ok) {
+        addNotification('success', `Schedule ${schedule.id} ${updatedSchedule.enabled ? 'enabled' : 'disabled'}`);
+        fetchSchedules();
+      } else {
+        const d = await res.json();
+        addNotification('error', d.error || 'Operation failed');
+      }
+    } catch (e) {
+      addNotification('error', 'Network error');
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -212,6 +245,24 @@ export default function SchedulesPage() {
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => toggleSchedule(s)}
+                            disabled={togglingId === s.id}
+                            className={`p-2.5 border transition-all ${
+                              s.enabled
+                                ? 'bg-black/40 border-cloudo-border text-cloudo-ok hover:border-cloudo-ok/40'
+                                : 'bg-black/40 border-cloudo-border text-cloudo-muted hover:border-white/20'
+                            } ${togglingId === s.id ? 'opacity-50 cursor-wait' : ''}`}
+                            title={s.enabled ? "Disable Schedule" : "Enable Schedule"}
+                          >
+                            {togglingId === s.id ? (
+                              <HiOutlineRefresh className="w-4 h-4 animate-spin" />
+                            ) : s.enabled ? (
+                              <HiOutlineBan className="w-4 h-4" />
+                            ) : (
+                              <HiOutlineCheck className="w-4 h-4" />
+                            )}
+                          </button>
                           <button
                             onClick={() => { setSelectedSchedule(s); setModalMode('edit'); }}
                             className="p-2.5 bg-black/40 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-white transition-all group/btn"

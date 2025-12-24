@@ -10,9 +10,11 @@ import {
   HiOutlineFilter,
   HiOutlineClipboardCheck,
   HiOutlineClipboard,
-  HiOutlineCalendar,
-  HiOutlineTag
+  HiOutlineTag,
+  HiOutlineFingerPrint
 } from 'react-icons/hi';
+import {DatePicker} from "@heroui/date-picker";
+import {parseDate, today, getLocalTimeZone} from "@internationalized/date";
 
 interface LogEntry {
   PartitionKey: string;
@@ -32,29 +34,55 @@ interface LogEntry {
 
 export function LogsPanel() {
   const [partitionKey, setPartitionKey] = useState('');
+  const [dateValue, setDateValue] = useState(today(getLocalTimeZone()));
   const [execId, setExecId] = useState('');
   const [status, setStatus] = useState('');
   const [query, setQuery] = useState('');
+  const [limit, setLimit] = useState('200');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const setTodayDate = () => {
+    const t = today(getLocalTimeZone());
+    setDateValue(t);
+    setPartitionKey(t.toString().replace(/-/g, ''));
+  };
+
   useEffect(() => {
-    const today = new Date();
-    const yyyymmdd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-    setPartitionKey(yyyymmdd);
+    setTodayDate();
   }, []);
 
+  const handleReset = () => {
+    setExecId('');
+    setStatus('');
+    setQuery('');
+    setLimit('200');
+    setLogs([]);
+    setSelectedLog(null);
+    setTodayDate();
+  };
+
+  const handleDateChange = (val: any) => {
+    setDateValue(val);
+    if (val) {
+      setPartitionKey(val.toString().replace(/-/g, ''));
+    } else {
+      setPartitionKey('');
+    }
+  };
+
   const runQuery = async () => {
-    if (!partitionKey) return;
     setLoading(true);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const params = new URLSearchParams({ partitionKey });
+      const params = new URLSearchParams();
+      if (partitionKey) params.set('partitionKey', partitionKey);
       if (execId) params.set('execId', execId);
       if (status) params.set('status', status);
       if (query) params.set('q', query);
+      if (limit) params.set('limit', limit);
 
       const res = await fetch(`${API_URL}/logs/query?${params}`);
       const data = await res.json();
@@ -68,6 +96,7 @@ export function LogsPanel() {
         'failed': 4,
         'error': 4,
         'running': 3,
+        'skipped': 3,
         'rejected': 3,
         'accepted': 2,
         'pending': 1,
@@ -106,12 +135,20 @@ export function LogsPanel() {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runQuery();
+    }
+  };
+
   const getStatusBadgeClass = (status: string) => {
     const s = status.toLowerCase();
     if (s === 'succeeded' || s === 'completed') return 'border-cloudo-ok/30 text-cloudo-ok bg-cloudo-ok/5';
-    if (s === 'running') return 'border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5';
+    if (s === 'running' || s === 'accepted') return 'border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5';
     if (s === 'failed' || s === 'error') return 'border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5';
     if (s === 'rejected') return 'border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5';
+    if (s === 'pending') return 'border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5';
     return 'border-cloudo-muted/30 text-cloudo-muted bg-cloudo-muted/5';
   };
 
@@ -145,7 +182,7 @@ export function LogsPanel() {
               <h2 className="text-sm font-black uppercase tracking-[0.2em] text-white truncate">Log Explorer</h2>
             </div>
             <button
-              onClick={() => { setExecId(''); setStatus(''); setQuery(''); setLogs([]); setSelectedLog(null); }}
+              onClick={handleReset}
               className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted hover:text-white transition-colors border border-cloudo-border px-2 py-1"
             >
               Reset
@@ -156,40 +193,76 @@ export function LogsPanel() {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div className="space-y-2">
                 <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Partition</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="YYYYMMDD"
-                    value={partitionKey}
-                    onChange={(e) => setPartitionKey(e.target.value)}
-                  />
-                </div>
+                <DatePicker
+                  className="max-w-full"
+                  value={dateValue}
+                  onChange={handleDateChange}
+                  variant="bordered"
+                  radius="none"
+                  showMonthAndYearPickers
+                  onKeyDown={handleKeyDown}
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">State</label>
-                <div className="relative">
+                <div className="relative group">
+                  <HiOutlineTag className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <select
-                    className="input appearance-none"
+                    className="input pl-10 appearance-none relative"
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
+                    onKeyDown={handleKeyDown}
                   >
                     <option value="">ALL_EVENTS</option>
-                    <option value="succeeded">SUCCEEDED</option>
+                    <option value="pending">PENDING</option>
+                    <option value="accepted">ACCEPTED</option>
                     <option value="running">RUNNING</option>
+                    <option value="succeeded">SUCCEEDED</option>
                     <option value="failed">FAILED</option>
+                    <option value="rejected">REJECTED</option>
+                    <option value="error">ERROR</option>
                   </select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Exec_ID</label>
+                <div className="relative group">
+                  <HiOutlineFingerPrint className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
+                  <input
+                    type="text"
+                    className="input pl-10 relative"
+                    placeholder="Execution ID..."
+                    value={execId}
+                    onChange={(e) => setExecId(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
                 </div>
               </div>
               <div className="col-span-2 md:col-span-1 space-y-2">
                 <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Search_Term</label>
-                <div className="relative">
+                <div className="relative group">
+                  <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
-                    className="input"
-                    placeholder="Keywords..."
+                    className="input pl-10 relative"
+                    placeholder="Keywords in logs..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Limit</label>
+                <div className="relative group">
+                  <HiOutlineDatabase className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
+                  <input
+                    type="number"
+                    className="input pl-10 relative"
+                    placeholder="200"
+                    value={limit}
+                    onChange={(e) => setLimit(e.target.value)}
+                    onKeyDown={handleKeyDown}
                   />
                 </div>
               </div>
@@ -199,6 +272,7 @@ export function LogsPanel() {
               onClick={runQuery}
               disabled={loading}
               className="w-full btn btn-primary py-3"
+              onKeyDown={handleKeyDown}
             >
               {loading ? <HiOutlineRefresh className="animate-spin w-3.5 h-3.5" /> : <HiOutlineFilter className="w-3.5 h-3.5" />}
               {loading ? 'Executing...' : 'Run Diagnostics'}
@@ -208,6 +282,14 @@ export function LogsPanel() {
 
         {/* Results List Card */}
         <div className="bg-cloudo-panel border border-cloudo-border flex-1 overflow-hidden flex flex-col">
+          {logs.length > 0 && (
+            <div className="px-6 py-2 border-b border-cloudo-border bg-cloudo-panel-2 flex justify-between items-center">
+              <span className="text-[10px] font-black uppercase tracking-widest text-cloudo-muted">
+                Displaying {logs.length} unique execution{logs.length !== 1 ? 's' : ''}
+                {limit && ` (limited to ${limit} raw logs)`}
+              </span>
+            </div>
+          )}
           <div className="overflow-y-auto custom-scrollbar">
             <table className="w-full text-xs border-collapse">
               <thead className="bg-cloudo-panel-2 sticky top-0 z-10 border-b border-cloudo-border">

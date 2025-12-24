@@ -4,7 +4,7 @@
     "logLevel": {
       "Default": "Warning",
       "Function": "Information",
-      "Functions.list_processes": "None",
+      "Functions.list_processes": "Warning",
       "Function.heartbeat_trigger": "Warning",
       "Host": "Error",
       "Host.Results": "Error",

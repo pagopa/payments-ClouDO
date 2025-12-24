@@ -85,10 +85,11 @@ export default function AuditPage() {
   }, [logs, searchQuery]);
 
   const getActionColor = (action: string) => {
-    if (action.includes('DELETE') || action.includes('REVOKE')) return 'text-cloudo-err border-cloudo-err/30 bg-cloudo-err/5';
-    if (action.includes('CREATE') || action.includes('ENROLL')) return 'text-cloudo-ok border-cloudo-ok/30 bg-cloudo-ok/5';
+    if (action.includes('DELETE') || action.includes('REVOKE') || action.includes('REJECT')) return 'text-cloudo-err border-cloudo-err/30 bg-cloudo-err/5';
+    if (action.includes('CREATE') || action.includes('ENROLL') || action.includes('APPROVE') || action.includes('UPSERT')) return 'text-cloudo-ok border-cloudo-ok/30 bg-cloudo-ok/5';
     if (action.includes('UPDATE')) return 'text-cloudo-warn border-cloudo-warn/30 bg-cloudo-warn/5';
-    return 'text-cloudo-accent border-cloudo-accent/30 bg-cloudo-accent/5';
+    if (action.includes('MANUAL')) return 'text-pink-400 border-pink-400/30 bg-pink-400/5';
+    return 'text-cloudo-muted border-cloudo-muted/30 bg-cloudo-muted/5';
   };
 
   return (

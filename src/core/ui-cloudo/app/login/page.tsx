@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { HiOutlineLockClosed, HiOutlineUser, HiOutlineLightningBolt, HiOutlineCheckCircle } from 'react-icons/hi';
 import Link from 'next/link';
 
-export default function LoginPage() {
+function LoginForm() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -165,5 +165,19 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-cloudo-dark font-mono">
+        <div className="text-cloudo-accent animate-pulse uppercase tracking-[0.3em] text-sm">
+          Initializing Security Protocol...
+        </div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

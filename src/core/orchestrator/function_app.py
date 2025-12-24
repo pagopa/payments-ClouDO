@@ -464,6 +464,7 @@ def Trigger(
     requested_at = utils.format_requested_at()
     partition_key = utils.today_partition_key()
     exec_id = str(uuid.uuid4())
+    requester_username = req.headers.get("x-cloudo-user") or ""
 
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
@@ -605,7 +606,6 @@ def Trigger(
         monitor_condition=monitor_condition,
         severity=severity,
     )
-    logging.debug(f"[{exec_id}] Set schema: '{schema}'")
     try:
         # Approval-required path: create pending with signed URL embedding resource_info and function key
         if schema.require_approval:
@@ -673,7 +673,13 @@ def Trigger(
             )
             log_table.set(json.dumps(pending_log, ensure_ascii=False))
 
-            logging.debug(routing_info)
+            if requester_username:
+                log_audit(
+                    user=requester_username,
+                    action="RUNBOOK_MANUAL_GATE_SCHEDULE",
+                    target=exec_id,
+                    details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
+                )
 
             # Optional Slack notify
             slack_token = routing_info.get("slack_token")
@@ -798,6 +804,14 @@ def Trigger(
                 q_client.send_message(json.dumps(queue_payload, ensure_ascii=False))
 
                 api_body = {"status": "accepted", "queue": target_queue}
+
+                if resource_info == {}:
+                    log_audit(
+                        user=requester_username,
+                        action="RUNBOOK_MANUAL_SCHEDULE",
+                        target=exec_id,
+                        details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
+                    )
 
             except Exception as e:
                 logging.error(f"[{exec_id}] ❌ Queue send failed: {e}")
@@ -1094,7 +1108,9 @@ def approve(
 
     p = (req.params.get("p") or "").strip()
     s = (req.params.get("s") or "").strip()
-    approver = (req.headers.get("X-Approver") or "unknown").strip()
+    approver = (
+        req.headers.get("x-cloudo-user") or req.headers.get("X-Approver") or "unknown"
+    ).strip()
 
     if not execId:
         return func.HttpResponse(
@@ -1246,6 +1262,13 @@ def approve(
             approval_decision_by=approver,
         )
         log_table.set(json.dumps(log_entity, ensure_ascii=False))
+
+        log_audit(
+            user=approver,
+            action="RUNBOOK_APPROVE",
+            target=execId,
+            details=f"Runbook: {schema.runbook}, Schema: {schema.id}",
+        )
 
         # smart routing notification (if routing module available)
         if route_alert and execute_actions:
@@ -1436,7 +1459,9 @@ def reject(
 
     p = (req.params.get("p") or "").strip()
     s = (req.params.get("s") or "").strip()
-    approver = (req.headers.get("X-Approver") or "unknown").strip()
+    approver = (
+        req.headers.get("x-cloudo-user") or req.headers.get("X-Approver") or "unknown"
+    ).strip()
 
     if not execId:
         return func.HttpResponse(
@@ -1506,6 +1531,13 @@ def reject(
         approval_decision_by=approver,
     )
     log_table.set(json.dumps(log_entity, ensure_ascii=False))
+
+    log_audit(
+        user=approver,
+        action="RUNBOOK_REJECT",
+        target=execId,
+        details=f"Runbook: {schema.runbook}, Schema: {schema.id}",
+    )
 
     # smart routing notification (if routing module available)
     if route_alert and execute_actions:

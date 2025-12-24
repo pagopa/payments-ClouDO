@@ -31,10 +31,10 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: <HiOutlineViewGrid /> },
-  { name: 'Execute Trigger', href: '/trigger', icon: <HiOutlineLightningBolt /> },
+  { name: 'Analytics', href: '/analytics', icon: <HiOutlineChartBar /> },
+  { name: 'Registry', href: '/schemas', icon: <HiOutlineCollection /> },
   { name: 'Governance Gate', href: '/approvals', icon: <HiOutlineShieldCheck /> },
   { name: 'Schedules', href: '/schedules', icon: <HiOutlineClock /> },
-  { name: 'Registry', href: '/schemas', icon: <HiOutlineCollection /> },
   { name: 'Runbook Studio', href: '/studio', icon: <HiOutlineCode /> },
   { name: 'Executions', href: '/executions', icon: <HiOutlineTerminal /> },
   { name: 'Compute Nodes', href: '/workers', icon: <HiOutlineChip /> },

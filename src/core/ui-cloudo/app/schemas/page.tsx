@@ -5,7 +5,7 @@ import {
   HiOutlinePlus, HiOutlineSearch, HiOutlineChip, HiOutlineTerminal,
   HiOutlineUserGroup, HiOutlineShieldCheck, HiOutlineTrash,
   HiOutlinePlay, HiOutlinePencil, HiOutlineX, HiOutlineClipboardCopy, HiOutlineCheck,
-  HiOutlineCheckCircle, HiOutlineExclamationCircle
+  HiOutlineCheckCircle, HiOutlineExclamationCircle, HiOutlineRefresh
 } from "react-icons/hi";
 import { MdOutlineSchema } from "react-icons/md";
 
@@ -39,6 +39,8 @@ export default function SchemasPage() {
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [selectedSchema, setSelectedSchema] = useState<Schema | null>(null);
   const [schemaToDelete, setSchemaToDelete] = useState<Schema | null>(null);
+  const [confirmRunId, setConfirmRunId] = useState<string | null>(null);
+  const [executingId, setExecutingId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const addNotification = (type: 'success' | 'error', message: string) => {
@@ -65,6 +67,36 @@ export default function SchemasPage() {
     navigator.clipboard.writeText(id);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleRun = async (id: string) => {
+    setExecutingId(id);
+    setConfirmRunId(null);
+    try {
+      const userData = localStorage.getItem('cloudo_user');
+      const currentUser = userData ? JSON.parse(userData) : null;
+
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
+      const response = await fetch(`${API_URL}/Trigger?id=${id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-cloudo-user': currentUser?.username || ''
+        },
+        body: JSON.stringify({ source: 'registry-manual' }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        addNotification('error', `Execution failed: ${error}`);
+      } else {
+        addNotification('success', `Execution triggered for ${id}`);
+      }
+    } catch (e) {
+      addNotification('error', 'Network error // execution failed');
+    } finally {
+      setExecutingId(null);
+    }
   };
 
   const filteredSchemas = useMemo(() => {
@@ -231,6 +263,38 @@ export default function SchemasPage() {
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <div className="relative group/run">
+                            <button
+                              onClick={() => {
+                                if (confirmRunId === schema.id) {
+                                  handleRun(schema.id);
+                                } else {
+                                  setConfirmRunId(schema.id);
+                                  setTimeout(() => setConfirmRunId(null), 3000);
+                                }
+                              }}
+                              disabled={executingId === schema.id}
+                              className={`p-2.5 border transition-all flex items-center gap-2 ${
+                                confirmRunId === schema.id
+                                  ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark'
+                                  : 'bg-black/40 border-cloudo-border text-cloudo-accent hover:border-cloudo-accent/40'
+                              } ${executingId === schema.id ? 'opacity-50 cursor-wait' : ''}`}
+                            >
+                              {executingId === schema.id ? (
+                                <HiOutlineRefresh className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <HiOutlinePlay className={`w-4 h-4 ${confirmRunId === schema.id ? 'scale-110' : ''}`} />
+                              )}
+                              {confirmRunId === schema.id && (
+                                <span className="text-[9px] font-black uppercase tracking-tighter">Confirm?</span>
+                              )}
+                            </button>
+                            {!confirmRunId && !executingId && (
+                              <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-cloudo-panel border border-cloudo-border text-[9px] text-white uppercase tracking-widest opacity-0 group-hover/run:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                                Run Procedure
+                              </div>
+                            )}
+                          </div>
                           <button
                             onClick={() => { setSelectedSchema(schema); setModalMode('edit'); }}
                             className="p-2.5 bg-black/40 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-white transition-all group/btn"

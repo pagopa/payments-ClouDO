@@ -72,7 +72,7 @@ def create_cors_response(body=None, status_code=200, mimetype="application/json"
     headers = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, x-cloudo-key, x-cloudo-user",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, x-cloudo-key, x-cloudo-user, x-Approver",
     }
 
     if body is None and status_code == 200:

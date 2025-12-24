@@ -104,10 +104,21 @@ export default function ApprovalsPage() {
   }, [selectedExec]);
 
   const handleAction = async (url: string | null) => {
+    const userData = localStorage.getItem('cloudo_user');
+    const currentUser = userData ? JSON.parse(userData) : null;
+
     if (!url) return;
     setIsProcessing(true);
     try {
-      const res = await fetch(url, { method: 'GET' });
+      const res = await fetch(
+        url, {
+          method: 'GET',
+          headers: {
+            'x-Approver': currentUser?.username || '',
+            'x-cloudo-user': currentUser?.username || ''
+          }
+        }
+      );
       if (res.ok) {
         addNotification('success', 'Operation executed successfully');
         await fetchPendingApprovals();

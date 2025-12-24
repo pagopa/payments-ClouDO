@@ -116,7 +116,7 @@ export default function DashboardPage() {
       ).length;
 
       const pending = finalExecutions.filter((e: any) =>
-        ['pending', 'accepted'].includes((e.Status || '').toLowerCase())
+        ['pending'].includes((e.Status || '').toLowerCase())
       ).length;
 
       const sortedExecutions = [...finalExecutions]
@@ -286,7 +286,6 @@ export default function DashboardPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-2 pt-4">
-                <QuickLink icon={<HiOutlineLightningBolt />} label="Trigger Engine" href="/trigger" />
                 <QuickLink icon={<HiOutlineDatabase />} label="Registry" href="/schemas" />
                 <QuickLink icon={<HiOutlineServer />} label="Compute" href="/workers" />
               </div>
@@ -304,9 +303,9 @@ function StatCard({ title, value, icon, status, highlight = false }: any) {
     <div className="bg-cloudo-panel border border-cloudo-border p-6 flex items-center justify-between relative overflow-hidden group">
       <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-accent/20 group-hover:bg-cloudo-accent transition-colors" />
       <div className="relative z-10">
-        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/60">{title}</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/80">{title}</p>
         <p className={`text-3xl font-black mt-1 ${highlight ? 'text-cloudo-warn' : 'text-white'} tracking-tighter`}>{value}</p>
-        <p className="text-[11px] font-bold text-cloudo-muted/40 uppercase mt-2 tracking-[0.1em]">{status}</p>
+        <p className="text-[11px] font-bold text-cloudo-muted/80 uppercase mt-2 tracking-[0.1em]">{status}</p>
       </div>
       <div className="p-3 bg-black/40 border border-cloudo-border text-xl shrink-0 group-hover:border-cloudo-accent/30 transition-colors">
         {icon}
