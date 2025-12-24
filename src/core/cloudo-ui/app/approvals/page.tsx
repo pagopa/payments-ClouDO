@@ -214,7 +214,7 @@ export default function ApprovalsPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Governance Gate</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">Filtered Approval Queue</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Filtered Approval Queue</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -240,9 +240,9 @@ export default function ApprovalsPage() {
             </div>
           ) : pendingList.length === 0 ? (
             <div className="py-32 text-center border border-cloudo-border bg-black/20">
-              <HiOutlineShieldCheck className="w-16 h-16 text-cloudo-muted/20 mx-auto mb-6" />
+              <HiOutlineShieldCheck className="w-16 h-16 text-cloudo-muted/80 mx-auto mb-6" />
               <p className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-muted">No authorization requests detected</p>
-              <p className="text-[11px] text-cloudo-muted/40 uppercase mt-2 tracking-widest">System is currently compliant</p>
+              <p className="text-[11px] text-cloudo-muted/70 uppercase mt-2 tracking-widest">System is currently compliant</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -260,7 +260,7 @@ export default function ApprovalsPage() {
                       className={`p-4 border transition-all cursor-pointer group relative ${
                         selectedExec?.ExecId === item.ExecId
                           ? 'bg-cloudo-warn/5 border-cloudo-warn/40'
-                          : 'bg-cloudo-panel border-cloudo-border hover:border-cloudo-muted/40'
+                          : 'bg-cloudo-panel border-cloudo-border hover:border-cloudo-muted/70'
                       }`}
                     >
                       <div className="flex justify-between items-start mb-3">
@@ -270,7 +270,7 @@ export default function ApprovalsPage() {
                             {item.Name || 'SYS_TASK'}
                           </h3>
                         </div>
-                        <span className="text-[11px] font-mono text-cloudo-muted opacity-40 uppercase">{new Date(item.RequestedAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false})}</span>
+                        <span className="text-[11px] font-mono text-cloudo-muted opacity-70 uppercase">{new Date(item.RequestedAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false})}</span>
                       </div>
                       <div className="flex items-center gap-2 text-[11px] font-mono text-cloudo-accent/60 uppercase tracking-widest">
                         <HiOutlineTerminal className="w-4 h-4" />
@@ -350,7 +350,7 @@ export default function ApprovalsPage() {
                         <button
                           onClick={() => handleAction(approvalLinks?.reject)}
                           disabled={isProcessing || !approvalLinks?.reject}
-                          className="flex items-center justify-center gap-2 bg-cloudo-err/10 hover:bg-cloudo-err hover:text-white text-cloudo-err border border-cloudo-err/30 py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all disabled:opacity-30"
+                          className="flex items-center justify-center gap-2 bg-cloudo-err/10 hover:bg-cloudo-err hover:text-white text-cloudo-err border border-cloudo-err/30 py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all disabled:opacity-60"
                         >
                           <HiOutlineX className="w-5 h-5" />
                           Reject Request
@@ -358,7 +358,7 @@ export default function ApprovalsPage() {
                         <button
                           onClick={() => handleAction(approvalLinks?.approve)}
                           disabled={isProcessing || !approvalLinks?.approve}
-                          className="flex items-center justify-center gap-2 bg-cloudo-warn hover:bg-cloudo-warn/90 text-cloudo-dark py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all disabled:opacity-30"
+                          className="flex items-center justify-center gap-2 bg-cloudo-warn hover:bg-cloudo-warn/90 text-cloudo-dark py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all disabled:opacity-60"
                         >
                           <HiOutlineCheck className="w-5 h-5" />
                           Sign and Authorize
@@ -367,8 +367,8 @@ export default function ApprovalsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="h-[400px] flex flex-col items-center justify-center border border-cloudo-border/10 bg-black/10 text-cloudo-muted/40">
-                    <HiOutlineShieldCheck className="w-16 h-16 mb-4 opacity-10" />
+                  <div className="h-[400px] flex flex-col items-center justify-center border border-cloudo-border/10 bg-black/10 text-cloudo-muted/70">
+                    <HiOutlineShieldCheck className="w-16 h-16 mb-4 opacity-40" />
                     <span className="text-sm font-black uppercase tracking-[0.4em]">Select request to audit</span>
                   </div>
                 )}

@@ -178,7 +178,7 @@ export default function AnalyticsPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Advanced Analytics</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">Performance & Diagnostics</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Performance & Diagnostics</p>
           </div>
         </div>
 
@@ -198,7 +198,7 @@ export default function AnalyticsPage() {
             </button>
           ))}
           <div className="w-px h-4 bg-cloudo-border mx-2" />
-          <div className="flex items-center gap-2 px-3 text-cloudo-muted/40">
+          <div className="flex items-center gap-2 px-3 text-cloudo-muted/70">
             <HiOutlineCalendar className="w-4 h-4" />
             <span className="text-[10px] font-bold uppercase tracking-tighter">Custom Range</span>
           </div>
@@ -270,7 +270,7 @@ export default function AnalyticsPage() {
                   </div>
                 ))}
                 {Object.keys(data.requestsByStatus).length === 0 && (
-                  <div className="py-10 text-center text-cloudo-muted/30 text-xs italic">NO_DATA_AVAILABLE</div>
+                  <div className="py-10 text-center text-cloudo-muted/60 text-xs italic">NO_DATA_AVAILABLE</div>
                 )}
               </div>
             </div>
@@ -307,7 +307,7 @@ export default function AnalyticsPage() {
                       </tr>
                     ))}
                     {data.topRunbooks.length === 0 && (
-                      <tr><td colSpan={4} className="py-20 text-center text-cloudo-muted/30 text-xs italic">NO_ACTIVE_RUNBOOKS</td></tr>
+                      <tr><td colSpan={4} className="py-20 text-center text-cloudo-muted/60 text-xs italic">NO_ACTIVE_RUNBOOKS</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -332,17 +332,17 @@ export default function AnalyticsPage() {
                         className="flex-1 bg-cloudo-accent/20 hover:bg-cloudo-accent transition-all group relative"
                         style={{ height: `${height}%` }}
                       >
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-cloudo-accent text-cloudo-dark text-[10px] font-black px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-cloudo-accent text-cloudo-dark text-[10px] font-black px-1.5 py-0.5 opacity-0 group-hover:opacity-400 transition-opacity whitespace-nowrap z-10">
                           {key}: {count} REQ
                         </div>
                       </div>
                     );
                   })
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-cloudo-muted/20 italic text-xs">NO_TIMELINE_DATA</div>
+                <div className="w-full h-full flex items-center justify-center text-cloudo-muted/80 italic text-xs">NO_TIMELINE_DATA</div>
               )}
             </div>
-            <div className="flex justify-between px-2 text-[10px] font-black text-cloudo-muted/40 uppercase tracking-[0.2em]">
+            <div className="flex justify-between px-2 text-[10px] font-black text-cloudo-muted/70 uppercase tracking-[0.2em]">
               <span>{timeRange === '24h' ? '00:00' : 'OLDEST_DATA'}</span>
               <span>{timeRange === '24h' ? '12:00' : 'MID_PERIOD'}</span>
               <span>{timeRange === '24h' ? '23:00' : 'RECENT_DATA'}</span>
@@ -358,7 +358,7 @@ export default function AnalyticsPage() {
 function MetricCard({ title, value, subValue, icon, trend, positive, color = "text-white" }: any) {
   return (
     <div className="bg-cloudo-panel border border-cloudo-border p-6 relative overflow-hidden group">
-      <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-4xl">
+      <div className="absolute top-0 right-0 p-4 opacity-40 group-hover:opacity-50 transition-opacity text-4xl">
         {icon}
       </div>
       <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/60 mb-1">{title}</p>
@@ -370,7 +370,7 @@ function MetricCard({ title, value, subValue, icon, trend, positive, color = "te
           {trend}
         </span>
       </div>
-      <p className="text-[10px] font-bold text-cloudo-muted/40 uppercase mt-2 tracking-widest">{subValue}</p>
+      <p className="text-[10px] font-bold text-cloudo-muted/70 uppercase mt-2 tracking-widest">{subValue}</p>
     </div>
   );
 }

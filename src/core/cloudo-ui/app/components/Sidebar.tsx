@@ -79,7 +79,7 @@ export function Sidebar() {
             <h1 className="text-xl font-black text-white tracking-[0.1em] flex items-center gap-2 uppercase">
               <span className="text-cloudo-accent">Clou</span>DO
             </h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40 mt-1">Runbook Engine</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70 mt-1">Runbook Engine</p>
           </div>
         )}
         <button
@@ -96,7 +96,7 @@ export function Sidebar() {
         {/* Core Section */}
         <div className="space-y-1">
           {!collapsed && (
-            <p className="px-3 text-[11px] font-black text-cloudo-muted/40 uppercase tracking-[0.2em] mb-4">Core Systems</p>
+            <p className="px-3 text-[11px] font-black text-cloudo-muted/70 uppercase tracking-[0.2em] mb-4">Core Systems</p>
           )}
           {navigation.filter(item => !item.adminOnly).map((item) => {
             const isActive = pathname === item.href;
@@ -130,7 +130,7 @@ export function Sidebar() {
         {user?.role === 'ADMIN' && (
           <div className="space-y-1 pt-4">
             {!collapsed && (
-              <p className="px-3 text-[11px] font-black text-cloudo-muted/40 uppercase tracking-[0.2em] mb-4">Administration</p>
+              <p className="px-3 text-[11px] font-black text-cloudo-muted/70 uppercase tracking-[0.2em] mb-4">Administration</p>
             )}
             {navigation.filter(item => item.adminOnly).map((item) => {
               const isActive = pathname === item.href;
@@ -173,7 +173,7 @@ export function Sidebar() {
               <p className="text-[12px] font-black text-white uppercase tracking-widest truncate">
                 {user?.username || 'Unknown User'}
               </p>
-              <p className="text-[11px] text-cloudo-muted uppercase font-bold tracking-widest opacity-40">
+              <p className="text-[11px] text-cloudo-muted uppercase font-bold tracking-widest opacity-70">
                 {user?.role || 'L-GUEST'}
               </p>
             </div>

@@ -5,17 +5,17 @@
 }
 
 @theme inline {
-  /* ClouDO Colors - Obsidian Technical Palette */
-  --color-cloudo-dark: #010204;
-  --color-cloudo-panel: #05070a;
-  --color-cloudo-panel-2: #080a10;
-  --color-cloudo-text: #e6edf3;
-  --color-cloudo-muted: #dcdddf;
-  --color-cloudo-border: #161b22;
-  --color-cloudo-accent: #58a6ff;
-  --color-cloudo-ok: #3fb950;
-  --color-cloudo-warn: #d29922;
-  --color-cloudo-err: #f85149;
+  /* ClouDO Colors - High Contrast Tech Palette */
+  --color-cloudo-dark: #05080a;
+  --color-cloudo-panel: #0d1217;
+  --color-cloudo-panel-2: #161d24;
+  --color-cloudo-text: #ffffff;
+  --color-cloudo-muted: #d1d9e0;
+  --color-cloudo-border: #1e293b;
+  --color-cloudo-accent: #00b4ff;
+  --color-cloudo-ok: #00e676;
+  --color-cloudo-warn: #ffb300;
+  --color-cloudo-err: #ff5252;
 }
 
 body {
@@ -28,11 +28,11 @@ body {
 }
 
 .card-header {
-  @apply p-4 border-b border-cloudo-border bg-cloudo-panel-2;
+  @apply p-4 border-b border-cloudo-border bg-cloudo-panel-2/30;
 }
 
 .btn {
-  @apply inline-flex items-center gap-2 rounded-none px-4 py-2 font-bold border border-cloudo-border bg-transparent text-cloudo-text cursor-pointer transition-all active:translate-y-0.5 uppercase tracking-widest text-sm;
+  @apply inline-flex items-center gap-2 rounded-none px-4 py-2 font-bold border border-cloudo-border bg-transparent text-cloudo-text cursor-pointer transition-all active:translate-y-0.5 uppercase tracking-widest text-sm hover:border-cloudo-accent hover:text-cloudo-accent;
 }
 
 .btn-primary {
@@ -40,15 +40,15 @@ body {
 }
 
 .btn-ghost {
-  @apply bg-transparent border-cloudo-border hover:bg-white/5;
+  @apply bg-transparent border-cloudo-border hover:bg-white/5 hover:border-cloudo-muted;
 }
 
 .input {
-  @apply border pl-16 pr-4 py-4 w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50 bg-black text-cloudo-text outline-none transition-all placeholder:text-cloudo-muted/30 focus:border-cloudo-accent font-mono text-sm;
+  @apply border pl-16 pr-4 py-4 w-64 h-10 border-cloudo-border focus:border-cloudo-accent bg-cloudo-dark text-cloudo-text outline-none transition-all placeholder:text-cloudo-muted/50 font-mono text-sm;
 }
 
 .input-executions {
-  @apply w-full border pl-16 pr-4 py-4 border-cloudo-border/50 focus:border-cloudo-accent/50 bg-black text-cloudo-text outline-none transition-all focus:border-cloudo-accent font-mono text-sm;
+  @apply w-full border pl-16 pr-4 py-4 border-cloudo-border focus:border-cloudo-accent bg-cloudo-dark text-cloudo-text outline-none transition-all font-mono text-sm;
 }
 
 .status-badge {
@@ -56,7 +56,7 @@ body {
 }
 
 .status-running {
-  @apply bg-cloudo-accent/5 text-cloudo-accent border-cloudo-accent/30;
+  @apply bg-cloudo-accent/10 text-cloudo-accent border-cloudo-accent/50;
 }
 
 .status-succeeded {
@@ -82,5 +82,5 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-cloudo-border hover:bg-cloudo-accent/40;
+  @apply bg-cloudo-border hover:bg-cloudo-accent/50;
 }

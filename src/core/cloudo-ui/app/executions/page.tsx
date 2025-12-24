@@ -14,7 +14,7 @@ export default function ExecutionsPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Execution Archive</h1>
-            <p className="text-[11px] text-cloudo-muted font-black uppercase tracking-[0.3em] opacity-40">Historical Telemetry // LOG_STORAGE</p>
+            <p className="text-[11px] text-cloudo-muted font-black uppercase tracking-[0.3em] opacity-70">Historical Telemetry // LOG_STORAGE</p>
           </div>
         </div>
       </div>

@@ -156,7 +156,7 @@ export function LogsPanel() {
     if (s === 'failed' || s === 'error') return 'border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5';
     if (s === 'rejected') return 'border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5';
     if (s === 'pending') return 'border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5';
-    return 'border-cloudo-muted/30 text-cloudo-muted bg-cloudo-muted/5';
+    return 'border-cloudo-muted/60 text-cloudo-muted bg-cloudo-muted/5';
   };
 
   const formatLogContent = (content: string) => {
@@ -213,7 +213,7 @@ export function LogsPanel() {
               <div className="space-y-2">
                 <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">State</label>
                 <div className="relative group">
-                  <HiOutlineTag className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
+                  <HiOutlineTag className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <select
                     className="input-executions pl-10 appearance-none relative"
                     value={status}
@@ -234,7 +234,7 @@ export function LogsPanel() {
               <div className="space-y-2">
                 <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Exec_ID</label>
                 <div className="relative group">
-                  <HiOutlineFingerPrint className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
+                  <HiOutlineFingerPrint className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
                     className="input-executions pl-10 relative"
@@ -248,7 +248,7 @@ export function LogsPanel() {
               <div className="col-span-2 md:col-span-1 space-y-2">
                 <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Search_Term</label>
                 <div className="relative group">
-                  <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
+                  <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
                     className="input-executions pl-10 relative"
@@ -262,7 +262,7 @@ export function LogsPanel() {
               <div className="space-y-2">
                 <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Limit</label>
                 <div className="relative group">
-                  <HiOutlineDatabase className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
+                  <HiOutlineDatabase className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="number"
                     className="input-executions pl-10 relative"
@@ -316,7 +316,7 @@ export function LogsPanel() {
                   >
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="text-white font-bold">{log.RequestedAt?.split('T')[1]?.slice(0, 8)}</div>
-                      <div className="text-[10px] text-cloudo-muted opacity-40">{log.RequestedAt?.split('T')[0]}</div>
+                      <div className="text-[10px] text-cloudo-muted opacity-70">{log.RequestedAt?.split('T')[0]}</div>
                     </td>
                     <td className="px-4 py-4">
                       <span className={`px-1.5 py-0.5 border text-[10px] font-black uppercase tracking-widest ${getStatusBadgeClass(log.Status)}`}>
@@ -339,7 +339,7 @@ export function LogsPanel() {
               </tbody>
             </table>
             {logs.length === 0 && !loading && (
-              <div className="py-20 text-center flex flex-col items-center gap-3 opacity-20">
+              <div className="py-20 text-center flex flex-col items-center gap-3 opacity-50">
                 <HiOutlineTerminal className="w-8 h-8" />
                 <span className="text-[10px] font-black uppercase tracking-widest">interrogation_idle // no_data</span>
               </div>

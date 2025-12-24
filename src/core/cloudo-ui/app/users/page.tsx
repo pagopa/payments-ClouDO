@@ -152,13 +152,13 @@ export default function UsersPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">User Management</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">Access Control // IDENTITY_DB</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Access Control // IDENTITY_DB</p>
           </div>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="relative group">
-            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
+            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
             <input
               type="text"
               placeholder="Search user..."
@@ -195,16 +195,16 @@ export default function UsersPage() {
               </thead>
               <tbody className="divide-y divide-cloudo-border/30">
                 {loading ? (
-                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-20">Syncing Identity Data...</td></tr>
+                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-50">Syncing Identity Data...</td></tr>
                 ) : error ? (
                   <tr key="error-row"><td colSpan={5} className="py-32 text-center text-cloudo-err font-black uppercase tracking-[0.2em]">
                     <div className="flex flex-col items-center gap-4">
-                      <HiOutlineExclamationCircle className="w-8 h-8 opacity-40" />
+                      <HiOutlineExclamationCircle className="w-8 h-8 opacity-70" />
                       {error}
                     </div>
                   </td></tr>
                 ) : filteredUsers.length === 0 ? (
-                  <tr key="empty-row"><td colSpan={5} className="py-32 text-center text-[10px] font-black uppercase tracking-[0.5em] opacity-10 italic">NO_OPERATORS_FOUND</td></tr>
+                  <tr key="empty-row"><td colSpan={5} className="py-32 text-center text-[10px] font-black uppercase tracking-[0.5em] opacity-40 italic">NO_OPERATORS_FOUND</td></tr>
                 ) : (
                   filteredUsers.map((user) => (
                     <tr key={user.username} className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40">
@@ -224,7 +224,7 @@ export default function UsersPage() {
                           {user.role}
                         </span>
                       </td>
-                      <td className="px-8 py-6 text-cloudo-muted opacity-40 font-mono">
+                      <td className="px-8 py-6 text-cloudo-muted opacity-70 font-mono">
                         {user.createdAt}
                       </td>
                       <td className="px-8 py-6 text-right">
@@ -238,7 +238,7 @@ export default function UsersPage() {
                           </button>
                           <button
                             onClick={() => deleteUser(user.username)}
-                            className="p-2.5 bg-black/40 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-white transition-all group/btn disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="p-2.5 bg-black/40 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-white transition-all group/btn disabled:opacity-60 disabled:cursor-not-allowed"
                             title="Revoke Access"
                             disabled={user.username === 'admin'}
                           >
@@ -333,7 +333,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Username</label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-black/20">
-              <HiOutlineUser className="text-cloudo-muted/40 w-4 h-4" />
+              <HiOutlineUser className="text-cloudo-muted/70 w-4 h-4" />
             </div>
             <input
               type="text"
@@ -351,7 +351,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Email Endpoint</label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-black/20">
-              <HiOutlineMail className="text-cloudo-muted/40 w-4 h-4" />
+              <HiOutlineMail className="text-cloudo-muted/70 w-4 h-4" />
             </div>
             <input
               type="email"
@@ -370,7 +370,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-black/20">
-              <HiOutlineLockClosed className="text-cloudo-muted/40 w-4 h-4" />
+              <HiOutlineLockClosed className="text-cloudo-muted/70 w-4 h-4" />
             </div>
             <input
               type="password"

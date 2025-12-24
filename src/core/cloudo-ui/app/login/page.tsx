@@ -84,7 +84,7 @@ function LoginForm() {
               <div className="w-2 h-2 bg-cloudo-accent animate-pulse" />
               <h2 className="text-sm font-black uppercase tracking-[0.3em] text-white">System Access Gate</h2>
             </div>
-            <span className="text-[10px] font-mono text-cloudo-muted/40">GATE-AUTH</span>
+            <span className="text-[10px] font-mono text-cloudo-muted/70">GATE-AUTH</span>
           </div>
 
           <form onSubmit={handleLogin} className="p-8 space-y-8">
@@ -107,7 +107,7 @@ function LoginForm() {
                   placeholder="USERNAME"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-black/40 border border-cloudo-border/50 rounded-none pl-16 pr-4 py-4 text-sm font-bold tracking-[0.2em] text-white outline-none focus:border-cloudo-accent/40 focus:bg-cloudo-accent/5 transition-all placeholder:text-cloudo-muted/20"
+                  className="w-full bg-black/40 border border-cloudo-border/50 rounded-none pl-16 pr-4 py-4 text-sm font-bold tracking-[0.2em] text-white outline-none focus:border-cloudo-accent/40 focus:bg-cloudo-accent/5 transition-all placeholder:text-cloudo-muted/80"
                   required
                 />
               </div>
@@ -121,7 +121,7 @@ function LoginForm() {
                   placeholder="PASSWORD"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-black/40 border border-cloudo-border/50 rounded-none pl-16 pr-4 py-4 text-sm font-bold tracking-[0.2em] text-white outline-none focus:border-cloudo-accent/40 focus:bg-cloudo-accent/5 transition-all placeholder:text-cloudo-muted/20"
+                  className="w-full bg-black/40 border border-cloudo-border/50 rounded-none pl-16 pr-4 py-4 text-sm font-bold tracking-[0.2em] text-white outline-none focus:border-cloudo-accent/40 focus:bg-cloudo-accent/5 transition-all placeholder:text-cloudo-muted/80"
                   required
                 />
               </div>
@@ -150,13 +150,13 @@ function LoginForm() {
           </form>
 
           <div className="border-t border-cloudo-border p-4 bg-black/20 flex justify-center">
-            <p className="text-[10px] text-cloudo-muted font-bold uppercase tracking-[0.2em] opacity-40">
+            <p className="text-[10px] text-cloudo-muted font-bold uppercase tracking-[0.2em] opacity-70">
               Terminal Node: CLOUDO-AUTH-01 // P-SECURE
             </p>
           </div>
         </div>
 
-        <div className="mt-8 flex justify-between items-center opacity-30 px-2">
+        <div className="mt-8 flex justify-between items-center opacity-60 px-2">
             <div className="h-[1px] flex-1 bg-cloudo-border" />
             <span className="mx-4 text-[10px] font-black uppercase tracking-widest text-cloudo-muted">Authorized Access Only</span>
             <div className="h-[1px] flex-1 bg-cloudo-border" />

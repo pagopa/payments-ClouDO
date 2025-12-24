@@ -339,7 +339,7 @@ export default function StudioPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Runbook Studio & Advisor</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">Interactive Editor // LIVE_GUIDANCE_ACTIVE</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Interactive Editor // LIVE_GUIDANCE_ACTIVE</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -369,14 +369,14 @@ export default function StudioPage() {
                 className={`w-full text-left p-4 border transition-all relative group ${
                   selectedTemplate.id === tpl.id
                     ? 'bg-cloudo-accent/5 border-cloudo-accent/40'
-                    : 'bg-cloudo-panel border-cloudo-border hover:border-cloudo-muted/40'
+                    : 'bg-cloudo-panel border-cloudo-border hover:border-cloudo-muted/70'
                 }`}
               >
                 <div className="flex items-center gap-3 mb-2">
                   {tpl.lang === 'python' ? <HiOutlineCode className="text-cloudo-accent w-4 h-4" /> : <HiOutlineTerminal className="text-cloudo-accent w-4 h-4" />}
                   <span className="text-[11px] font-black text-white uppercase tracking-widest">{tpl.name}</span>
                 </div>
-                <p className="text-[11px] text-cloudo-muted leading-relaxed opacity-60 group-hover:opacity-100">
+                <p className="text-[11px] text-cloudo-muted leading-relaxed opacity-60 group-hover:opacity-400">
                   {tpl.description}
                 </p>
                 {selectedTemplate.id === tpl.id && (
@@ -422,19 +422,19 @@ export default function StudioPage() {
                    Editor_Session: active
                 </span>
              </div>
-             <span className="text-[11px] font-mono text-cloudo-muted opacity-40 uppercase tracking-widest">
+             <span className="text-[11px] font-mono text-cloudo-muted opacity-70 uppercase tracking-widest">
                 Lang: {selectedTemplate.lang} // UTF-8
              </span>
           </div>
           <div className="flex-1 relative group">
              {/* Row Numbers Simulation */}
-             <div className="absolute left-0 top-0 w-12 h-full bg-cloudo-panel-2/50 border-r border-cloudo-border flex flex-col items-center py-6 text-[11px] text-cloudo-muted/20 font-mono select-none pointer-events-none">
+             <div className="absolute left-0 top-0 w-12 h-full bg-cloudo-panel-2/50 border-r border-cloudo-border flex flex-col items-center py-6 text-[11px] text-cloudo-muted/80 font-mono select-none pointer-events-none">
                 {Array.from({length: 40}).map((_, i) => (
                   <div key={i} className="leading-6">{i + 1}</div>
                 ))}
              </div>
              <textarea
-               className="w-full h-full bg-transparent text-cloudo-text font-mono text-sm p-6 pl-16 outline-none resize-none leading-6 placeholder:text-cloudo-muted/20 custom-scrollbar"
+               className="w-full h-full bg-transparent text-cloudo-text font-mono text-sm p-6 pl-16 outline-none resize-none leading-6 placeholder:text-cloudo-muted/80 custom-scrollbar"
                spellCheck={false}
                value={code}
                onChange={(e) => setCode(e.target.value)}
@@ -491,7 +491,7 @@ export default function StudioPage() {
                         JSON_ERROR: {jsonError}
                       </div>
                     )}
-                    <div className="absolute top-2 right-2 text-[9px] text-cloudo-muted/20 font-bold uppercase tracking-tighter pointer-events-none">
+                    <div className="absolute top-2 right-2 text-[9px] text-cloudo-muted/80 font-bold uppercase tracking-tighter pointer-events-none">
                       Mock_JSON
                     </div>
                   </div>
@@ -503,7 +503,7 @@ export default function StudioPage() {
                   disabled={isSimulating || !!jsonError}
                   className={`w-full py-4 border flex items-center justify-center gap-3 transition-all active:scale-[0.98] ${
                     isSimulating || !!jsonError
-                    ? 'border-cloudo-muted/20 bg-cloudo-panel/50 cursor-not-allowed text-cloudo-muted opacity-50'
+                    ? 'border-cloudo-muted/80 bg-cloudo-panel/50 cursor-not-allowed text-cloudo-muted opacity-50'
                     : 'border-cloudo-accent bg-cloudo-accent/20 hover:bg-cloudo-accent/30 text-white'
                   }`}
                 >
@@ -521,8 +521,8 @@ export default function StudioPage() {
                     </div>
                     <div className="bg-black border border-cloudo-border p-4 h-64 overflow-y-auto custom-scrollbar font-mono">
                       {simulationOutput.length === 0 && !isSimulating && (
-                        <div className="h-full flex flex-col items-center justify-center text-cloudo-muted/20 text-center space-y-2">
-                          <HiOutlineTerminal className="w-8 h-8 opacity-10" />
+                        <div className="h-full flex flex-col items-center justify-center text-cloudo-muted/80 text-center space-y-2">
+                          <HiOutlineTerminal className="w-8 h-8 opacity-40" />
                           <p className="text-[10px] uppercase tracking-widest">Awaiting execution...</p>
                         </div>
                       )}

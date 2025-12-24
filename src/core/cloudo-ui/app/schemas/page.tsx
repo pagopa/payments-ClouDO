@@ -142,13 +142,13 @@ export default function SchemasPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Runbook Schemas</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">System Inventory // ASSET_DB</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">System Inventory // ASSET_DB</p>
           </div>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="relative group">
-            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
+            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
             <input
               type="text"
               placeholder="Search schemas..."
@@ -193,9 +193,9 @@ export default function SchemasPage() {
               </thead>
               <tbody className="divide-y divide-cloudo-border/30">
                 {loading ? (
-                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-20">Refreshing Schema Data...</td></tr>
+                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-50">Refreshing Schema Data...</td></tr>
                 ) : filteredSchemas.length === 0 ? (
-                  <tr key="empty-row"><td colSpan={5} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-10 italic">NO_ENTRIES_FOUND</td></tr>
+                  <tr key="empty-row"><td colSpan={5} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-40 italic">NO_ENTRIES_FOUND</td></tr>
                 ) : (
                   filteredSchemas.map((schema) => (
                     <tr key={schema.RowKey} className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40">
@@ -204,31 +204,31 @@ export default function SchemasPage() {
                           <span className="text-sm font-black text-white tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">{schema.name}</span>
                           <button
                             onClick={() => copyToClipboard(schema.id)}
-                            className="text-xs font-mono text-cloudo-muted/40 flex items-center gap-2 hover:text-white w-fit transition-colors group/id"
+                            className="text-xs font-mono text-cloudo-muted/70 flex items-center gap-2 hover:text-white w-fit transition-colors group/id"
                           >
-                            <span className="opacity-40">ID:</span>
+                            <span className="opacity-70">ID:</span>
                             <span className="font-bold">{schema.id}</span>
-                            {copiedId === schema.id ? <HiOutlineCheck className="text-cloudo-ok" /> : <HiOutlineClipboardCopy className="opacity-0 group-hover/id:opacity-100" />}
+                            {copiedId === schema.id ? <HiOutlineCheck className="text-cloudo-ok" /> : <HiOutlineClipboardCopy className="opacity-0 group-hover/id:opacity-400" />}
                           </button>
                         </div>
                       </td>
                       <td className="px-8 py-6 text-cloudo-accent/60 font-mono">
                         <div className="flex items-center gap-3">
                           <div className="p-1.5 bg-black/40 border border-cloudo-border group-hover:border-cloudo-accent/20 transition-colors">
-                            <HiOutlineTerminal className="opacity-40 w-4 h-4" />
+                            <HiOutlineTerminal className="opacity-70 w-4 h-4" />
                           </div>
                           <div className="flex flex-col min-w-0">
                             <span className="truncate text-white/80 font-bold">{schema.runbook}</span>
-                            <span className="text-[11px] text-cloudo-muted/40 uppercase tracking-widest mt-1">Asset_Source</span>
+                            <span className="text-[11px] text-cloudo-muted/70 uppercase tracking-widest mt-1">Asset_Source</span>
                           </div>
                         </div>
                       </td>
                       <td className="px-8 py-6 font-bold text-white/70">
                         <div className="flex items-center gap-3">
-                          <HiOutlineChip className="opacity-30 w-4 h-4 text-cloudo-accent" />
+                          <HiOutlineChip className="opacity-60 w-4 h-4 text-cloudo-accent" />
                           <div className="flex flex-col">
                             <span className="uppercase tracking-[0.1em]">{schema.worker}</span>
-                            <span className="text-[10px] text-cloudo-muted/40 uppercase mt-0.5 font-black tracking-widest">CLUSTER_ID</span>
+                            <span className="text-[10px] text-cloudo-muted/70 uppercase mt-0.5 font-black tracking-widest">CLUSTER_ID</span>
                           </div>
                         </div>
                       </td>
@@ -285,7 +285,7 @@ export default function SchemasPage() {
                               )}
                             </button>
                             {!confirmRunId && !executingId && (
-                              <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-cloudo-panel border border-cloudo-border text-[9px] text-white uppercase tracking-widest opacity-0 group-hover/run:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                              <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-cloudo-panel border border-cloudo-border text-[9px] text-white uppercase tracking-widest opacity-0 group-hover/run:opacity-400 transition-opacity whitespace-nowrap pointer-events-none">
                                 Run Procedure
                               </div>
                             )}
@@ -367,9 +367,9 @@ function StatSmall({ title, value, icon, label, color = "text-white" }: { title:
       <div className="relative z-10">
         <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/60 mb-1">{title}</p>
         <p className={`text-2xl font-black ${color} tracking-tighter`}>{value}</p>
-        <p className="text-[11px] font-bold text-cloudo-muted/30 uppercase mt-1 tracking-widest">{label}</p>
+        <p className="text-[11px] font-bold text-cloudo-muted/60 uppercase mt-1 tracking-widest">{label}</p>
       </div>
-      <div className="p-2.5 bg-black/40 border border-cloudo-border text-lg shrink-0 group-hover:border-cloudo-accent/30 transition-colors opacity-40 group-hover:opacity-100">
+      <div className="p-2.5 bg-black/40 border border-cloudo-border text-lg shrink-0 group-hover:border-cloudo-accent/30 transition-colors opacity-70 group-hover:opacity-400">
         <div className="text-cloudo-accent w-5 h-5 flex items-center justify-center">
           {icon}
         </div>
@@ -468,7 +468,7 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Runbook Path *</label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-black/20">
-              <HiOutlineTerminal className="text-cloudo-muted/40 w-4 h-4" />
+              <HiOutlineTerminal className="text-cloudo-muted/70 w-4 h-4" />
             </div>
             <input
               type="text"
@@ -484,7 +484,7 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Worker Pool *</label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-black/20">
-              <HiOutlineChip className="text-cloudo-muted/40 w-4 h-4" />
+              <HiOutlineChip className="text-cloudo-muted/70 w-4 h-4" />
             </div>
             <input
               type="text"
@@ -513,7 +513,7 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
         <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, require_approval: !formData.require_approval})}>
           <div className="space-y-1">
             <p className="text-[11px] font-black text-white uppercase tracking-widest">Approval Gate</p>
-            <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-40">Manual Auth</p>
+            <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-70">Manual Auth</p>
           </div>
           <div className={`w-5 h-5 border flex items-center justify-center transition-all ${formData.require_approval ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
             {formData.require_approval && <HiOutlineCheck className="w-4 h-4" />}
@@ -523,7 +523,7 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
         <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, oncall: formData.oncall === 'true' ? 'false' : 'true'})}>
           <div className="space-y-1">
             <p className="text-[11px] font-black text-white uppercase tracking-widest">On-Call Flow</p>
-            <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-40">Notify Team</p>
+            <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-70">Notify Team</p>
           </div>
           <div className={`w-5 h-5 border flex items-center justify-center transition-all ${formData.oncall === 'true' ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
             {formData.oncall === 'true' && <HiOutlineCheck className="w-4 h-4" />}

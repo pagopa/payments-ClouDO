@@ -165,13 +165,13 @@ export default function DashboardPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Operations Dashboard</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">System Telemetry // LIVE</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">System Telemetry // LIVE</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-3 py-1 bg-black/40 border border-cloudo-border">
             <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-40 ${isBackendDown ? 'bg-cloudo-err' : 'bg-cloudo-ok'}`}></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-70 ${isBackendDown ? 'bg-cloudo-err' : 'bg-cloudo-ok'}`}></span>
               <span className={`relative inline-flex rounded-full h-2 w-2 ${isBackendDown ? 'bg-cloudo-err' : 'bg-cloudo-ok'}`}></span>
             </span>
             <span className={`text-[11px] font-black uppercase tracking-widest ${isBackendDown ? 'text-cloudo-err animate-pulse' : 'text-cloudo-muted'}`}>
@@ -236,7 +236,7 @@ export default function DashboardPage() {
                   </thead>
                   <tbody className="divide-y divide-cloudo-border/50">
                     {stats.recentExecutions.length === 0 ? (
-                      <tr><td colSpan={4} className="py-20 text-center text-sm uppercase font-bold text-cloudo-muted italic opacity-30">NO_DATA_STREAM</td></tr>
+                      <tr><td colSpan={4} className="py-20 text-center text-sm uppercase font-bold text-cloudo-muted italic opacity-60">NO_DATA_STREAM</td></tr>
                     ) : (
                       stats.recentExecutions.map((exec: any) => (
                         <tr key={exec.RowKey} className="group hover:bg-white/[0.02] transition-colors">
@@ -268,7 +268,7 @@ export default function DashboardPage() {
               </div>
               <div className="bg-cloudo-panel border border-cloudo-border p-4 space-y-3 min-h-[320px] max-h-[500px] overflow-y-auto custom-scrollbar">
                 {stats.liveProcesses.length === 0 ? (
-                  <div className="py-20 text-center opacity-20 flex flex-col items-center gap-3">
+                  <div className="py-20 text-center opacity-50 flex flex-col items-center gap-3">
                     <HiOutlineServer className="w-8 h-8" />
                     <span className="text-[11px] font-black uppercase tracking-widest text-center">IDLE_STATE<br/>NO_ACTIVE_WORKLOADS</span>
                   </div>
@@ -284,7 +284,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="flex justify-between items-center text-[11px] text-cloudo-muted uppercase font-bold tracking-widest">
                         <span className="flex items-center gap-1 opacity-60"><HiOutlineTerminal className="w-4 h-4"/> {proc.runbook}</span>
-                        <span className="opacity-30">{proc.exec_id.slice(0, 8)}</span>
+                        <span className="opacity-60">{proc.exec_id.slice(0, 8)}</span>
                       </div>
                     </div>
                   ))
@@ -350,7 +350,7 @@ function QuickLink({ icon, label, href }: any) {
         </div>
         <span className="text-xs font-black text-white uppercase tracking-[0.2em] truncate">{label}</span>
       </div>
-      <HiOutlineArrowRight className="text-cloudo-muted/40 group-hover:text-cloudo-accent transition-all transform group-hover:translate-x-1 shrink-0 w-4 h-4" />
+      <HiOutlineArrowRight className="text-cloudo-muted/70 group-hover:text-cloudo-accent transition-all transform group-hover:translate-x-1 shrink-0 w-4 h-4" />
     </a>
   );
 }

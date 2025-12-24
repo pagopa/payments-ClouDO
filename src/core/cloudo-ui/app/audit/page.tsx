@@ -82,7 +82,7 @@ export default function AuditPage() {
     if (action.includes('CREATE') || action.includes('ENROLL') || action.includes('APPROVE') || action.includes('UPSERT')) return 'text-cloudo-ok border-cloudo-ok/30 bg-cloudo-ok/5';
     if (action.includes('UPDATE')) return 'text-cloudo-warn border-cloudo-warn/30 bg-cloudo-warn/5';
     if (action.includes('MANUAL')) return 'text-pink-400 border-pink-400/30 bg-pink-400/5';
-    return 'text-cloudo-muted border-cloudo-muted/30 bg-cloudo-muted/5';
+    return 'text-cloudo-muted border-cloudo-muted/60 bg-cloudo-muted/5';
   };
 
   return (
@@ -95,13 +95,13 @@ export default function AuditPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Security Audit Log</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">Immutable Action Trace // SEC_VAULT</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Immutable Action Trace // SEC_VAULT</p>
           </div>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="relative group">
-            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
+            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
             <input
               type="text"
               placeholder="Search audit trail..."
@@ -140,28 +140,28 @@ export default function AuditPage() {
               </thead>
               <tbody className="divide-y divide-cloudo-border/30">
                 {loading ? (
-                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-20">Extracting Vault Data...</td></tr>
+                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-50">Extracting Vault Data...</td></tr>
                 ) : error ? (
                   <tr key="error-row"><td colSpan={5} className="py-32 text-center text-cloudo-err font-black uppercase tracking-[0.2em]">
                     <div className="flex flex-col items-center gap-4">
-                      <HiOutlineExclamationCircle className="w-8 h-8 opacity-40" />
+                      <HiOutlineExclamationCircle className="w-8 h-8 opacity-70" />
                       {error}
                     </div>
                   </td></tr>
                 ) : filteredLogs.length === 0 ? (
-                  <tr key="empty-row"><td colSpan={5} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-10 italic">NO_AUDIT_EVENTS_CAPTURED</td></tr>
+                  <tr key="empty-row"><td colSpan={5} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-40 italic">NO_AUDIT_EVENTS_CAPTURED</td></tr>
                 ) : (
                   filteredLogs.map((log, idx) => (
                     <tr key={`${log.timestamp}-${idx}`} className="group hover:bg-white/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-err/40">
                       <td className="px-8 py-6 whitespace-nowrap">
                         <div className="flex items-center gap-2 text-white/80 font-mono">
-                          <HiOutlineClock className="w-4 h-4 opacity-30" />
+                          <HiOutlineClock className="w-4 h-4 opacity-60" />
                           <span>{log.timestamp?.replace('T', ' ').split('.')[0]}</span>
                         </div>
                       </td>
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-2">
-                          <HiOutlineUser className="w-4 h-4 text-cloudo-accent opacity-40" />
+                          <HiOutlineUser className="w-4 h-4 text-cloudo-accent opacity-70" />
                           <span className="font-black text-white uppercase tracking-widest">{log.operator}</span>
                         </div>
                       </td>
@@ -172,11 +172,11 @@ export default function AuditPage() {
                       </td>
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-2 font-mono text-cloudo-accent/80">
-                          <HiOutlineTag className="w-4 h-4 opacity-30" />
+                          <HiOutlineTag className="w-4 h-4 opacity-60" />
                           <span className="truncate max-w-[160px] text-[11px]">{log.target}</span>
                         </div>
                       </td>
-                      <td className="px-8 py-6 text-cloudo-muted font-mono text-[11px] leading-relaxed italic opacity-60 group-hover:opacity-100 transition-opacity">
+                      <td className="px-8 py-6 text-cloudo-muted font-mono text-[11px] leading-relaxed italic opacity-60 group-hover:opacity-400 transition-opacity">
                         {log.details || '---'}
                       </td>
                     </tr>

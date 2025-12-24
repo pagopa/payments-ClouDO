@@ -127,7 +127,7 @@ export function WorkersPanel() {
     if (s === 'succeeded' || s === 'completed') return 'border-cloudo-ok/30 text-cloudo-ok bg-cloudo-ok/5';
     if (s === 'running') return 'border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5';
     if (s === 'failed' || s === 'error') return 'border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5';
-    return 'border-cloudo-muted/30 text-cloudo-muted bg-cloudo-muted/5';
+    return 'border-cloudo-muted/60 text-cloudo-muted bg-cloudo-muted/5';
   };
 
   const workersByCapability = workers.reduce((acc, worker) => {
@@ -147,7 +147,7 @@ export function WorkersPanel() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Compute Infrastructure</h1>
-            <p className="text-[11px] text-cloudo-muted font-black uppercase tracking-[0.3em] opacity-40">Fleet Management // RUNTIME</p>
+            <p className="text-[11px] text-cloudo-muted font-black uppercase tracking-[0.3em] opacity-70">Fleet Management // RUNTIME</p>
           </div>
         </div>
         <button
@@ -187,7 +187,7 @@ export function WorkersPanel() {
                       <HiOutlineChip className="text-cloudo-accent w-4 h-4 opacity-60 shrink-0" />
                       <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] truncate">{capability}</h3>
                       <div className="h-[1px] flex-1 bg-cloudo-border" />
-                      <span className="text-[11px] font-mono text-cloudo-muted/40 shrink-0">{workerList.length} Units</span>
+                      <span className="text-[11px] font-mono text-cloudo-muted/70 shrink-0">{workerList.length} Units</span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       {workerList.map((worker) => (
@@ -207,15 +207,15 @@ export function WorkersPanel() {
                           </div>
                           <div className="space-y-3 text-[11px] font-bold text-cloudo-muted uppercase tracking-widest">
                             <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
-                              <span className="opacity-40 flex items-center gap-1"><HiOutlineDatabase className="w-3 h-3"/> Queue</span>
+                              <span className="opacity-70 flex items-center gap-1"><HiOutlineDatabase className="w-3 h-3"/> Queue</span>
                               <span className="text-white font-mono lowercase">{worker.Queue}</span>
                             </div>
                             <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
-                              <span className="opacity-40 flex items-center gap-1"><HiOutlineGlobeAlt className="w-3 h-3"/> Region</span>
+                              <span className="opacity-70 flex items-center gap-1"><HiOutlineGlobeAlt className="w-3 h-3"/> Region</span>
                               <span className="text-white">{worker.Region}</span>
                             </div>
                             <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
-                              <span className="opacity-40 flex items-center gap-1"><HiOutlineClock className="w-3 h-3"/> Load</span>
+                              <span className="opacity-70 flex items-center gap-1"><HiOutlineClock className="w-3 h-3"/> Load</span>
                               <span className="text-cloudo-accent">{worker.Load}%</span>
                             </div>
                           </div>
@@ -285,14 +285,14 @@ export function WorkersPanel() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="font-bold text-white uppercase tracking-widest">{proc.name}</div>
-                            <div className="text-[11px] text-cloudo-muted opacity-40 font-mono mt-0.5">{proc.id}</div>
+                            <div className="text-[11px] text-cloudo-muted opacity-70 font-mono mt-0.5">{proc.id}</div>
                             {selectedWorker === 'all' && (
                               <div className="text-[10px] text-cloudo-accent/40 uppercase mt-1">Pool: {(proc as any).workerNode}</div>
                             )}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2 text-cloudo-accent/60 font-mono text-xs">
-                              <HiOutlineTerminal className="w-4 h-4 opacity-30" />
+                              <HiOutlineTerminal className="w-4 h-4 opacity-60" />
                               {proc.runbook}
                             </div>
                           </td>
@@ -323,7 +323,7 @@ export function WorkersPanel() {
 
               {processes.length === 0 && selectedWorker && !loading && (
                 <div className="mt-8 py-20 text-center border border-cloudo-border bg-black/20">
-                  <HiOutlineDatabase className="h-12 w-12 text-cloudo-muted mx-auto mb-4 opacity-10" />
+                  <HiOutlineDatabase className="h-12 w-12 text-cloudo-muted mx-auto mb-4 opacity-40" />
                   <p className="text-[11px] uppercase font-black tracking-[0.3em] text-cloudo-muted">Interrogated node is currently idle // No processes found</p>
                 </div>
               )}

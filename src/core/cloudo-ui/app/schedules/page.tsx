@@ -153,13 +153,13 @@ export default function SchedulesPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Automated Schedules</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">Cron Engine // CRON_DB</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Cron Engine // CRON_DB</p>
           </div>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="relative group">
-            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
+            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
             <input
               type="text"
               placeholder="Search schedules..."
@@ -195,18 +195,18 @@ export default function SchedulesPage() {
               </thead>
               <tbody className="divide-y divide-cloudo-border/30">
                 {loading ? (
-                  <tr><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-20">Syncing Cron Registry...</td></tr>
+                  <tr><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-50">Syncing Cron Registry...</td></tr>
                 ) : filteredSchedules.length === 0 ? (
-                  <tr><td colSpan={5} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-10 italic">NO_SCHEDULES_FOUND</td></tr>
+                  <tr><td colSpan={5} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-40 italic">NO_SCHEDULES_FOUND</td></tr>
                 ) : (
                   filteredSchedules.map((s) => (
                     <tr key={s.id} className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40">
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-3">
-                          <div className={`w-2 h-2 rounded-full ${s.enabled ? 'bg-cloudo-ok animate-pulse' : 'bg-cloudo-muted opacity-30'}`} />
+                          <div className={`w-2 h-2 rounded-full ${s.enabled ? 'bg-cloudo-ok animate-pulse' : 'bg-cloudo-muted opacity-60'}`} />
                           <div className="flex flex-col">
                             <span className="text-sm font-black text-white tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">{s.name}</span>
-                            <span className="text-[11px] text-cloudo-muted/40 font-mono mt-0.5">ID: {s.id}</span>
+                            <span className="text-[11px] text-cloudo-muted/70 font-mono mt-0.5">ID: {s.id}</span>
                           </div>
                         </div>
                       </td>
@@ -217,11 +217,11 @@ export default function SchedulesPage() {
                       </td>
                       <td className="px-8 py-6 text-white/70 font-mono">
                         <div className="flex items-center gap-2">
-                           <HiOutlineTerminal className="w-4 h-4 opacity-30" />
+                           <HiOutlineTerminal className="w-4 h-4 opacity-60" />
                            {s.runbook}
                         </div>
                       </td>
-                      <td className="px-8 py-6 text-cloudo-muted opacity-40 font-mono">
+                      <td className="px-8 py-6 text-cloudo-muted opacity-70 font-mono">
                         {s.last_run ? new Date(s.last_run).toLocaleString() : 'NEVER_EXECUTED'}
                       </td>
                       <td className="px-8 py-6 text-right">
@@ -402,9 +402,9 @@ function ScheduleForm({ initialData, mode, onSuccess, onCancel, onError }: any) 
       <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, enabled: !formData.enabled})}>
         <div className="space-y-1">
           <p className="text-sm font-black text-white uppercase tracking-widest">Enabled</p>
-          <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-40">Set Schedule State</p>
+          <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">Set Schedule State</p>
         </div>
-        <div className={`flex items-center gap-2 px-3 py-1 border font-black text-[11px] uppercase tracking-widest transition-all ${formData.enabled ? 'bg-cloudo-ok/10 border-cloudo-ok text-cloudo-ok' : 'bg-cloudo-muted/10 border-cloudo-muted text-cloudo-muted opacity-40'}`}>
+        <div className={`flex items-center gap-2 px-3 py-1 border font-black text-[11px] uppercase tracking-widest transition-all ${formData.enabled ? 'bg-cloudo-ok/10 border-cloudo-ok text-cloudo-ok' : 'bg-cloudo-muted/10 border-cloudo-muted text-cloudo-muted opacity-70'}`}>
           {formData.enabled ? <HiOutlineSwitchHorizontal className="w-4 h-4 text-cloudo-accent" /> : <HiOutlineBan className="w-4 h-4 text-cloudo-muted" />}
           {formData.enabled ? 'Yes' : 'Nope'}
         </div>

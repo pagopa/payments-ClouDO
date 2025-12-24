@@ -141,7 +141,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">System Settings</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">Global Config // SYSTEM_GATE</p>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Global Config // SYSTEM_GATE</p>
           </div>
         </div>
 
@@ -184,7 +184,7 @@ export default function SettingsPage() {
                     value={settings.RUNBOOK_TIMEOUT_MIN}
                     onChange={e => setSettings({...settings, RUNBOOK_TIMEOUT_MIN: e.target.value})}
                   />
-                  <p className="text-[10px] text-cloudo-muted/40 uppercase tracking-tight ml-1">Kills processes exceeding this threshold</p>
+                  <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1">Kills processes exceeding this threshold</p>
                 </div>
 
                 <div className="space-y-2">
@@ -195,13 +195,13 @@ export default function SettingsPage() {
                     value={settings.LOG_RETENTION_DAYS}
                     onChange={e => setSettings({...settings, LOG_RETENTION_DAYS: e.target.value})}
                   />
-                  <p className="text-[10px] text-cloudo-muted/40 uppercase tracking-tight ml-1">Automatic pruning of old telemetry data</p>
+                  <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1">Automatic pruning of old telemetry data</p>
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setSettings({...settings, SYSTEM_MAINTENANCE_MODE: settings.SYSTEM_MAINTENANCE_MODE === 'true' ? 'false' : 'true'})}>
                   <div className="space-y-1">
                     <p className="text-sm font-black text-white uppercase tracking-widest">Maintenance Mode</p>
-                    <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-40">Lock all executions</p>
+                    <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">Lock all executions</p>
                   </div>
                   <div className={`w-5 h-5 border flex items-center justify-center transition-all ${settings.SYSTEM_MAINTENANCE_MODE === 'true' ? 'bg-cloudo-err border-cloudo-err text-white' : 'border-cloudo-border'}`}>
                     {settings.SYSTEM_MAINTENANCE_MODE === 'true' && <HiOutlineShieldCheck className="w-4 h-4" />}
@@ -255,7 +255,7 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setSettings({...settings, AUDIT_ENABLED: settings.AUDIT_ENABLED === 'true' ? 'false' : 'true'})}>
                   <div className="space-y-1">
                     <p className="text-sm font-black text-white uppercase tracking-widest">Audit Engine</p>
-                    <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-40">Log all operator actions</p>
+                    <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">Log all operator actions</p>
                   </div>
                   <div className={`w-5 h-5 border flex items-center justify-center transition-all ${settings.AUDIT_ENABLED === 'true' ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
                     {settings.AUDIT_ENABLED === 'true' && <HiOutlineCheckCircle className="w-4 h-4" />}
@@ -267,7 +267,7 @@ export default function SettingsPage() {
 
           {/* System Information Panel */}
           <div className="bg-cloudo-accent/5 border border-cloudo-accent/20 p-8 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-30 transition-opacity">
+            <div className="absolute top-0 right-0 p-4 opacity-40 group-hover:opacity-60 transition-opacity">
               <HiOutlineDatabase className="w-24 h-24" />
             </div>
             <div className="relative z-10 flex gap-6 items-start">
