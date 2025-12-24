@@ -31,13 +31,13 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: <HiOutlineViewGrid /> },
-  { name: 'Analytics', href: '/analytics', icon: <HiOutlineChartBar /> },
-  { name: 'Registry', href: '/schemas', icon: <HiOutlineCollection /> },
+  { name: 'Schemas', href: '/schemas', icon: <HiOutlineCollection /> },
   { name: 'Governance Gate', href: '/approvals', icon: <HiOutlineShieldCheck /> },
   { name: 'Schedules', href: '/schedules', icon: <HiOutlineClock /> },
   { name: 'Runbook Studio', href: '/studio', icon: <HiOutlineCode /> },
   { name: 'Executions', href: '/executions', icon: <HiOutlineTerminal /> },
   { name: 'Compute Nodes', href: '/workers', icon: <HiOutlineChip /> },
+  { name: 'Analytics', href: '/analytics', icon: <HiOutlineChartBar /> },
   { name: 'Users', href: '/users', icon: <HiOutlineUsers />, adminOnly: true },
   { name: 'Audit Logs', href: '/audit', icon: <HiOutlineClipboardList />, adminOnly: true },
   { name: 'Settings', href: '/settings', icon: <HiOutlineCog />, adminOnly: true },

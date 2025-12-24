@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineShieldCheck,
   HiOutlineTerminal,
@@ -90,7 +91,6 @@ export default function ApprovalsPage() {
         approve: approveUrl,
         reject: parsed.reject || null,
         message: parsed.message || '',
-        // Uniamo resource e routing info per non avere il pannello vuoto
         display_info: { ...resource_info },
         worker: decodedPayload?.worker || selectedExec.Worker || null,
         severity: decodedPayload?.severity || null,
@@ -110,7 +110,7 @@ export default function ApprovalsPage() {
     if (!url) return;
     setIsProcessing(true);
     try {
-      const res = await fetch(
+      const res = await cloudoFetch(
         url, {
           method: 'GET',
           headers: {
@@ -140,14 +140,13 @@ export default function ApprovalsPage() {
   const fetchPendingApprovals = async () => {
     setLoading(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
       const now = new Date();
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
       const today = new Date();
       const partitionKey = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
 
-      const res = await fetch(`${API_URL}/logs/query?partitionKey=${partitionKey}`);
+      const res = await cloudoFetch(`/logs/query?partitionKey=${partitionKey}`);
       const data = await res.json();
       const items = data.items || [];
 
@@ -227,7 +226,7 @@ export default function ApprovalsPage() {
             className="btn btn-primary"
           >
             <HiOutlineRefresh className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Sync Queue
+            Refresh
           </button>
         </div>
       </div>

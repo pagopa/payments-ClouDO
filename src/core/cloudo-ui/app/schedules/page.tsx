@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlinePlus,
   HiOutlineSearch,
@@ -60,15 +61,7 @@ export default function SchedulesPage() {
   const fetchSchedules = async () => {
     setLoading(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-
-      const res = await fetch(`${API_URL}/schedules`, {
-        headers: {
-          'x-cloudo-user': currentUser?.username || ''
-        }
-      });
+      const res = await cloudoFetch(`/schedules`);
       const data = await res.json();
       setSchedules(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -81,15 +74,8 @@ export default function SchedulesPage() {
   const deleteSchedule = async (id: string) => {
     if (!confirm(`Are you sure you want to delete schedule ${id}?`)) return;
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-
-      const res = await fetch(`${API_URL}/schedules?id=${id}`, {
+      const res = await cloudoFetch(`/schedules?id=${id}`, {
         method: 'DELETE',
-        headers: {
-          'x-cloudo-user': currentUser?.username || ''
-        }
       });
       if (res.ok) {
         addNotification('success', `Schedule ${id} destroyed`);
@@ -103,17 +89,12 @@ export default function SchedulesPage() {
   const toggleSchedule = async (schedule: Schedule) => {
     setTogglingId(schedule.id);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-
       const updatedSchedule = { ...schedule, enabled: !schedule.enabled };
 
-      const res = await fetch(`${API_URL}/schedules`, {
+      const res = await cloudoFetch(`/schedules`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-cloudo-user': currentUser?.username || ''
         },
         body: JSON.stringify(updatedSchedule)
       });
@@ -182,7 +163,7 @@ export default function SchedulesPage() {
             <input
               type="text"
               placeholder="Search schedules..."
-              className="input pl-10 w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
+              className="input"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -334,15 +315,10 @@ function ScheduleForm({ initialData, mode, onSuccess, onCancel, onError }: any) 
     e.preventDefault();
     setSubmitting(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-
-      const res = await fetch(`${API_URL}/schedules`, {
+      const res = await cloudoFetch(`/schedules`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-cloudo-user': currentUser?.username || ''
         },
         body: JSON.stringify(formData)
       });
@@ -425,19 +401,19 @@ function ScheduleForm({ initialData, mode, onSuccess, onCancel, onError }: any) 
 
       <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, enabled: !formData.enabled})}>
         <div className="space-y-1">
-          <p className="text-sm font-black text-white uppercase tracking-widest">Job Status</p>
-          <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-40">Active Engine State</p>
+          <p className="text-sm font-black text-white uppercase tracking-widest">Enabled</p>
+          <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-40">Set Schedule State</p>
         </div>
         <div className={`flex items-center gap-2 px-3 py-1 border font-black text-[11px] uppercase tracking-widest transition-all ${formData.enabled ? 'bg-cloudo-ok/10 border-cloudo-ok text-cloudo-ok' : 'bg-cloudo-muted/10 border-cloudo-muted text-cloudo-muted opacity-40'}`}>
           {formData.enabled ? <HiOutlineSwitchHorizontal className="w-4 h-4 text-cloudo-accent" /> : <HiOutlineBan className="w-4 h-4 text-cloudo-muted" />}
-          {formData.enabled ? 'Active' : 'Disabled'}
+          {formData.enabled ? 'Yes' : 'Nope'}
         </div>
       </div>
 
       <div className="flex gap-4 pt-6 border-t border-cloudo-border">
         <button type="button" onClick={onCancel} className="btn btn-ghost flex-1 h-12">Abort</button>
         <button type="submit" disabled={submitting} className="btn btn-primary flex-1 h-12">
-          {submitting ? 'Committing...' : 'Commit Policy'}
+          {submitting ? 'Saving...' : 'Save Schedule'}
         </button>
       </div>
     </form>

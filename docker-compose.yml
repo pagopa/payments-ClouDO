@@ -14,18 +14,17 @@ services:
   frontend:
     platform: linux/amd64
     build:
-      context: src/core/ui-cloudo
-      dockerfile: Dockerfile.frontend
+      context: src/core/cloudo-ui
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://localhost:7071/api
-      - API_PROXY_URL=http://orchestrator:80/api
+      - API_URL=http://orchestrator:80/api
     networks:
       - azure-functions
     volumes:
-      - ./src/core/ui-cloudo:/app
+      - ./src/core/cloudo-ui:/app
       - /app/node_modules
       - /app/.next
     command: npm run dev

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlinePlus, HiOutlineSearch, HiOutlineChip, HiOutlineTerminal,
   HiOutlineUserGroup, HiOutlineShieldCheck, HiOutlineTrash,
@@ -56,8 +57,7 @@ export default function SchemasPage() {
   const fetchSchemas = async () => {
     setLoading(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const res = await fetch(`${API_URL}/schemas`);
+      const res = await cloudoFetch(`/schemas`);
       const data = await res.json();
       setSchemas(Array.isArray(data) ? data : []);
     } catch (e) { setSchemas([]); } finally { setLoading(false); }
@@ -73,17 +73,12 @@ export default function SchemasPage() {
     setExecutingId(id);
     setConfirmRunId(null);
     try {
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const response = await fetch(`${API_URL}/Trigger?id=${id}`, {
+      const response = await cloudoFetch(`/Trigger?id=${id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-cloudo-user': currentUser?.username || ''
         },
-        body: JSON.stringify({ source: 'registry-manual' }),
+        body: JSON.stringify({ source: 'schemas-manual' }),
       });
 
       if (!response.ok) {
@@ -146,7 +141,7 @@ export default function SchemasPage() {
             <MdOutlineSchema className="text-cloudo-accent w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Runbook Registry</h1>
+            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Runbook Schemas</h1>
             <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-40">System Inventory // ASSET_DB</p>
           </div>
         </div>
@@ -156,7 +151,7 @@ export default function SchemasPage() {
             <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
             <input
               type="text"
-              placeholder="Search registry..."
+              placeholder="Search schemas..."
               className="input pl-10 w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -176,7 +171,7 @@ export default function SchemasPage() {
 
           {/* Statistics Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatSmall title="Total Assets" value={stats.total} icon={<HiOutlineTerminal />} label="REGISTRY_LOAD" />
+            <StatSmall title="Total Assets" value={stats.total} icon={<HiOutlineTerminal />} label="SCHEMAS_LOAD" />
             <StatSmall title="Gate Required" value={stats.approvalRequired} icon={<HiOutlineShieldCheck />} label="AUTH_PENDING" color="text-cloudo-warn" />
             <StatSmall title="Active On-Call" value={stats.onCall} icon={<HiOutlineUserGroup />} label="CRITICAL_PATH" color="text-cloudo-accent" />
           </div>
@@ -198,7 +193,7 @@ export default function SchemasPage() {
               </thead>
               <tbody className="divide-y divide-cloudo-border/30">
                 {loading ? (
-                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-20">Syncing Registry Data...</td></tr>
+                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-20">Refreshing Schema Data...</td></tr>
                 ) : filteredSchemas.length === 0 ? (
                   <tr key="empty-row"><td colSpan={5} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-10 italic">NO_ENTRIES_FOUND</td></tr>
                 ) : (
@@ -305,7 +300,7 @@ export default function SchemasPage() {
                           <button
                             onClick={() => setSchemaToDelete(schema)}
                             className="p-2.5 bg-black/40 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-white transition-all group/btn"
-                            title="Delete Registry Entry"
+                            title="Delete Schema Entry"
                           >
                             <HiOutlineTrash className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
                           </button>
@@ -408,8 +403,7 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const response = await fetch(`${API_URL}/schemas`, {
+      const response = await cloudoFetch(`/schemas`, {
         method: mode === 'create' ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ PartitionKey: 'RunbookSchema', RowKey: formData.id, ...formData }),
@@ -435,7 +429,7 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
     <form onSubmit={submit} className="p-8 space-y-8">
       <div className="grid grid-cols-2 gap-8">
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Registry ID *</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">SCHEMAS ID *</label>
           <input
             type="text"
             required
@@ -550,7 +544,7 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
           disabled={submitting}
           className="btn btn-primary flex-1 h-12"
         >
-          {submitting ? 'Committing...' : 'Commit Registry Entry'}
+          {submitting ? 'Saving...' : 'Save Schema'}
         </button>
       </div>
     </form>
@@ -568,8 +562,7 @@ function DeleteConfirmationModal({ schema, onClose, onSuccess, onError }: {
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const response = await fetch(`${API_URL}/schemas?id=${schema.id}`, { method: 'DELETE' });
+      const response = await cloudoFetch(`/schemas?id=${schema.id}`, { method: 'DELETE' });
       const data = await response.json();
 
       if (!response.ok) {
@@ -598,7 +591,7 @@ function DeleteConfirmationModal({ schema, onClose, onSuccess, onError }: {
         <div className="space-y-3">
           <h3 className="text-[11px] font-black text-white uppercase tracking-[0.3em]">Destructive Action</h3>
           <p className="text-[9px] text-cloudo-muted uppercase font-bold leading-relaxed">
-            Permanently delete registry entry:<br/>
+            Permanently delete schemas entry:<br/>
             <span className="text-cloudo-err mt-2 block font-mono">{schema.id}</span>
           </p>
         </div>

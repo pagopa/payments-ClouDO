@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineRefresh,
   HiOutlinePlay,
@@ -51,12 +52,7 @@ export function WorkersPanel() {
   const fetchWorkers = async () => {
     setLoadingWorkers(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const res = await fetch(`http://localhost:7071/api/workers`, {
-        headers: {
-          'x-cloudo-key': process.env.NEXT_PUBLIC_CLOUDO_KEY || '',
-        },
-      });
+      const res = await cloudoFetch(`/workers`);
       const data = await res.json();
       setWorkers(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -71,17 +67,11 @@ export function WorkersPanel() {
     if (!worker) return;
     setLoading(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-
       if (worker === 'all') {
         const allProcesses = await Promise.all(
           workers.map(async (w) => {
             try {
-              const res = await fetch(`${API_URL}/workers/processes?worker=${encodeURIComponent(w.RowKey)}`, {
-                headers: {
-                  'x-cloudo-key': process.env.NEXT_PUBLIC_CLOUDO_KEY || '',
-                },
-              });
+              const res = await cloudoFetch(`/workers/processes?worker=${encodeURIComponent(w.RowKey)}`);
               if (!res.ok) return [];
               const data = await res.json();
               const items = Array.isArray(data) ? data : (data.runs || data.processes || []);
@@ -94,11 +84,7 @@ export function WorkersPanel() {
         );
         setProcesses(allProcesses.flat());
       } else {
-        const res = await fetch(`${API_URL}/workers/processes?worker=${encodeURIComponent(worker)}`, {
-          headers: {
-            'x-cloudo-key': process.env.NEXT_PUBLIC_CLOUDO_KEY || '',
-          },
-        });
+        const res = await cloudoFetch(`/workers/processes?worker=${encodeURIComponent(worker)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const processesData = Array.isArray(data) ? data : (data.runs || data.processes || []);
@@ -117,12 +103,8 @@ export function WorkersPanel() {
 
     setLoading(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const res = await fetch(`${API_URL}/workers/stop?worker=${encodeURIComponent(worker)}&exec_id=${encodeURIComponent(execId)}`, {
+      const res = await cloudoFetch(`/workers/stop?worker=${encodeURIComponent(worker)}&exec_id=${encodeURIComponent(execId)}`, {
         method: 'POST',
-        headers: {
-          'x-cloudo-key': process.env.NEXT_PUBLIC_CLOUDO_KEY || '',
-        },
       });
 
       if (res.ok) {
@@ -139,7 +121,7 @@ export function WorkersPanel() {
       setLoading(false);
     }
   };
-
+  // BUG exec id duplciato e non prende quello giusto
   const getStatusBadgeClass = (status: string) => {
     const s = status.toLowerCase();
     if (s === 'succeeded' || s === 'completed') return 'border-cloudo-ok/30 text-cloudo-ok bg-cloudo-ok/5';

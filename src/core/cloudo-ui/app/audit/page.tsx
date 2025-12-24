@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import {
   HiOutlineClipboardList,
@@ -53,15 +54,7 @@ export default function AuditPage() {
     setLoading(true);
     setError(null);
     try {
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-
-      const res = await fetch(`${API_URL}/audit`, {
-        headers: {
-          'x-cloudo-user': currentUser?.username || ''
-        }
-      });
+      const res = await cloudoFetch(`/audit`);
 
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
 

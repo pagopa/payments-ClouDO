@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineChartBar,
   HiOutlineClock,
@@ -44,8 +45,6 @@ export default function AnalyticsPage() {
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-
       const days = timeRange === '24h' ? 1 : timeRange === '7d' ? 7 : 30;
       const today = new Date();
 
@@ -57,7 +56,7 @@ export default function AnalyticsPage() {
         const partitionKey = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
 
         try {
-          const res = await fetch(`${API_URL}/logs/query?partitionKey=${partitionKey}&limit=1000`);
+          const res = await cloudoFetch(`/logs/query?partitionKey=${partitionKey}&limit=1000`);
           if (res.ok) {
             const result = await res.json();
             allLogs = [...allLogs, ...(result.items || [])];

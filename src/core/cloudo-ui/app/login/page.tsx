@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { HiOutlineLockClosed, HiOutlineUser, HiOutlineLightningBolt, HiOutlineCheckCircle } from 'react-icons/hi';
 import Link from 'next/link';
@@ -29,10 +30,7 @@ function LoginForm() {
 
     // Chiamata API reale
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      console.log('Connecting to Auth Gate:', API_URL);
-
-      const res = await fetch(`${API_URL}/auth/login`, {
+      const res = await cloudoFetch(`/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -86,7 +84,7 @@ function LoginForm() {
               <div className="w-2 h-2 bg-cloudo-accent animate-pulse" />
               <h2 className="text-sm font-black uppercase tracking-[0.3em] text-white">System Access Gate</h2>
             </div>
-            <span className="text-[10px] font-mono text-cloudo-muted/40">v4.1.0-AUTH</span>
+            <span className="text-[10px] font-mono text-cloudo-muted/40">GATE-AUTH</span>
           </div>
 
           <form onSubmit={handleLogin} className="p-8 space-y-8">
@@ -153,7 +151,7 @@ function LoginForm() {
 
           <div className="border-t border-cloudo-border p-4 bg-black/20 flex justify-center">
             <p className="text-[10px] text-cloudo-muted font-bold uppercase tracking-[0.2em] opacity-40">
-              Terminal Node: CLOUDO-AUTH-01 // P-SECURE-V4
+              Terminal Node: CLOUDO-AUTH-01 // P-SECURE
             </p>
           </div>
         </div>

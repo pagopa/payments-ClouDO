@@ -44,7 +44,11 @@ body {
 }
 
 .input {
-  @apply w-full px-4 py-3 rounded-none border border-cloudo-border bg-black text-cloudo-text outline-none transition-all placeholder:text-cloudo-muted/30 focus:border-cloudo-accent font-mono text-sm;
+  @apply border pl-16 pr-4 py-4 w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50 bg-black text-cloudo-text outline-none transition-all placeholder:text-cloudo-muted/30 focus:border-cloudo-accent font-mono text-sm;
+}
+
+.input-executions {
+  @apply w-full border pl-16 pr-4 py-4 border-cloudo-border/50 focus:border-cloudo-accent/50 bg-black text-cloudo-text outline-none transition-all focus:border-cloudo-accent font-mono text-sm;
 }
 
 .status-badge {

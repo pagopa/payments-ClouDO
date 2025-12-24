@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineCheckCircle,
   HiOutlineUsers,
@@ -44,11 +45,7 @@ export default function DashboardPage() {
 
   const fetchDashboardData = async () => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-
-      const workersRes = await fetch(`${API_URL}/workers`, {
-        headers: { 'x-cloudo-key': process.env.NEXT_PUBLIC_CLOUDO_KEY || '' },
-      });
+      const workersRes = await cloudoFetch(`/workers`);
 
       if (!workersRes.ok) throw new Error('Backend unreachable');
 
@@ -57,7 +54,7 @@ export default function DashboardPage() {
 
       const processesPromises = activeWorkers.map(async (w: any) => {
         try {
-          const res = await fetch(`${API_URL}/workers/processes?worker=${encodeURIComponent(w.RowKey)}`);
+          const res = await cloudoFetch(`/workers/processes?worker=${encodeURIComponent(w.RowKey)}`);
           if (!res.ok) return [];
           const data = await res.json();
           const procList = Array.isArray(data) ? data : (data.runs || data.processes || []);
@@ -69,7 +66,7 @@ export default function DashboardPage() {
 
       const today = new Date();
       const partitionKey = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-      const logsRes = await fetch(`${API_URL}/logs/query?partitionKey=${partitionKey}&limit=2000`);
+      const logsRes = await cloudoFetch(`/logs/query?partitionKey=${partitionKey}&limit=5000`);
       const logsData = await logsRes.json();
 
       const executions = logsData.items || [];
@@ -115,17 +112,26 @@ export default function DashboardPage() {
         ['succeeded', 'completed'].includes((e.Status || '').toLowerCase())
       ).length;
 
-      const pending = finalExecutions.filter((e: any) =>
-        ['pending'].includes((e.Status || '').toLowerCase())
+      const failed = finalExecutions.filter((e: any) =>
+        ['failed', 'error'].includes((e.Status || '').toLowerCase())
       ).length;
+
+      const oneHourAgo = Date.now() - (60 * 60 * 1000); // Timestamp di un'ora fa
+
+      const pending = finalExecutions.filter((e: any) => {
+        const isPending = ['pending'].includes((e.Status || '').toLowerCase());
+        const executionTime = new Date(e.CreatedAt).getTime();
+        return isPending && executionTime > oneHourAgo;
+      }).length;
 
       const sortedExecutions = [...finalExecutions]
         .sort((a, b) => new Date(b.RequestedAt || 0).getTime() - new Date(a.RequestedAt || 0).getTime())
         .slice(0, 5);
 
+      const totalFinished = succeeded + failed;
       setStats({
         totalExecutions: finalExecutions.length,
-            successRate: finalExecutions.length > 0 ? (succeeded / finalExecutions.length) * 100 : 0,
+        successRate: totalFinished > 0 ? +((succeeded / totalFinished) * 100).toFixed(2) : 0,
         activeWorkers: activeWorkers.length,
         pendingApprovals: pending,
         recentExecutions: sortedExecutions,
@@ -189,7 +195,7 @@ export default function DashboardPage() {
             />
             <StatCard
               title="Success Rate"
-              value={`${stats.successRate.toFixed(1)}%`}
+              value={`${stats.successRate}%`}
               icon={<HiOutlineCheckCircle className="text-cloudo-ok" />}
               status="COMPLIANCE_RATIO"
               trend={[95, 98, 97, 99, 100, 98, 99]}
@@ -287,6 +293,7 @@ export default function DashboardPage() {
 
               <div className="grid grid-cols-1 gap-2 pt-4">
                 <QuickLink icon={<HiOutlineDatabase />} label="Registry" href="/schemas" />
+                <QuickLink icon={<HiOutlineClock />} label="Schedules" href="/schedules" />
                 <QuickLink icon={<HiOutlineServer />} label="Compute" href="/workers" />
               </div>
             </div>
@@ -301,13 +308,13 @@ export default function DashboardPage() {
 function StatCard({ title, value, icon, status, highlight = false }: any) {
   return (
     <div className="bg-cloudo-panel border border-cloudo-border p-6 flex items-center justify-between relative overflow-hidden group">
-      <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-accent/20 group-hover:bg-cloudo-accent transition-colors" />
+      <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-accent/20" />
       <div className="relative z-10">
         <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/80">{title}</p>
         <p className={`text-3xl font-black mt-1 ${highlight ? 'text-cloudo-warn' : 'text-white'} tracking-tighter`}>{value}</p>
         <p className="text-[11px] font-bold text-cloudo-muted/80 uppercase mt-2 tracking-[0.1em]">{status}</p>
       </div>
-      <div className="p-3 bg-black/40 border border-cloudo-border text-xl shrink-0 group-hover:border-cloudo-accent/30 transition-colors">
+      <div className="p-3 bg-black/40 border border-cloudo-border text-xl shrink-0">
         {icon}
       </div>
     </div>

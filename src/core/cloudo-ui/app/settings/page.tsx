@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import {
   HiOutlineCog,
@@ -69,15 +70,7 @@ export default function SettingsPage() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-
-      const res = await fetch(`${API_URL}/settings`, {
-        headers: {
-          'x-cloudo-user': currentUser?.username || ''
-        }
-      });
+      const res = await cloudoFetch(`/settings`);
 
       if (res.ok) {
         const data = await res.json();
@@ -95,15 +88,10 @@ export default function SettingsPage() {
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-
-      const res = await fetch(`${API_URL}/settings`, {
+      const res = await cloudoFetch(`/settings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-cloudo-user': currentUser?.username || ''
         },
         body: JSON.stringify(settings)
       });

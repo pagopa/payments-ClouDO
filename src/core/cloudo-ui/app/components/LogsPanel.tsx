@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineSearch,
   HiOutlineDatabase,
@@ -51,7 +52,12 @@ export function LogsPanel() {
   };
 
   useEffect(() => {
-    setTodayDate();
+    const t = today(getLocalTimeZone());
+    const pk = t.toString().replace(/-/g, '');
+
+    setDateValue(t);
+    setPartitionKey(pk);
+    runQuery({ partitionKey: pk });
   }, []);
 
   const handleReset = () => {
@@ -73,18 +79,19 @@ export function LogsPanel() {
     }
   };
 
-  const runQuery = async () => {
+  const runQuery = async (overrideParams?: { partitionKey?: string }) => {
     setLoading(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
       const params = new URLSearchParams();
-      if (partitionKey) params.set('partitionKey', partitionKey);
+      const pKey = overrideParams?.partitionKey !== undefined ? overrideParams.partitionKey : partitionKey;
+
+      if (pKey) params.set('partitionKey', pKey);
       if (execId) params.set('execId', execId);
       if (status) params.set('status', status);
       if (query) params.set('q', query);
       if (limit) params.set('limit', limit);
 
-      const res = await fetch(`${API_URL}/logs/query?${params}`);
+      const res = await cloudoFetch(`/logs/query?${params}`);
       const data = await res.json();
       const rawLogs = data.items || [];
 
@@ -192,9 +199,9 @@ export function LogsPanel() {
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Partition</label>
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Date</label>
                 <DatePicker
-                  className="max-w-full"
+                  className=""
                   value={dateValue}
                   onChange={handleDateChange}
                   variant="bordered"
@@ -208,7 +215,7 @@ export function LogsPanel() {
                 <div className="relative group">
                   <HiOutlineTag className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <select
-                    className="input pl-10 appearance-none relative"
+                    className="input-executions pl-10 appearance-none relative"
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -230,7 +237,7 @@ export function LogsPanel() {
                   <HiOutlineFingerPrint className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
-                    className="input pl-10 relative"
+                    className="input-executions pl-10 relative"
                     placeholder="Execution ID..."
                     value={execId}
                     onChange={(e) => setExecId(e.target.value)}
@@ -244,7 +251,7 @@ export function LogsPanel() {
                   <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
-                    className="input pl-10 relative"
+                    className="input-executions pl-10 relative"
                     placeholder="Keywords in logs..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
@@ -258,7 +265,7 @@ export function LogsPanel() {
                   <HiOutlineDatabase className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="number"
-                    className="input pl-10 relative"
+                    className="input-executions pl-10 relative"
                     placeholder="200"
                     value={limit}
                     onChange={(e) => setLimit(e.target.value)}
@@ -368,8 +375,8 @@ export function LogsPanel() {
                    <span className="text-[11px] font-bold text-cloudo-accent truncate block">{selectedLog.Runbook}</span>
                 </div>
                 <div className="bg-black/40 border border-cloudo-border p-3">
-                   <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">Partition</span>
-                   <span className="text-[11px] font-bold text-white block">{selectedLog.PartitionKey}</span>
+                   <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">Date</span>
+                   <span className="text-[11px] font-bold text-white block truncate">{selectedLog.RequestedAt}</span>
                 </div>
                 <div className="bg-black/40 border border-cloudo-border p-3">
                    <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">On_Call</span>

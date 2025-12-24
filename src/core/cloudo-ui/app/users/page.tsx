@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { cloudoFetch } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import {
   HiOutlinePlus,
@@ -74,17 +75,7 @@ export default function UsersPage() {
     setLoading(true);
     setError(null);
     try {
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      console.log('Connecting to Identity Gate:', `${API_URL}/users`);
-
-      const res = await fetch(`${API_URL}/users`, {
-        headers: {
-          'x-cloudo-user': currentUser?.username || ''
-        }
-      });
+      const res = await cloudoFetch(`/users`);
 
       if (!res.ok) {
         throw new Error(`HTTP Error: ${res.status} ${res.statusText}`);
@@ -105,15 +96,8 @@ export default function UsersPage() {
     if (!confirm(`Are you sure you want to revoke access for ${username}?`)) return;
 
     try {
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const res = await fetch(`${API_URL}/users?username=${username}`, {
+      const res = await cloudoFetch(`/users?username=${username}`, {
         method: 'DELETE',
-        headers: {
-          'x-cloudo-user': currentUser?.username || ''
-        }
       });
 
       if (res.ok) {
@@ -177,7 +161,7 @@ export default function UsersPage() {
             <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/40 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
             <input
               type="text"
-              placeholder="Search operators..."
+              placeholder="Search user..."
               className="input pl-10 w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -187,7 +171,7 @@ export default function UsersPage() {
             onClick={() => setModalMode('create')}
             className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
           >
-            <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Add Operator
+            <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Add
           </button>
         </div>
       </div>
@@ -321,15 +305,10 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
     setSubmitting(true);
 
     try {
-      const userData = localStorage.getItem('cloudo_user');
-      const currentUser = userData ? JSON.parse(userData) : null;
-
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7071/api';
-      const res = await fetch(`${API_URL}/users`, {
+      const res = await cloudoFetch(`/users`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-cloudo-user': currentUser?.username || ''
         },
         body: JSON.stringify(formData)
       });
