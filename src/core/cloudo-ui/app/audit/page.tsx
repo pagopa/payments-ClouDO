@@ -105,7 +105,7 @@ export default function AuditPage() {
             <input
               type="text"
               placeholder="Search audit trail..."
-              className="input pl-10 w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
+              className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />

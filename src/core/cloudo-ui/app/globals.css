@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../node_modules/flowbite-datepicker";
 
 :root {
   --radius: 14px;
@@ -56,7 +57,7 @@ body {
 }
 
 .btn {
-  @apply inline-flex items-center gap-2 rounded-none px-4 py-2 font-bold border border-cloudo-border bg-transparent text-cloudo-text cursor-pointer transition-all active:translate-y-0.5 uppercase tracking-widest text-sm hover:border-cloudo-accent hover:text-cloudo-accent hover:bg-cloudo-accent/5;
+  @apply inline-flex items-center gap-2 rounded-none px-4 py-2 font-bold border border-cloudo-border bg-transparent text-cloudo-text cursor-pointer transition-all active:translate-y-0.5 uppercase tracking-widest text-sm hover:border-cloudo-accent hover:bg-cloudo-accent/5;
 }
 
 .btn-primary {
@@ -68,7 +69,11 @@ body {
 }
 
 .input {
-  @apply border pl-16 pr-4 py-4 w-64 h-10 border-cloudo-border focus:border-cloudo-accent bg-cloudo-dark text-cloudo-text outline-none transition-all placeholder:text-cloudo-muted/50 font-mono text-sm;
+  @apply border px-4 py-3 w-full border-cloudo-border focus:border-cloudo-accent bg-cloudo-dark text-cloudo-text outline-none transition-all placeholder:text-cloudo-muted/50 font-mono text-sm;
+}
+
+.input-icon {
+  @apply pl-14;
 }
 
 .input-executions {

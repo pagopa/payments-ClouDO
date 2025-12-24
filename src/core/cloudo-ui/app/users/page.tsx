@@ -162,7 +162,7 @@ export default function UsersPage() {
             <input
               type="text"
               placeholder="Search user..."
-              className="input pl-10 w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
+              className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -330,7 +330,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
     <form onSubmit={handleSubmit} className="p-8 space-y-6">
       <div className="space-y-4">
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Username</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Username</label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-cloudo-accent/5">
               <HiOutlineUser className="text-cloudo-muted/70 w-4 h-4" />
@@ -339,7 +339,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
               type="text"
               required
               disabled={mode === 'edit'}
-              className="input pl-14 h-11 uppercase tracking-widest disabled:opacity-50"
+              className="input input-icon h-11 uppercase tracking-widest disabled:opacity-50 w-full"
               value={formData.username}
               onChange={e => setFormData({...formData, username: e.target.value})}
               placeholder="OPERATOR_ID"
@@ -348,7 +348,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
         </div>
 
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Email Endpoint</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Email Endpoint</label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-cloudo-accent/5">
               <HiOutlineMail className="text-cloudo-muted/70 w-4 h-4" />
@@ -356,7 +356,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
             <input
               type="email"
               required
-              className="input pl-14 h-11"
+              className="input input-icon h-11 w-full"
               value={formData.email}
               onChange={e => setFormData({...formData, email: e.target.value})}
               placeholder="operator@cloudo.sys"
@@ -365,7 +365,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
         </div>
 
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
             {mode === 'create' ? 'Initial Password' : 'New Password (leave empty to keep current)'}
           </label>
           <div className="relative group">
@@ -375,7 +375,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
             <input
               type="password"
               required={mode === 'create'}
-              className="input pl-14 h-11"
+              className="input input-icon h-11 w-full"
               value={formData.password}
               onChange={e => setFormData({...formData, password: e.target.value})}
               placeholder="••••••••"
@@ -384,9 +384,9 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
         </div>
 
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">System Privilege</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">System Privilege</label>
           <select
-            className="input h-11 appearance-none"
+            className="input h-11 appearance-none w-full"
             value={formData.role}
             onChange={e => setFormData({...formData, role: e.target.value})}
           >

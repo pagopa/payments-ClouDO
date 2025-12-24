@@ -163,7 +163,7 @@ export default function SchedulesPage() {
             <input
               type="text"
               placeholder="Search schedules..."
-              className="input"
+              className="input input-icon"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -339,22 +339,22 @@ function ScheduleForm({ initialData, mode, onSuccess, onCancel, onError }: any) 
     <form onSubmit={handleSubmit} className="p-8 space-y-6">
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Task Name</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Task Name</label>
           <input
             type="text"
             required
-            className="input h-11"
+            className="input h-11 w-full"
             value={formData.name}
             onChange={e => setFormData({...formData, name: e.target.value})}
             placeholder="NIGHTLY_CLEANUP"
           />
         </div>
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Cron Expression (Azure Format)</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Cron Expression (Azure Format)</label>
           <input
             type="text"
             required
-            className="input h-11 font-mono text-cloudo-accent"
+            className="input h-11 font-mono text-cloudo-accent w-full"
             value={formData.cron}
             onChange={e => setFormData({...formData, cron: e.target.value})}
             placeholder="0 */5 * * * *"
@@ -364,34 +364,34 @@ function ScheduleForm({ initialData, mode, onSuccess, onCancel, onError }: any) 
 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Runbook Path</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Runbook Path</label>
           <input
             type="text"
             required
-            className="input h-11 font-mono"
+            className="input h-11 font-mono w-full"
             value={formData.runbook}
             onChange={e => setFormData({...formData, runbook: e.target.value})}
             placeholder="scripts/cleanup.sh"
           />
         </div>
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Runtime Arguments</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Runtime Arguments</label>
           <input
             type="text"
-            className="input h-11 font-mono"
+            className="input h-11 font-mono w-full"
             value={formData.run_args}
             onChange={e => setFormData({...formData, run_args: e.target.value})}
-            placeholder="--force --quiet"
+            placeholder="arg1 arg2 --quiet"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Worker Pool (Lock)</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Worker Pool (Lock)</label>
           <input
             type="text"
-            className="input h-11 font-mono"
+            className="input h-11 font-mono w-full"
             value={formData.worker_pool}
             onChange={e => setFormData({...formData, worker_pool: e.target.value})}
             placeholder="pool-01"

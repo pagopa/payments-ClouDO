@@ -12,7 +12,8 @@ import {
   HiOutlineClipboardCheck,
   HiOutlineClipboard,
   HiOutlineTag,
-  HiOutlineFingerPrint
+  HiOutlineFingerPrint,
+  HiOutlineCalendar
 } from 'react-icons/hi';
 import {DatePicker} from "@heroui/date-picker";
 import {parseDate, today, getLocalTimeZone} from "@internationalized/date";
@@ -199,23 +200,27 @@ export function LogsPanel() {
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Date</label>
-                <DatePicker
-                  className=""
-                  value={dateValue}
-                  onChange={handleDateChange}
-                  variant="bordered"
-                  radius="none"
-                  showMonthAndYearPickers
-                  onKeyDown={handleKeyDown}
-                />
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Date</label>
+                <div className="relative group">
+                  <HiOutlineCalendar className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
+                  <input
+                    type="date"
+                    className="input input-icon pl-10 relative bg-transparent border border-cloudo-border text-cloudo-text w-full py-2 px-3 leading-tight focus:outline-none focus:border-cloudo-accent transition-colors block"
+                    value={dateValue.toString()}
+                    onChange={(e) => handleDateChange(parseDate(e.target.value))}
+                    onKeyDown={handleKeyDown}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
+                  />
+                </div>
               </div>
+
+
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">State</label>
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">State</label>
                 <div className="relative group">
                   <HiOutlineTag className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <select
-                    className="input-executions pl-10 appearance-none relative"
+                    className="input input-icon pl-10 appearance-none relative w-full"
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -232,12 +237,12 @@ export function LogsPanel() {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Exec_ID</label>
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Exec_ID</label>
                 <div className="relative group">
                   <HiOutlineFingerPrint className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
-                    className="input-executions pl-10 relative"
+                    className="input input-icon pl-10 relative w-full"
                     placeholder="Execution ID..."
                     value={execId}
                     onChange={(e) => setExecId(e.target.value)}
@@ -246,12 +251,12 @@ export function LogsPanel() {
                 </div>
               </div>
               <div className="col-span-2 md:col-span-1 space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Search_Term</label>
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Search_Term</label>
                 <div className="relative group">
                   <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
-                    className="input-executions pl-10 relative"
+                    className="input input-icon pl-10 relative w-full"
                     placeholder="Keywords in logs..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
@@ -260,12 +265,12 @@ export function LogsPanel() {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Limit</label>
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Limit</label>
                 <div className="relative group">
                   <HiOutlineDatabase className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="number"
-                    className="input-executions pl-10 relative"
+                    className="input input-icon pl-10 relative w-full"
                     placeholder="200"
                     value={limit}
                     onChange={(e) => setLimit(e.target.value)}
@@ -304,7 +309,7 @@ export function LogsPanel() {
                   <th className="px-4 py-4 text-left">Timestamp</th>
                   <th className="px-4 py-4 text-left">State</th>
                   <th className="px-4 py-4 text-left">Process_Context</th>
-                  <th className="px-4 py-4 text-center w-10">OC</th>
+                  <th className="px-4 py-4 text-center w-10">On Call</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-cloudo-border/50">

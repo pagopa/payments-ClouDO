@@ -177,10 +177,10 @@ export default function SettingsPage() {
 
               <div className="bg-cloudo-panel border border-cloudo-border p-6 space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Runbook Timeout (Minutes)</label>
+                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Runbook Timeout (Minutes)</label>
                   <input
                     type="number"
-                    className="input h-11"
+                    className="input h-11 w-full"
                     value={settings.RUNBOOK_TIMEOUT_MIN}
                     onChange={e => setSettings({...settings, RUNBOOK_TIMEOUT_MIN: e.target.value})}
                   />
@@ -188,10 +188,10 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Log Retention (Days)</label>
+                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Log Retention (Days)</label>
                   <input
                     type="number"
-                    className="input h-11"
+                    className="input h-11 w-full"
                     value={settings.LOG_RETENTION_DAYS}
                     onChange={e => setSettings({...settings, LOG_RETENTION_DAYS: e.target.value})}
                   />
@@ -223,11 +223,11 @@ export default function SettingsPage() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 mb-1">
                     <HiOutlineBell className="text-cloudo-warn w-4 h-4" />
-                    <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted">Slack Integration Hook</label>
+                    <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted block">Slack Integration Hook</label>
                   </div>
                   <input
                     type="password"
-                    className="input h-11 text-sm"
+                    className="input h-11 text-sm w-full"
                     placeholder="https://hooks.slack.com/services/..."
                     value={settings.NOTIFICATION_SLACK_WEBHOOK}
                     onChange={e => setSettings({...settings, NOTIFICATION_SLACK_WEBHOOK: e.target.value})}
@@ -239,11 +239,11 @@ export default function SettingsPage() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 mb-1">
                     <HiOutlineBell className="text-cloudo-accent w-4 h-4" />
-                    <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted">Teams Webhook Endpoint</label>
+                    <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted block">Teams Webhook Endpoint</label>
                   </div>
                   <input
                     type="password"
-                    className="input h-11 text-sm"
+                    className="input h-11 text-sm w-full"
                     placeholder="https://cloudo.webhook.office.com/..."
                     value={settings.NOTIFICATION_TEAMS_WEBHOOK}
                     onChange={e => setSettings({...settings, NOTIFICATION_TEAMS_WEBHOOK: e.target.value})}

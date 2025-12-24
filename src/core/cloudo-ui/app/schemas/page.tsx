@@ -152,7 +152,7 @@ export default function SchemasPage() {
             <input
               type="text"
               placeholder="Search schemas..."
-              className="input pl-10 w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
+              className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -215,7 +215,7 @@ export default function SchemasPage() {
                       <td className="px-8 py-6 text-cloudo-accent/60 font-mono">
                         <div className="flex items-center gap-3">
                           <div className="p-1.5 bg-cloudo-accent/10 border border-cloudo-border group-hover:border-cloudo-accent/20 transition-colors">
-                            <HiOutlineTerminal className="opacity-70 w-4 h-4" />
+                            <HiOutlineTerminal className="opacity-150 w-4 h-4" />
                           </div>
                           <div className="flex flex-col min-w-0">
                             <span className="truncate text-cloudo-text/80 font-bold">{schema.runbook}</span>
@@ -363,13 +363,13 @@ export default function SchemasPage() {
 function StatSmall({ title, value, icon, label, color = "text-cloudo-text" }: { title: string, value: number, icon: React.ReactNode, label: string, color?: string }) {
   return (
     <div className="bg-cloudo-panel border border-cloudo-border p-5 flex items-center justify-between relative overflow-hidden group">
-      <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-accent/10 group-hover:bg-cloudo-accent transition-colors" />
+      <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-accent/10 transition-colors" />
       <div className="relative z-10">
         <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/60 mb-1">{title}</p>
         <p className={`text-2xl font-black ${color} tracking-tighter`}>{value}</p>
         <p className="text-[11px] font-bold text-cloudo-muted/60 uppercase mt-1 tracking-widest">{label}</p>
       </div>
-      <div className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border text-lg shrink-0 group-hover:border-cloudo-accent/30 transition-colors opacity-70 group-hover:opacity-400">
+      <div className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border text-lg shrink-0 transition-colors opacity-70">
         <div className="text-cloudo-accent w-5 h-5 flex items-center justify-center">
           {icon}
         </div>
@@ -426,112 +426,111 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
   };
 
   return (
-    <form onSubmit={submit} className="p-8 space-y-8">
-      <div className="grid grid-cols-2 gap-8">
-        <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">SCHEMAS ID *</label>
-          <input
-            type="text"
-            required
-            disabled={mode === 'edit'}
-            className="input font-mono text-cloudo-accent h-11"
-            value={formData.id}
-            onChange={e => setFormData({...formData, id: e.target.value})}
-            placeholder="e.g. aks-pod-restart"
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Schema Name *</label>
-          <input
-            type="text"
-            required
-            className="input h-11"
-            value={formData.name}
-            onChange={e => setFormData({...formData, name: e.target.value})}
-            placeholder="e.g. AKS Cleanup Task"
-          />
-        </div>
+    <form onSubmit={submit} className="p-8 grid grid-cols-2 gap-x-8 gap-y-6">
+      <div className="space-y-2">
+        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">SCHEMAS ID *</label>
+        <input
+          type="text"
+          required
+          disabled={mode === 'edit'}
+          className="input font-mono text-cloudo-accent w-full"
+          value={formData.id}
+          onChange={e => setFormData({...formData, id: e.target.value})}
+          placeholder="e.g. aks-pod-restart"
+        />
+      </div>
+      <div className="space-y-2">
+        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Schema Name *</label>
+        <input
+          type="text"
+          required
+          className="input w-full"
+          value={formData.name}
+          onChange={e => setFormData({...formData, name: e.target.value})}
+          placeholder="e.g. AKS Cleanup Task"
+        />
       </div>
 
-      <div className="space-y-2">
-        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Purpose Description</label>
+      <div className="space-y-2 col-span-2">
+        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Purpose Description</label>
         <textarea
-          className="input min-h-[80px] py-3 resize-none"
+          className="input min-h-[100px] py-4 resize-none w-full"
           value={formData.description}
           onChange={e => setFormData({...formData, description: e.target.value})}
           placeholder="Objective of this automation..."
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-8">
-        <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Runbook Path *</label>
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
-              <HiOutlineTerminal className="text-cloudo-muted/70 w-4 h-4" />
-            </div>
-            <input
-              type="text"
-              required
-              className="input pl-14 h-11 font-mono"
-              value={formData.runbook}
-              onChange={e => setFormData({...formData, runbook: e.target.value})}
-              placeholder="script.sh"
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Worker Pool *</label>
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
-              <HiOutlineChip className="text-cloudo-muted/70 w-4 h-4" />
-            </div>
-            <input
-              type="text"
-              required
-              className="input pl-14 h-11 font-mono"
-              value={formData.worker}
-              onChange={e => setFormData({...formData, worker: e.target.value})}
-              placeholder="pool-01"
-            />
-          </div>
-        </div>
-      </div>
-
       <div className="space-y-2">
-        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Run Arguments</label>
-        <input
-          type="text"
-          className="input h-11 font-mono text-cloudo-warn/80"
-          value={formData.run_args}
-          onChange={e => setFormData({...formData, run_args: e.target.value})}
-          placeholder="--force --silent"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-8 items-start">
-        <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, require_approval: !formData.require_approval})}>
-          <div className="space-y-1">
-            <p className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">Approval Gate</p>
-            <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-70">Manual Auth</p>
+        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Runbook Path *</label>
+        <div className="relative group">
+          <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
+            <HiOutlineTerminal className="text-cloudo-muted/70 w-4 h-4" />
           </div>
-          <div className={`w-5 h-5 border flex items-center justify-center transition-all ${formData.require_approval ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
-            {formData.require_approval && <HiOutlineCheck className="w-4 h-4" />}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, oncall: formData.oncall === 'true' ? 'false' : 'true'})}>
-          <div className="space-y-1">
-            <p className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">On-Call Flow</p>
-            <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-70">Notify Team</p>
-          </div>
-          <div className={`w-5 h-5 border flex items-center justify-center transition-all ${formData.oncall === 'true' ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
-            {formData.oncall === 'true' && <HiOutlineCheck className="w-4 h-4" />}
-          </div>
+          <input
+            type="text"
+            required
+            className="input input-icon font-mono w-full"
+            value={formData.runbook}
+            onChange={e => setFormData({...formData, runbook: e.target.value})}
+            placeholder="script.sh"
+          />
         </div>
       </div>
+      <div className="space-y-2">
+        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Worker Pool *</label>
+        <div className="relative group">
+          <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
+            <HiOutlineChip className="text-cloudo-muted/70 w-4 h-4" />
+          </div>
+          <input
+            type="text"
+            required
+            className="input input-icon font-mono w-full"
+            value={formData.worker}
+            onChange={e => setFormData({...formData, worker: e.target.value})}
+            placeholder="pool-01"
+          />
+        </div>
+      </div>
 
-      <div className="flex gap-4 pt-6 border-t border-cloudo-border">
+      <div className="space-y-2 col-span-2">
+        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Run Arguments</label>
+        <div className="relative group">
+          <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
+            <HiOutlineTerminal className="text-cloudo-muted/70 w-4 h-4 opacity-50" />
+          </div>
+          <input
+            type="text"
+            className="input input-icon font-mono text-cloudo-warn/80 w-full"
+            value={formData.run_args}
+            onChange={e => setFormData({...formData, run_args: e.target.value})}
+            placeholder="--force --silent"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, require_approval: !formData.require_approval})}>
+        <div className="space-y-1">
+          <p className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">Approval Gate</p>
+          <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-70">Manual Auth</p>
+        </div>
+        <div className={`w-5 h-5 border flex items-center justify-center transition-all ${formData.require_approval ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
+          {formData.require_approval && <HiOutlineCheck className="w-4 h-4" />}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, oncall: formData.oncall === 'true' ? 'false' : 'true'})}>
+        <div className="space-y-1">
+          <p className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">On-Call Flow</p>
+          <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-70">Notify Team</p>
+        </div>
+        <div className={`w-5 h-5 border flex items-center justify-center transition-all ${formData.oncall === 'true' ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
+          {formData.oncall === 'true' && <HiOutlineCheck className="w-4 h-4" />}
+        </div>
+      </div>
+
+      <div className="flex gap-4 pt-6 border-t border-cloudo-border col-span-2">
         <button
           type="button"
           onClick={onCancel}

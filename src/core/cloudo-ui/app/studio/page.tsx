@@ -139,15 +139,149 @@ if __name__ == "__main__":
 
 export default function StudioPage() {
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0]);
-  const [code, setCode] = useState(TEMPLATES[0].code);
   const [copied, setCopied] = useState(false);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [payload, setPayload] = useState('{\n  "data": {\n    "essentials": {\n      "alertRule": "HighCPU-Production",\n      "severity": "Sev2"\n    }\n  }\n}');
-  const [simulationOutput, setSimulationOutput] = useState<string[]>([]);
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [rightTab, setRightTab] = useState<'simulator' | 'handbook'>('simulator');
-  const [jsonError, setJsonError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<{id: number, type: string, message: string}[]>([]);
+
+  // Payload Simulator State
+  const [payloadInput, setPayloadInput] = useState(JSON.stringify({
+    "data": {
+      "essentials": {
+        "alertRule": "test-alert-rule",
+        "severity": "Sev4",
+        "monitorCondition": "Fired",
+        "alertTargetIDs": [
+          "/subscriptions/00000000-0000-0000-0000-000000000001/resourcegroups/mock-RG/providers/microsoft.operationalinsights/workspaces/mock-workspace"
+        ]
+      },
+      "alertContext": {
+        "labels": {
+          "alertname": "KubeHpaMaxedOut",
+          "cluster": "mock-aks-cluster",
+          "horizontalpodautoscaler": "mock-hpa-name",
+          "instance": "ama-metrics-ksm.kube-system.svc.cluster.local:8080",
+          "job": "kube-state-metrics",
+          "deployment": "mock-deployment",
+          "namespace": "mock-namespace",
+          "resourcename": "mock-aks-resource",
+          "resourcegroup": "mock-aks-rg"
+        }
+      }
+    }
+  }, null, 2));
+  const [runArgsInput, setRunArgsInput] = useState('--verbose --timeout 30');
+  const [parsedEnv, setParsedEnv] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(payloadInput);
+      const env: Record<string, string> = {};
+
+      // Helper per chiavi case-insensitive (simula lower_keys)
+      const getLower = (obj: any, key: string) => {
+        if (!obj || typeof obj !== 'object') return undefined;
+        const lowerKey = key.toLowerCase();
+        const foundKey = Object.keys(obj).find(k => k.toLowerCase() === lowerKey);
+        return foundKey ? obj[foundKey] : undefined;
+      };
+
+      const data = getLower(parsed, 'data') || {};
+      const essentials = getLower(data, 'essentials') || {};
+      const ctx = getLower(data, 'alertcontext') || {};
+      const labels = getLower(ctx, 'labels') || {};
+      const annotations = getLower(ctx, 'annotations') || {};
+
+      // 1. Resolve Resource ID
+      let resource_id: string | null = null;
+      const candidates: string[] = [];
+
+      const alertTargetIds = getLower(essentials, 'alerttargetids');
+      if (Array.isArray(alertTargetIds)) {
+        candidates.push(...alertTargetIds.filter(x => typeof x === 'string'));
+      }
+
+      const mrid = getLower(labels, 'microsoft.resourceid');
+      if (typeof mrid === 'string') candidates.push(mrid);
+
+      const rid = getLower(ctx, 'resourceid');
+      if (typeof rid === 'string') candidates.push(rid);
+
+      resource_id = candidates.find(x => x.startsWith('/subscriptions/')) || null;
+
+      // 2. Resolve RG and Name
+      let resource_group: string | null = null;
+      let resource_name: string | null = null;
+
+      if (resource_id) {
+        const parts = resource_id.replace(/^\/+|\/+$/g, '').split('/');
+        const parts_l = parts.map(p => p.toLowerCase());
+        const rg_index = parts_l.indexOf('resourcegroups');
+        if (rg_index !== -1 && parts[rg_index + 1]) {
+          resource_group = parts[rg_index + 1];
+        }
+        resource_name = parts[parts.length - 1] || null;
+      } else {
+        const config_items = getLower(essentials, 'configurationitems');
+        if (Array.isArray(config_items) && config_items.length > 0) {
+          resource_name = config_items[0];
+        }
+        resource_name = resource_name || getLower(ctx, 'resourcename') || getLower(labels, 'resourcename') || null;
+        resource_group = getLower(ctx, 'resourcegroup') || getLower(labels, 'resourcegroup') || null;
+        resource_id = getLower(ctx, 'resourceid') || getLower(labels, 'resourceid') || null;
+      }
+
+      if (resource_id) env['RESOURCE_ID'] = resource_id;
+      if (resource_group) env['RESOURCE_RG'] = resource_group;
+      if (resource_name) env['RESOURCE_NAME'] = resource_name;
+
+      // 3. Kubernetes fields
+      const namespace = getLower(labels, 'namespace') || getLower(labels, 'kubernetes_namespace') ||
+                       getLower(annotations, 'namespace') || getLower(annotations, 'kubernetes_namespace');
+      if (namespace) env['K8S_NAMESPACE'] = String(namespace);
+
+      const pod = getLower(labels, 'pod') || getLower(labels, 'kubernetes_pod_name') ||
+                  getLower(annotations, 'pod') || getLower(annotations, 'kubernetes_pod_name');
+      if (pod) env['K8S_POD'] = String(pod);
+
+      const deployment = getLower(labels, 'deployment') || getLower(labels, 'kubernetes_deployment') ||
+                         getLower(annotations, 'deployment') || getLower(annotations, 'kubernetes_deployment');
+      if (deployment) env['K8S_DEPLOYMENT'] = String(deployment);
+
+      const hpa = getLower(labels, 'horizontalpodautoscaler') || getLower(labels, 'kubernetes_horizontalpodautoscaler') ||
+                  getLower(annotations, 'horizontalpodautoscaler') || getLower(annotations, 'kubernetes_horizontalpodautoscaler');
+      if (hpa) env['K8S_HPA'] = String(hpa);
+
+      let job = getLower(labels, 'kubernetes_job_name') || getLower(annotations, 'kubernetes_job_name') ||
+                getLower(labels, 'job_name') || getLower(annotations, 'job_name');
+
+      if (!job) {
+        const cand = getLower(labels, 'job') || getLower(annotations, 'job');
+        if (cand && cand !== 'kube-state-metrics') {
+          job = cand;
+        }
+      }
+      if (job) env['K8S_JOB'] = String(job);
+
+      // 4. Essentials
+      const monitorCondition = getLower(essentials, 'monitorcondition');
+      if (monitorCondition) env['MONITOR_CONDITION'] = String(monitorCondition);
+
+      const severity = getLower(essentials, 'severity');
+      if (severity) env['SEVERITY'] = String(severity);
+
+      // 5. Schema IDs (simulato)
+      const alertId = getLower(essentials, 'alertid');
+      const alertRule = getLower(essentials, 'alertrule');
+      const schemaCandidates: string[] = [];
+      if (alertId) schemaCandidates.push(String(alertId).split('/').pop() || '');
+      if (alertRule) schemaCandidates.push(String(alertRule).split('/').pop() || '');
+      if (schemaCandidates.length > 0) env['SCHEMA_ID'] = Array.from(new Set(schemaCandidates)).join(',');
+
+      env['CLOUDO_PAYLOAD'] = JSON.stringify(parsed);
+      setParsedEnv(env);
+    } catch (e) {
+      // JSON non valido
+    }
+  }, [payloadInput]);
 
   const addNotification = (type: 'success' | 'error' | 'info', message: string) => {
     const id = Date.now();
@@ -157,117 +291,8 @@ export default function StudioPage() {
     }, 5000);
   };
 
-  useEffect(() => {
-    try {
-      JSON.parse(payload);
-      setJsonError(null);
-    } catch (e: any) {
-      setJsonError(e.message);
-    }
-  }, [payload]);
-
-  useEffect(() => {
-    analyzeCode(code, selectedTemplate.lang);
-  }, [code, selectedTemplate]);
-
-  const analyzeCode = (content: string, lang: string) => {
-    const newSuggestions: Suggestion[] = [];
-
-    if (lang === 'python') {
-      if (!content.includes('import logging')) {
-        newSuggestions.push({
-          id: 'py-logging',
-          type: 'warning',
-          text: 'Manca il modulo logging.',
-          impact: 'Difficile monitorare l\'esecuzione nel Worker.'
-        });
-      }
-      if (content.includes('print(') && !content.includes('sys.stderr')) {
-        newSuggestions.push({
-          id: 'py-stderr',
-          type: 'info',
-          text: 'Usa stderr per i log di debug.',
-          impact: 'Evita di sporcare lo stdout destinato ai dati.'
-        });
-      }
-      if (!content.includes('try:') || !content.includes('except')) {
-        newSuggestions.push({
-          id: 'py-error',
-          type: 'warning',
-          text: 'Nessuna gestione eccezioni rilevata.',
-          impact: 'Lo script potrebbe fallire silenziosamente.'
-        });
-      }
-      if (content.includes('CLOUDO_PAYLOAD') && !content.includes('json.loads')) {
-        newSuggestions.push({
-          id: 'py-json',
-          type: 'warning',
-          text: 'Payload non parsato come JSON.',
-          impact: 'Accesso ai dati inefficace.'
-        });
-      }
-    } else if (lang === 'bash') {
-      if (!content.includes('set -e')) {
-        newSuggestions.push({
-          id: 'sh-set-e',
-          type: 'info',
-          text: 'Consigliato "set -e" all\'inizio.',
-          impact: 'Interrompe lo script al primo errore.'
-        });
-      }
-      if (!content.includes('>&2') && content.includes('echo')) {
-        newSuggestions.push({
-          id: 'sh-stderr',
-          type: 'info',
-          text: 'Redirigi i log su stderr (>&2).',
-          impact: 'Mantiene pulito il canale dei risultati.'
-        });
-      }
-      if (!content.includes('exit ')) {
-        newSuggestions.push({
-          id: 'sh-exit',
-          type: 'warning',
-          text: 'Mancano exit codes espliciti.',
-          impact: 'Il Worker non saprà se lo script è riuscito.'
-        });
-      }
-    }
-
-    // Dynamic checks based on payload
-    try {
-      const parsed = JSON.parse(payload);
-      if (lang === 'python' && content.includes('.get(')) {
-        const matches = content.match(/\.get\(['"]([^'"]+)['"]\)/g);
-        if (matches) {
-          matches.forEach(m => {
-            const key = m.match(/['"]([^'"]+)['"]/)?.[1];
-            if (key && !JSON.stringify(parsed).includes(key)) {
-              newSuggestions.push({
-                id: `missing-key-${key}`,
-                type: 'warning',
-                text: `Chiave "${key}" non trovata nel Payload.`,
-                impact: 'Il runbook potrebbe ricevere valori null.'
-              });
-            }
-          });
-        }
-      }
-    } catch (e) {}
-
-    if (newSuggestions.length === 0) {
-      newSuggestions.push({
-        id: 'perfect',
-        type: 'success',
-        text: 'Script conforme alle best practices.',
-        impact: 'Pronto per la produzione.'
-      });
-    }
-
-    setSuggestions(newSuggestions);
-  };
-
   const handleCopy = () => {
-    navigator.clipboard.writeText(code);
+    navigator.clipboard.writeText(selectedTemplate.code);
     setCopied(true);
     addNotification('success', 'Code copied to clipboard');
     setTimeout(() => setCopied(false), 2000);
@@ -275,58 +300,16 @@ export default function StudioPage() {
 
   const handleTemplateSelect = (tpl: typeof TEMPLATES[0]) => {
     setSelectedTemplate(tpl);
-    setCode(tpl.code);
   };
 
   const handleDownload = () => {
     const element = document.createElement("a");
-    const file = new Blob([code], {type: 'text/plain'});
+    const file = new Blob([selectedTemplate.code], {type: 'text/plain'});
     element.href = URL.createObjectURL(file);
     element.download = selectedTemplate.lang === 'python' ? 'runbook.py' : 'runbook.sh';
     document.body.appendChild(element);
     element.click();
     addNotification('info', 'Runbook file exported');
-  };
-
-  const runSimulation = () => {
-    if (jsonError) {
-      addNotification('error', 'Fix JSON errors before simulation');
-      return;
-    }
-    setIsSimulating(true);
-    setSimulationOutput([]);
-
-    setTimeout(() => {
-      const logs = [];
-      logs.push(`[${new Date().toLocaleTimeString()}] CLOUDO_INIT: Loading environment...`);
-      logs.push(`[${new Date().toLocaleTimeString()}] CLOUDO_RUNTIME: Spawning ${selectedTemplate.lang} worker...`);
-
-      try {
-        const parsedPayload = JSON.parse(payload);
-        logs.push(`[${new Date().toLocaleTimeString()}] PAYLOAD_INJECTED: ${Object.keys(parsedPayload).length} keys detected.`);
-
-        if (selectedTemplate.lang === 'python') {
-          logs.push(`STDOUT: --- CLOUDO OPERATIONAL STREAM START ---`);
-          const alertRule = parsedPayload.data?.essentials?.alertRule || 'Unknown';
-          logs.push(`STDOUT: SIGNAL_DETECTED: ${alertRule}`);
-          logs.push(`STDOUT: AUTOMATION_LOGIC_EXECUTED`);
-          logs.push(`STDOUT: SUCCESS: Runbook completed successfully`);
-        } else {
-          logs.push(`STDOUT: --- CLOUDO SYSTEM DIAGNOSTICS ---`);
-          logs.push(`STDOUT: NODE_IDENTIFIER: cloudo-worker-sim-01`);
-          logs.push(`STDOUT: RESULT: COMPLIANT`);
-          logs.push(`STDOUT: ClouDO_EXEC_STATUS: OK`);
-        }
-        addNotification('success', 'Simulation finished successfully');
-      } catch (e) {
-        logs.push(`STDERR: Error parsing payload: ${e}`);
-        addNotification('error', 'Simulation failed');
-      }
-
-      logs.push(`[${new Date().toLocaleTimeString()}] CLOUDO_EXIT: Code 0 (Success)`);
-      setSimulationOutput(logs);
-      setIsSimulating(false);
-    }, 1200);
   };
 
   return (
@@ -335,31 +318,21 @@ export default function StudioPage() {
       <div className="flex items-center justify-between px-8 py-5 border-b border-cloudo-border bg-cloudo-panel sticky top-0 z-20">
         <div className="flex items-center gap-4 shrink-0">
           <div className="p-2 bg-cloudo-accent/5 border border-cloudo-accent/20 shrink-0">
-            <HiOutlineCode className="text-cloudo-accent w-5 h-5" />
+            <HiOutlineBookOpen className="text-cloudo-accent w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Runbook Studio & Advisor</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Interactive Editor // LIVE_GUIDANCE_ACTIVE</p>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Developer Runbook Guide</h1>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Technical Documentation // HANDBOOK_MODE_ACTIVE</p>
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <button onClick={handleDownload} className="btn btn-ghost border-cloudo-border/40 hover:border-cloudo-accent/40 text-cloudo-muted hover:text-cloudo-text">
-            <HiOutlineDownload className="w-5 h-5" />
-            Export File
-          </button>
-          <button onClick={handleCopy} className="btn btn-primary min-w-[160px]">
-            {copied ? <HiOutlineCheck className="w-5 h-5" /> : <HiOutlineClipboardCopy className="w-5 h-5" />}
-            {copied ? 'Copied to Clipboard' : 'Copy Source Code'}
-          </button>
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar: Templates */}
-        <div className="w-72 border-r border-cloudo-border bg-cloudo-accent/5 overflow-y-auto p-6 space-y-6 shrink-0">
+        <div className="w-80 border-r border-cloudo-border bg-cloudo-accent/5 overflow-y-auto p-6 space-y-6 shrink-0">
           <div className="flex items-center gap-2 mb-3">
             <HiOutlineDocumentText className="text-cloudo-accent w-4 h-4" />
-            <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Logic Blueprints</h2>
+            <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Reference Blueprints</h2>
           </div>
           <div className="space-y-3">
             {TEMPLATES.map((tpl) => (
@@ -376,7 +349,7 @@ export default function StudioPage() {
                   {tpl.lang === 'python' ? <HiOutlineCode className="text-cloudo-accent w-4 h-4" /> : <HiOutlineTerminal className="text-cloudo-accent w-4 h-4" />}
                   <span className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">{tpl.name}</span>
                 </div>
-                <p className="text-[11px] text-cloudo-muted leading-relaxed opacity-60 group-hover:opacity-400">
+                <p className="text-[11px] text-cloudo-muted leading-relaxed opacity-60 group-hover:opacity-100">
                   {tpl.description}
                 </p>
                 {selectedTemplate.id === tpl.id && (
@@ -388,186 +361,168 @@ export default function StudioPage() {
 
           <div className="pt-8 space-y-4">
              <div className="flex items-center gap-2 mb-3">
-                <HiOutlineShieldCheck className="text-cloudo-accent w-4 h-4" />
-                <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Advisor Tips</h2>
+                <HiOutlineLightBulb className="text-cloudo-accent w-4 h-4" />
+                <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Quick Tips</h2>
               </div>
-              <div className="space-y-3">
-                {suggestions.map((s) => (
-                  <div key={s.id} className={`p-3 border-l-2 bg-cloudo-accent/10 ${
-                    s.type === 'warning' ? 'border-cloudo-warn' :
-                    s.type === 'success' ? 'border-green-500' : 'border-cloudo-accent'
-                  }`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      {s.type === 'warning' && <HiOutlineExclamationCircle className="text-cloudo-warn w-3 h-3" />}
-                      {s.type === 'success' && <HiOutlineCheck className="text-green-500 w-3 h-3" />}
-                      {s.type === 'info' && <HiOutlineInformationCircle className="text-cloudo-accent w-3 h-3" />}
-                      <span className="text-[10px] font-bold text-cloudo-text uppercase tracking-tighter">{s.text}</span>
-                    </div>
-                    <p className="text-[10px] text-cloudo-muted italic opacity-60 leading-tight">
-                      {s.impact}
-                    </p>
-                  </div>
-                ))}
+              <div className="space-y-4">
+                <TipItem text="Usa sempre stderr per i log di sistema per non inquinare l'output dei dati." />
+                <TipItem text="Gestisci esplicitamente gli exit code per permettere al Worker di capire l'esito." />
+                <TipItem text="I parametri vengono passati sia via CLOUDO_PAYLOAD che variabili d'ambiente singole." />
+                <TipItem text="In caso di allarmi inerenti ad AKS ClouDO si loggerà nel cluster con la proprio SA staccando un token valido per 10 minuti, nel contesto del namespace coinvolto." />
               </div>
           </div>
         </div>
 
-        {/* Center: Editor */}
-        <div className="flex-1 flex flex-col bg-cloudo-dark overflow-hidden relative">
-          <div className="absolute top-0 left-0 w-full h-[1px] bg-cloudo-accent/10 pointer-events-none" />
-          <div className="flex items-center justify-between px-6 py-2 bg-cloudo-panel-2 border-b border-cloudo-border shrink-0">
-             <div className="flex items-center gap-3">
-                <span className="text-[11px] font-bold text-cloudo-accent uppercase tracking-widest flex items-center gap-1.5">
-                   <div className="w-2 h-2 bg-cloudo-accent rounded-full animate-pulse" />
-                   Editor_Session: active
-                </span>
-             </div>
-             <span className="text-[11px] font-mono text-cloudo-muted opacity-70 uppercase tracking-widest">
-                Lang: {selectedTemplate.lang} // UTF-8
-             </span>
-          </div>
-          <div className="flex-1 relative group">
-             {/* Row Numbers Simulation */}
-             <div className="absolute left-0 top-0 w-12 h-full bg-cloudo-panel-2/50 border-r border-cloudo-border flex flex-col items-center py-6 text-[11px] text-cloudo-muted/80 font-mono select-none pointer-events-none">
-                {Array.from({length: 40}).map((_, i) => (
-                  <div key={i} className="leading-6">{i + 1}</div>
-                ))}
-             </div>
-             <textarea
-               className="w-full h-full bg-transparent text-cloudo-text font-mono text-sm p-6 pl-16 outline-none resize-none leading-6 placeholder:text-cloudo-muted/80 custom-scrollbar"
-               spellCheck={false}
-               value={code}
-               onChange={(e) => setCode(e.target.value)}
-             />
-          </div>
-        </div>
+        {/* Center: Handbook Content */}
+        <div className="flex-1 overflow-y-auto bg-cloudo-dark custom-scrollbar">
+          <div className="max-w-4xl mx-auto p-12 space-y-12">
 
-        {/* Right Sidebar: Handbook & Simulator */}
-        <div className="w-96 border-l border-cloudo-border bg-cloudo-accent/5 flex flex-col shrink-0">
-          {/* Tabs Header */}
-          <div className="flex border-b border-cloudo-border bg-cloudo-panel-2/30">
-            <button
-              onClick={() => setRightTab('simulator')}
-              className={`flex-1 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
-                rightTab === 'simulator' ? 'text-cloudo-accent border-b border-cloudo-accent bg-cloudo-accent/5' : 'text-cloudo-muted hover:text-cloudo-text'
-              }`}
-            >
-              <HiOutlinePlay className="w-3 h-3" />
-              Simulator
-            </button>
-            <button
-              onClick={() => setRightTab('handbook')}
-              className={`flex-1 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
-                rightTab === 'handbook' ? 'text-cloudo-accent border-b border-cloudo-accent bg-cloudo-accent/5' : 'text-cloudo-muted hover:text-cloudo-text'
-              }`}
-            >
-              <HiOutlineBookOpen className="w-3 h-3" />
-              Handbook
-            </button>
-          </div>
+            <section className="space-y-6">
+              <div className="flex items-center gap-3 border-b border-cloudo-border pb-4">
+                <HiOutlinePlay className="text-cloudo-accent w-6 h-6" />
+                <h2 className="text-xl font-black uppercase tracking-widest text-cloudo-text">Execution & Payload Simulator</h2>
+              </div>
+              <p className="text-sm text-cloudo-muted leading-relaxed">
+                Utilizza questa area per simulare come ClouDO interpreterà il tuo payload e come verrà composto il comando di esecuzione finale.
+              </p>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            {rightTab === 'simulator' ? (
-              <div className="space-y-8">
-                {/* Payload Editor */}
+              <div className="grid grid-cols-2 gap-8">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <HiOutlineDatabase className="text-cloudo-accent w-4 h-4" />
-                      <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Input Payload</h2>
-                    </div>
+                    <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-text flex items-center gap-2 block">
+                      <HiOutlineDatabase className="text-cloudo-accent" /> Input Payload (JSON)
+                    </label>
                   </div>
-                  <div className="relative group">
-                    <textarea
-                      className={`w-full h-48 bg-cloudo-accent/10 border p-3 text-[11px] font-mono text-cloudo-text outline-none transition-colors custom-scrollbar resize-none ${
-                        jsonError ? 'border-cloudo-warn/50 focus:border-cloudo-warn' : 'border-cloudo-border focus:border-cloudo-accent/50'
-                      }`}
-                      value={payload}
-                      onChange={(e) => setPayload(e.target.value)}
-                      spellCheck={false}
-                    />
-                    {jsonError && (
-                      <div className="absolute bottom-0 left-0 w-full bg-cloudo-warn/10 text-cloudo-warn text-[9px] p-2 border-t border-cloudo-warn/20 font-bold uppercase tracking-tighter">
-                        JSON_ERROR: {jsonError}
-                      </div>
-                    )}
-                    <div className="absolute top-2 right-2 text-[9px] text-cloudo-muted/80 font-bold uppercase tracking-tighter pointer-events-none">
-                      Mock_JSON
-                    </div>
-                  </div>
+                  <textarea
+                    value={payloadInput}
+                    onChange={(e) => setPayloadInput(e.target.value)}
+                    className="w-full h-48 bg-cloudo-panel border border-cloudo-border p-4 text-xs font-mono text-cloudo-text focus:border-cloudo-accent outline-none custom-scrollbar resize-none"
+                    placeholder='{ "key": "value" }'
+                  />
                 </div>
 
-                {/* Execution Button */}
-                <button
-                  onClick={runSimulation}
-                  disabled={isSimulating || !!jsonError}
-                  className={`w-full py-4 border flex items-center justify-center gap-3 transition-all active:scale-[0.98] ${
-                    isSimulating || !!jsonError
-                    ? 'border-cloudo-muted/80 bg-cloudo-panel/50 cursor-not-allowed text-cloudo-muted opacity-50'
-                    : 'border-cloudo-accent bg-cloudo-accent/20 hover:bg-cloudo-accent/30 text-cloudo-text'
-                  }`}
-                >
-                  <HiOutlinePlay className={`w-5 h-5 ${isSimulating ? 'animate-spin' : ''}`} />
-                  <span className="text-xs font-black uppercase tracking-[0.3em]">
-                    {isSimulating ? 'Executing...' : 'Run Simulation'}
-                  </span>
-                </button>
-
-                {/* Console Output */}
                 <div className="space-y-4">
-                   <div className="flex items-center gap-2">
-                      <HiOutlineClipboardList className="text-cloudo-accent w-4 h-4" />
-                      <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Execution Logs</h2>
+                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-text flex items-center gap-2 block">
+                    <HiOutlineClipboardList className="text-cloudo-accent" /> Run Arguments
+                  </label>
+                  <input
+                    type="text"
+                    value={runArgsInput}
+                    onChange={(e) => setRunArgsInput(e.target.value)}
+                    className="w-full bg-cloudo-panel border border-cloudo-border p-4 text-xs font-mono text-cloudo-text focus:border-cloudo-accent outline-none"
+                    placeholder="--arg1 val1 --arg2"
+                  />
+
+                  <div className="p-4 bg-cloudo-accent/5 border border-cloudo-accent/20 rounded-sm space-y-4">
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-cloudo-accent block mb-2">Python Execution:</span>
+                      <code className="text-xs text-cloudo-text break-all">
+                        python3 runbook.py {runArgsInput}
+                      </code>
                     </div>
-                    <div className="bg-cloudo-dark border border-cloudo-border p-4 h-64 overflow-y-auto custom-scrollbar font-mono">
-                      {simulationOutput.length === 0 && !isSimulating && (
-                        <div className="h-full flex flex-col items-center justify-center text-cloudo-muted/80 text-center space-y-2">
-                          <HiOutlineTerminal className="w-8 h-8 opacity-40" />
-                          <p className="text-[10px] uppercase tracking-widest">Awaiting execution...</p>
-                        </div>
-                      )}
-                      {simulationOutput.map((line, i) => (
-                        <div key={i} className={`text-[10px] leading-relaxed mb-1 ${
-                          line.startsWith('STDERR') ? 'text-cloudo-warn' :
-                          line.startsWith('STDOUT') ? 'text-green-400' : 'text-cloudo-muted'
-                        }`}>
-                          {line}
-                        </div>
-                      ))}
-                      {isSimulating && (
-                        <div className="text-[10px] text-cloudo-accent animate-pulse">
-                          _ RUNNING_PROCESS...
-                        </div>
-                      )}
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-cloudo-accent block mb-2">Bash Execution:</span>
+                      <code className="text-xs text-cloudo-text break-all">
+                        ./runbook.sh {runArgsInput}
+                      </code>
                     </div>
+                  </div>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-6">
-                <HandbookSection title="Runtime Context" icon={<HiOutlineCube />}>
-                    Il Worker inietta i parametri JSON nella variabile d'ambiente <code className="text-cloudo-accent">CLOUDO_PAYLOAD</code>. In Python: <code className="text-cloudo-accent">os.environ.get('CLOUDO_PAYLOAD')</code>.
-                </HandbookSection>
 
-                <HandbookSection title="Output Capture" icon={<HiOutlineTerminal />}>
-                    ClouDO cattura sia <code className="text-cloudo-text">stdout</code> che <code className="text-cloudo-text">stderr</code>. Usa <code className="text-cloudo-text">stderr</code> per la telemetria e <code className="text-cloudo-accent">stdout</code> per i dati finali.
-                </HandbookSection>
-
-                <HandbookSection title="Common Variables" icon={<HiOutlineVariable />}>
-                    <div className="space-y-2 mt-2">
-                      <VarItem name="CLOUDO_EXEC_ID" desc="UUID univoco dell'esecuzione." />
-                      <VarItem name="CLOUDO_REQUESTED_AT" desc="Timestamp ISO della richiesta." />
-                      <VarItem name="CLOUDO_NAME" desc="Nome dell'operazione o schema." />
-                      <VarItem name="CLOUDO_RUNBOOK" desc="Path del runbook in esecuzione." />
-                      <VarItem name="CLOUDO_WORKER" desc="ID del worker pool di target." />
-                      <VarItem name="CLOUDO_ONCALL" desc="Flag per allarmi critici (true/false)." />
-                    </div>
-                </HandbookSection>
-
-                <HandbookSection title="Deployment" icon={<HiOutlineDocumentText />}>
-                    Salva lo script sul Worker Node nel path configurato (es: <code className="text-cloudo-text">/opt/cloudo/runbooks/</code>) e crea uno Schema nel Registry che lo punti.
-                </HandbookSection>
+              <div className="space-y-4">
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-text flex items-center gap-2 block">
+                  <HiOutlineVariable className="text-cloudo-accent" /> ClouDO Parsed Environment Variables
+                </label>
+                <div className="grid grid-cols-2 gap-4 bg-cloudo-dark/50 border border-cloudo-border p-6 rounded-sm">
+                  {Object.entries(parsedEnv).map(([key, value]) => (
+                    key !== 'CLOUDO_PAYLOAD' && (
+                      <div key={key} className="flex flex-col gap-1 border-b border-cloudo-border/10 pb-2 overflow-hidden">
+                        <span className="text-[10px] font-black text-cloudo-accent uppercase truncate">{key}</span>
+                        <span className="text-xs text-cloudo-muted font-mono truncate" title={value}>{value}</span>
+                      </div>
+                    )
+                  ))}
+                  <div className="col-span-2 mt-2 pt-2 border-t border-cloudo-border/20">
+                    <span className="text-[10px] font-black text-cloudo-accent uppercase block mb-1">CLOUDO_PAYLOAD</span>
+                    <code className="text-[10px] text-cloudo-muted break-all opacity-60">
+                      {parsedEnv['CLOUDO_PAYLOAD']}
+                    </code>
+                  </div>
+                </div>
               </div>
-            )}
+            </section>
+
+            <section className="space-y-6">
+              <div className="flex items-center gap-3 border-b border-cloudo-border pb-4">
+                <HiOutlineInformationCircle className="text-cloudo-accent w-6 h-6" />
+                <h2 className="text-xl font-black uppercase tracking-widest text-cloudo-text">Manuale Sviluppatore Runbook</h2>
+              </div>
+              <p className="text-sm text-cloudo-muted leading-relaxed">
+                Benvenuto nella guida tecnica di ClouDO. In questa sezione troverai tutto il necessario per costruire runbook robusti, sicuri e integrati correttamente con l'orchestratore.
+              </p>
+            </section>
+
+            <div className="grid grid-cols-2 gap-8">
+              <HandbookSection title="Runtime Context" icon={<HiOutlineCube />}>
+                  Il Worker inietta i parametri parsati dal JSON nelle variabili d'ambiente come ad esempio <code className="text-cloudo-accent">RESOURCE_ID</code>. In Python: <code className="text-cloudo-accent">os.environ.get('RESOURCE_ID')</code>.
+              </HandbookSection>
+
+              <HandbookSection title="Output Capture" icon={<HiOutlineTerminal />}>
+                  ClouDO cattura sia <code className="text-cloudo-text">stdout</code> che <code className="text-cloudo-text">stderr</code>. Usa <code className="text-cloudo-text">stderr</code> per la telemetria e <code className="text-cloudo-accent">stdout</code> per i dati finali.
+              </HandbookSection>
+            </div>
+
+            <HandbookSection title="Common Environment Variables" icon={<HiOutlineVariable />}>
+                <div className="grid grid-cols-2 gap-x-12 gap-y-4 mt-4">
+                  <VarItem name="RESOURCE_ID" desc="ID risorsa Azure (/subscriptions/...)" />
+                  <VarItem name="RESOURCE_RG" desc="Resource Group della risorsa." />
+                  <VarItem name="RESOURCE_NAME" desc="Nome finale della risorsa." />
+                  <VarItem name="MONITOR_CONDITION" desc="Stato allarme (Fired/Resolved)." />
+                  <VarItem name="SEVERITY" desc="Livello di gravità (Sev0-4)." />
+                  <VarItem name="SCHEMA_ID" desc="Identificativo dello schema di allarme." />
+                  <VarItem name="K8S_NAMESPACE" desc="Namespace Kubernetes (se presente)." />
+                  <VarItem name="K8S_POD" desc="Nome del Pod (se presente)." />
+                  <VarItem name="K8S_DEPLOYMENT" desc="Nome del Deployment (se presente)." />
+                  <VarItem name="K8S_JOB" desc="Nome del Job (se presente)." />
+                  <VarItem name="K8S_HPA" desc="Horizontal Pod Autoscaler (se presente)." />
+                  <VarItem name="CLOUDO_PAYLOAD" desc="L'intero payload JSON originale." />
+                </div>
+            </HandbookSection>
+
+            <section className="space-y-6 bg-cloudo-panel border border-cloudo-border p-8">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <HiOutlineCode className="text-cloudo-accent w-5 h-5" />
+                  <h3 className="text-sm font-black uppercase tracking-widest text-cloudo-text">Blueprint Selezionato: {selectedTemplate.name}</h3>
+                </div>
+                <div className="flex gap-4">
+                  <button onClick={handleDownload} className="text-[10px] uppercase font-bold text-cloudo-muted hover:text-cloudo-accent flex items-center gap-1 transition-colors">
+                    <HiOutlineDownload className="w-3 h-3" /> Export
+                  </button>
+                  <button onClick={handleCopy} className="text-[10px] uppercase font-bold text-cloudo-muted hover:text-cloudo-accent flex items-center gap-1 transition-colors">
+                    {copied ? <HiOutlineCheck className="w-3 h-3" /> : <HiOutlineClipboardCopy className="w-3 h-3" />}
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+              <div className="bg-cloudo-dark/50 border border-cloudo-border/50 p-4 rounded overflow-hidden">
+                <pre className="text-xs text-cloudo-muted overflow-x-auto custom-scrollbar leading-5">
+                  <code>{selectedTemplate.code}</code>
+                </pre>
+              </div>
+            </section>
+
+            <HandbookSection title="Deployment Workflow" icon={<HiOutlineDocumentText />}>
+                <p>
+                  Per rendere operativo il tuo runbook:
+                </p>
+                <ol className="list-decimal list-inside mt-4 space-y-2 text-cloudo-muted/80">
+                  <li>Salva lo script nel path configurato sul Worker (es: <code className="text-cloudo-text">src/cloudo/runbooks/</code>).</li>
+                  <li>Assicurati che lo script abbia i permessi di esecuzione (<code className="text-cloudo-text">chmod +x</code>).</li>
+                  <li>Crea o aggiorna lo Schema nel Registry puntando al file creato.</li>
+                </ol>
+            </HandbookSection>
           </div>
         </div>
       </div>

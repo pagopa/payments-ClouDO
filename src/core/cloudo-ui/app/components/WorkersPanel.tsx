@@ -10,7 +10,8 @@ import {
   HiOutlineChip,
   HiOutlineTerminal,
   HiOutlineGlobeAlt,
-  HiOutlineClock
+  HiOutlineClock,
+  HiOutlineSearch
 } from 'react-icons/hi';
 
 interface WorkerProcess {
@@ -156,77 +157,12 @@ export function WorkersPanel() {
           className="btn btn-primary h-10"
         >
           <HiOutlineRefresh className={`w-4 h-4 ${loadingWorkers ? 'animate-spin' : ''}`} />
-          Sync Registry
+          Refresh
         </button>
       </div>
 
       <div className="flex-1 overflow-auto p-8 space-y-12">
         <div className="max-w-[1400px] mx-auto space-y-12">
-
-          {/* Section: Workers Registry */}
-          <section className="space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="w-1.5 h-4 bg-cloudo-accent" />
-              <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">Active Infrastructure</h2>
-            </div>
-
-            {loadingWorkers ? (
-              <div className="py-20 text-center flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-2 border-cloudo-accent/30 border-t-cloudo-accent rounded-full animate-spin" />
-                <span className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted">Polling Workers...</span>
-              </div>
-            ) : Object.keys(workersByCapability).length === 0 ? (
-              <div className="py-20 text-center border border-cloudo-border bg-cloudo-accent/5">
-                <p className="text-[11px] uppercase font-black tracking-widest text-cloudo-muted">Registry Empty // No active nodes</p>
-              </div>
-            ) : (
-              <div className="space-y-10">
-                {Object.entries(workersByCapability).map(([capability, workerList]) => (
-                  <div key={capability} className="space-y-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <HiOutlineChip className="text-cloudo-accent w-4 h-4 opacity-60 shrink-0" />
-                      <h3 className="text-sm font-black text-cloudo-text uppercase tracking-[0.2em] truncate">{capability}</h3>
-                      <div className="h-[1px] flex-1 bg-cloudo-border" />
-                      <span className="text-[11px] font-mono text-cloudo-muted/70 shrink-0">{workerList.length} Units</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {workerList.map((worker) => (
-                        <div
-                          key={worker.RowKey}
-                          className="bg-cloudo-panel border border-cloudo-border p-5 hover:border-cloudo-accent/30 transition-all group relative overflow-hidden"
-                        >
-                          <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-ok/20" />
-                          <div className="flex justify-between items-start mb-6">
-                            <code className="text-sm font-mono font-bold text-cloudo-accent group-hover:text-cloudo-text transition-colors">
-                              {worker.RowKey}
-                            </code>
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 bg-cloudo-ok animate-pulse" />
-                              <span className="text-[11px] font-black text-cloudo-ok uppercase tracking-widest">Live</span>
-                            </div>
-                          </div>
-                          <div className="space-y-3 text-[11px] font-bold text-cloudo-muted uppercase tracking-widest">
-                            <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
-                              <span className="opacity-70 flex items-center gap-1"><HiOutlineDatabase className="w-3 h-3"/> Queue</span>
-                              <span className="text-cloudo-text font-mono lowercase">{worker.Queue}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
-                              <span className="opacity-70 flex items-center gap-1"><HiOutlineGlobeAlt className="w-3 h-3"/> Region</span>
-                              <span className="text-cloudo-text">{worker.Region}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
-                              <span className="opacity-70 flex items-center gap-1"><HiOutlineClock className="w-3 h-3"/> Load</span>
-                              <span className="text-cloudo-accent">{worker.Load}%</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
 
           {/* Section: Worker Processes */}
           <section className="space-y-6">
@@ -238,30 +174,37 @@ export function WorkersPanel() {
             <div className="bg-cloudo-panel border border-cloudo-border p-6">
               <div className="flex flex-col md:flex-row gap-6 items-end">
                 <div className="flex-1 space-y-2">
-                  <label className="text-[11px] font-black uppercase tracking-[0.3em] text-cloudo-muted ml-1">Target Worker Pool</label>
-                  <select
-                    className="input h-11 appearance-none"
-                    value={selectedWorker}
-                    onChange={(e) => setSelectedWorker(e.target.value)}
-                    disabled={workers.length === 0}
-                  >
-                    <option value="">SELECT_NODE...</option>
-                    <option value="all" className="font-bold text-cloudo-accent">SCAN_ALL_NODES</option>
-                    {workers.map((worker) => (
-                      <option key={worker.RowKey} value={worker.RowKey}>
-                        {worker.RowKey} [{worker.PartitionKey}]
-                      </option>
-                    ))}
-                  </select>
+                  <label className="text-[11px] font-black uppercase tracking-[0.3em] text-cloudo-muted ml-1 block">Target Worker Pool</label>
+                  <div className="relative group">
+                    <div className="flex gap-4">
+                      <div className="relative flex-1">
+                        <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
+                        <select
+                          className="input-executions w-full pl-10 pr-4 h-13 appearance-none"
+                          value={selectedWorker}
+                          onChange={(e) => setSelectedWorker(e.target.value)}
+                          disabled={workers.length === 0}
+                        >
+                          <option value="">SELECT_NODE...</option>
+                          <option value="all" className="font-bold text-cloudo-accent">SCAN_ALL_NODES</option>
+                          {workers.map((worker) => (
+                            <option key={worker.RowKey} value={worker.RowKey}>
+                              {worker.RowKey} [{worker.PartitionKey}]
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        onClick={() => fetchProcesses(selectedWorker)}
+                        disabled={!selectedWorker || loading}
+                        className="btn btn-primary h-13 px-8"
+                      >
+                        {loading ? <HiOutlineRefresh className="w-4 h-4 animate-spin" /> : <HiOutlinePlay className="w-4 h-4" />}
+                        Inspect
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => fetchProcesses(selectedWorker)}
-                  disabled={!selectedWorker || loading}
-                  className="btn btn-primary h-11 px-8"
-                >
-                  {loading ? <HiOutlineRefresh className="w-4 h-4 animate-spin" /> : <HiOutlinePlay className="w-4 h-4" />}
-                  Inspect
-                </button>
               </div>
 
               {processes.length > 0 && (
@@ -328,6 +271,75 @@ export function WorkersPanel() {
                 </div>
               )}
             </div>
+          </section>
+
+                    {/* Section: Workers Registry */}
+          <section className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="w-1.5 h-4 bg-cloudo-accent" />
+              <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">Active Infrastructure</h2>
+            </div>
+
+            {loadingWorkers ? (
+              <div className="py-20 text-center flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-2 border-cloudo-accent/30 border-t-cloudo-accent rounded-full animate-spin" />
+                <span className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted">Polling Workers...</span>
+              </div>
+            ) : Object.keys(workersByCapability).length === 0 ? (
+              <div className="py-20 text-center border border-cloudo-border bg-cloudo-accent/5">
+                <p className="text-[11px] uppercase font-black tracking-widest text-cloudo-muted">Registry Empty // No active nodes</p>
+              </div>
+            ) : (
+              <div className="space-y-10">
+                {Object.entries(workersByCapability).map(([capability, workerList]) => (
+                  <div key={capability} className="space-y-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <HiOutlineChip className="text-cloudo-accent w-4 h-4 opacity-60 shrink-0" />
+                      <h3 className="text-sm font-black text-cloudo-text uppercase tracking-[0.2em] truncate">{capability}</h3>
+                      <div className="h-[1px] flex-1 bg-cloudo-border" />
+                      <span className="text-[11px] font-mono text-cloudo-muted/70 shrink-0">{workerList.length} Units</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {workerList.map((worker) => (
+                        <div
+                          key={worker.RowKey}
+                          className="bg-cloudo-panel border border-cloudo-border p-5 hover:border-cloudo-accent/30 transition-all group relative overflow-hidden"
+                        >
+                          <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-ok/20" />
+                          <div className="flex justify-between items-start mb-6">
+                            <code className="text-sm font-mono font-bold text-cloudo-accent group-hover:text-cloudo-text transition-colors">
+                              {worker.RowKey}
+                            </code>
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 bg-cloudo-ok animate-pulse" />
+                              <span className="text-[11px] font-black text-cloudo-ok uppercase tracking-widest">Alive</span>
+                            </div>
+                          </div>
+                          <div className="space-y-3 text-[11px] font-bold text-cloudo-muted uppercase tracking-widest">
+                            <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
+                              <span className="opacity-70 flex items-center gap-1"><HiOutlineDatabase className="w-3 h-3"/> Queue</span>
+                              <span className="text-cloudo-text font-mono lowercase">{worker.Queue}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
+                              <span className="opacity-70 flex items-center gap-1"><HiOutlineGlobeAlt className="w-3 h-3"/> Region</span>
+                              <span className="text-cloudo-text">{worker.Region}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
+                              <span className="opacity-70 flex items-center gap-1"><HiOutlineClock className="w-3 h-3"/> Load</span>
+                              <span className="text-cloudo-accent">{worker.Load}%</span>
+                            </div>
+                            <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
+                              <span className="opacity-70 flex items-center gap-1"><HiOutlineClock className="w-3 h-3"/> Last Seen</span>
+                              <span className="text-cloudo-accent">{worker.LastSeen}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
       </div>
