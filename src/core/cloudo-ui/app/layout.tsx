@@ -37,6 +37,39 @@ export default function RootLayout({
 
   const isLoginPage = pathname === '/login';
 
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('cloudo_theme') as 'dark' | 'light';
+    if (savedTheme) {
+      setTheme(savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const savedTheme = localStorage.getItem('cloudo_theme') as 'dark' | 'light';
+      if (savedTheme && savedTheme !== theme) {
+        setTheme(savedTheme);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    // Also listen for our custom dispatch if it's the same window
+    window.addEventListener('theme-change', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('theme-change', handleStorageChange);
+    };
+  }, [theme]);
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('cloudo_theme', newTheme);
+  };
+
   // Prevent flash of content or sidebar
   if (isAuthenticated === null && !isLoginPage) {
     return (
@@ -48,10 +81,10 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className={`${inter.variable} antialiased`}>
+      <body className={`${inter.variable} antialiased ${theme}`}>
         <div className="flex h-screen overflow-hidden">
-          {!isLoginPage && isAuthenticated && <Sidebar />}
-          <main className="flex-1 overflow-y-auto bg-cloudo-dark">
+          {!isLoginPage && isAuthenticated && <Sidebar theme={theme} toggleTheme={toggleTheme} />}
+          <main className={`flex-1 overflow-y-auto bg-cloudo-dark transition-colors duration-300`}>
             {children}
           </main>
         </div>

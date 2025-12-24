@@ -32,7 +32,13 @@ async function handleRequest(request: NextRequest) {
   const cloudoKey = process.env.CLOUDO_KEY || '';
   const functionKey = process.env.FUNCTION_KEY || '';
 
-  const targetUrl = new URL(`${apiUrl}${path.startsWith('/') ? '' : '/'}${path}`);
+  let cleanPath = path;
+  const apiPrefix = '/api';
+  if (apiUrl.endsWith(apiPrefix) && path.startsWith(apiPrefix)) {
+    cleanPath = path.substring(apiPrefix.length);
+  }
+
+  const targetUrl = new URL(`${apiUrl}${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`);
 
   // Only append search params that are not already in the path
   searchParams.forEach((value, key) => {

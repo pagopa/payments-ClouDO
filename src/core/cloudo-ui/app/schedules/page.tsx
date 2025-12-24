@@ -152,7 +152,7 @@ export default function SchedulesPage() {
             <HiOutlineClock className="text-cloudo-accent w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Automated Schedules</h1>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Automated Schedules</h1>
             <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Cron Engine // CRON_DB</p>
           </div>
         </div>
@@ -185,7 +185,7 @@ export default function SchedulesPage() {
 
             <table className="w-full text-left border-collapse text-sm">
               <thead>
-                <tr className="border-b border-cloudo-border bg-black/40">
+                <tr className="border-b border-cloudo-border bg-cloudo-accent/10">
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Task Name</th>
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Cron Expression</th>
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Runbook Path</th>
@@ -205,17 +205,17 @@ export default function SchedulesPage() {
                         <div className="flex items-center gap-3">
                           <div className={`w-2 h-2 rounded-full ${s.enabled ? 'bg-cloudo-ok animate-pulse' : 'bg-cloudo-muted opacity-60'}`} />
                           <div className="flex flex-col">
-                            <span className="text-sm font-black text-white tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">{s.name}</span>
+                            <span className="text-sm font-black text-cloudo-text tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">{s.name}</span>
                             <span className="text-[11px] text-cloudo-muted/70 font-mono mt-0.5">ID: {s.id}</span>
                           </div>
                         </div>
                       </td>
                       <td className="px-8 py-6">
-                        <div className="bg-black/40 border border-cloudo-border px-3 py-1.5 font-mono text-cloudo-accent/80 text-xs w-fit">
+                        <div className="bg-cloudo-accent/10 border border-cloudo-border px-3 py-1.5 font-mono text-cloudo-accent/80 text-xs w-fit">
                           {s.cron}
                         </div>
                       </td>
-                      <td className="px-8 py-6 text-white/70 font-mono">
+                      <td className="px-8 py-6 text-cloudo-text/70 font-mono">
                         <div className="flex items-center gap-2">
                            <HiOutlineTerminal className="w-4 h-4 opacity-60" />
                            {s.runbook}
@@ -231,8 +231,8 @@ export default function SchedulesPage() {
                             disabled={togglingId === s.id}
                             className={`p-2.5 border transition-all ${
                               s.enabled
-                                ? 'bg-black/40 border-cloudo-border text-cloudo-ok hover:border-cloudo-ok/40'
-                                : 'bg-black/40 border-cloudo-border text-cloudo-muted hover:border-white/20'
+                                ? 'bg-cloudo-accent/10 border-cloudo-border text-cloudo-ok hover:border-cloudo-ok/40'
+                                : 'bg-cloudo-accent/10 border-cloudo-border text-cloudo-muted hover:border-white/20'
                             } ${togglingId === s.id ? 'opacity-50 cursor-wait' : ''}`}
                             title={s.enabled ? "Disable Schedule" : "Enable Schedule"}
                           >
@@ -246,14 +246,14 @@ export default function SchedulesPage() {
                           </button>
                           <button
                             onClick={() => { setSelectedSchedule(s); setModalMode('edit'); }}
-                            className="p-2.5 bg-black/40 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-white transition-all group/btn"
+                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn"
                             title="Edit Schedule"
                           >
                             <HiOutlinePencil className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => deleteSchedule(s.id)}
-                            className="p-2.5 bg-black/40 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-white transition-all group/btn"
+                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn"
                             title="Delete Schedule"
                           >
                             <HiOutlineTrash className="w-4 h-4" />
@@ -273,14 +273,14 @@ export default function SchedulesPage() {
       {modalMode && (
         <div className="fixed inset-0 bg-cloudo-dark/90 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setModalMode(null)}>
           <div className="bg-cloudo-panel border border-cloudo-border shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-            <div className="px-8 py-5 border-b border-cloudo-border flex justify-between items-center bg-black/20">
+            <div className="px-8 py-5 border-b border-cloudo-border flex justify-between items-center bg-cloudo-accent/5">
               <div className="flex items-center gap-3">
                 <HiOutlineClock className="text-cloudo-accent w-5 h-5" />
-                <h3 className="text-sm font-black uppercase tracking-[0.3em] text-white">
+                <h3 className="text-sm font-black uppercase tracking-[0.3em] text-cloudo-text">
                   {modalMode === 'create' ? 'Provision Schedule' : 'Update Cron Policy'}
                 </h3>
               </div>
-              <button onClick={() => setModalMode(null)} className="p-1.5 hover:bg-cloudo-err hover:text-white border border-cloudo-border text-cloudo-muted transition-colors">
+              <button onClick={() => setModalMode(null)} className="p-1.5 hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-border text-cloudo-muted transition-colors">
                 <HiOutlineX className="w-5 h-5" />
               </button>
             </div>
@@ -399,9 +399,9 @@ function ScheduleForm({ initialData, mode, onSuccess, onCancel, onError }: any) 
         </div>
       </div>
 
-      <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, enabled: !formData.enabled})}>
+      <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, enabled: !formData.enabled})}>
         <div className="space-y-1">
-          <p className="text-sm font-black text-white uppercase tracking-widest">Enabled</p>
+          <p className="text-sm font-black text-cloudo-text uppercase tracking-widest">Enabled</p>
           <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">Set Schedule State</p>
         </div>
         <div className={`flex items-center gap-2 px-3 py-1 border font-black text-[11px] uppercase tracking-widest transition-all ${formData.enabled ? 'bg-cloudo-ok/10 border-cloudo-ok text-cloudo-ok' : 'bg-cloudo-muted/10 border-cloudo-muted text-cloudo-muted opacity-70'}`}>

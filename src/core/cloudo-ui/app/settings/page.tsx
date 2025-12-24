@@ -140,7 +140,7 @@ export default function SettingsPage() {
             <HiOutlineCog className="text-cloudo-accent w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">System Settings</h1>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">System Settings</h1>
             <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Global Config // SYSTEM_GATE</p>
           </div>
         </div>
@@ -172,7 +172,7 @@ export default function SettingsPage() {
             <div className="space-y-6">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-4 bg-cloudo-accent" />
-                <h2 className="text-sm font-black uppercase tracking-[0.4em] text-white">Execution Policy</h2>
+                <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">Execution Policy</h2>
               </div>
 
               <div className="bg-cloudo-panel border border-cloudo-border p-6 space-y-6">
@@ -198,12 +198,12 @@ export default function SettingsPage() {
                   <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1">Automatic pruning of old telemetry data</p>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setSettings({...settings, SYSTEM_MAINTENANCE_MODE: settings.SYSTEM_MAINTENANCE_MODE === 'true' ? 'false' : 'true'})}>
+                <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setSettings({...settings, SYSTEM_MAINTENANCE_MODE: settings.SYSTEM_MAINTENANCE_MODE === 'true' ? 'false' : 'true'})}>
                   <div className="space-y-1">
-                    <p className="text-sm font-black text-white uppercase tracking-widest">Maintenance Mode</p>
+                    <p className="text-sm font-black text-cloudo-text uppercase tracking-widest">Maintenance Mode</p>
                     <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">Lock all executions</p>
                   </div>
-                  <div className={`w-5 h-5 border flex items-center justify-center transition-all ${settings.SYSTEM_MAINTENANCE_MODE === 'true' ? 'bg-cloudo-err border-cloudo-err text-white' : 'border-cloudo-border'}`}>
+                  <div className={`w-5 h-5 border flex items-center justify-center transition-all ${settings.SYSTEM_MAINTENANCE_MODE === 'true' ? 'bg-cloudo-err border-cloudo-err text-cloudo-text' : 'border-cloudo-border'}`}>
                     {settings.SYSTEM_MAINTENANCE_MODE === 'true' && <HiOutlineShieldCheck className="w-4 h-4" />}
                   </div>
                 </div>
@@ -214,7 +214,7 @@ export default function SettingsPage() {
             <div className="space-y-6">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-4 bg-cloudo-warn" />
-                <h2 className="text-sm font-black uppercase tracking-[0.4em] text-white">Security & Alerts</h2>
+                <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">Security & Alerts</h2>
               </div>
 
 
@@ -252,9 +252,9 @@ export default function SettingsPage() {
 
                   */}
 
-                <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setSettings({...settings, AUDIT_ENABLED: settings.AUDIT_ENABLED === 'true' ? 'false' : 'true'})}>
+                <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setSettings({...settings, AUDIT_ENABLED: settings.AUDIT_ENABLED === 'true' ? 'false' : 'true'})}>
                   <div className="space-y-1">
-                    <p className="text-sm font-black text-white uppercase tracking-widest">Audit Engine</p>
+                    <p className="text-sm font-black text-cloudo-text uppercase tracking-widest">Audit Engine</p>
                     <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">Log all operator actions</p>
                   </div>
                   <div className={`w-5 h-5 border flex items-center justify-center transition-all ${settings.AUDIT_ENABLED === 'true' ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
@@ -273,7 +273,7 @@ export default function SettingsPage() {
             <div className="relative z-10 flex gap-6 items-start">
               <HiOutlineInformationCircle className="text-cloudo-accent w-6 h-6 shrink-0 mt-1" />
               <div className="space-y-4">
-                <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Operator Note</h3>
+                <h3 className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">Operator Note</h3>
                 <p className="text-[10px] text-cloudo-muted uppercase font-bold leading-relaxed max-w-2xl">
                   These parameters affect the global behavior of the ClouDO engine. Changes are applied in real-time to all future runbook executions and audit streams. Verify security hooks before committing.
                 </p>

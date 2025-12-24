@@ -94,7 +94,7 @@ export default function AuditPage() {
             <HiOutlineClipboardList className="text-cloudo-err w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Security Audit Log</h1>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Security Audit Log</h1>
             <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Immutable Action Trace // SEC_VAULT</p>
           </div>
         </div>
@@ -130,7 +130,7 @@ export default function AuditPage() {
 
             <table className="w-full text-left border-collapse text-sm">
               <thead>
-                <tr className="border-b border-cloudo-border bg-black/40">
+                <tr className="border-b border-cloudo-border bg-cloudo-accent/10">
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] w-48 text-[11px]">Timestamp</th>
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] w-40 text-[11px]">Operator</th>
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] w-48 text-[11px]">Action Event</th>
@@ -154,7 +154,7 @@ export default function AuditPage() {
                   filteredLogs.map((log, idx) => (
                     <tr key={`${log.timestamp}-${idx}`} className="group hover:bg-white/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-err/40">
                       <td className="px-8 py-6 whitespace-nowrap">
-                        <div className="flex items-center gap-2 text-white/80 font-mono">
+                        <div className="flex items-center gap-2 text-cloudo-text/80 font-mono">
                           <HiOutlineClock className="w-4 h-4 opacity-60" />
                           <span>{log.timestamp?.replace('T', ' ').split('.')[0]}</span>
                         </div>
@@ -162,7 +162,7 @@ export default function AuditPage() {
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-2">
                           <HiOutlineUser className="w-4 h-4 text-cloudo-accent opacity-70" />
-                          <span className="font-black text-white uppercase tracking-widest">{log.operator}</span>
+                          <span className="font-black text-cloudo-text uppercase tracking-widest">{log.operator}</span>
                         </div>
                       </td>
                       <td className="px-8 py-6">

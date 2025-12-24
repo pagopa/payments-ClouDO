@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { HiOutlineLockClosed, HiOutlineUser, HiOutlineLightningBolt, HiOutlineCheckCircle } from 'react-icons/hi';
+import { HiOutlineLockClosed, HiOutlineUser, HiOutlineLightningBolt, HiOutlineCheckCircle, HiOutlineSun, HiOutlineMoon } from 'react-icons/hi';
 import Link from 'next/link';
 
 function LoginForm() {
@@ -11,6 +11,7 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const router = useRouter();
   const searchParams = useSearchParams();
   const registered = searchParams.get('registered') === 'true';
@@ -22,6 +23,21 @@ function LoginForm() {
       router.push('/');
     }
   }, [router]);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('cloudo_theme') as 'dark' | 'light';
+    if (savedTheme) {
+      setTheme(savedTheme);
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('cloudo_theme', newTheme);
+    // Dispatch a custom event to notify the RootLayout (same window)
+    window.dispatchEvent(new Event('theme-change'));
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,7 +80,7 @@ function LoginForm() {
             <div className="absolute -bottom-1 -right-1 w-2 h-2 border-b border-r border-cloudo-accent" />
             <HiOutlineLightningBolt className="text-cloudo-accent w-12 h-12 shrink-0" />
           </div>
-          <h1 className="text-4xl font-black tracking-[0.2em] text-white uppercase">
+          <h1 className="text-4xl font-black tracking-[0.2em] text-cloudo-text uppercase">
             <span className="text-cloudo-accent">Clou</span>DO
           </h1>
           <div className="w-16 h-[1px] bg-cloudo-accent/30 my-4" />
@@ -82,9 +98,18 @@ function LoginForm() {
           <div className="border-b border-cloudo-border p-6 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-cloudo-accent animate-pulse" />
-              <h2 className="text-sm font-black uppercase tracking-[0.3em] text-white">System Access Gate</h2>
+              <h2 className="text-sm font-black uppercase tracking-[0.3em] text-cloudo-text">System Access Gate</h2>
             </div>
-            <span className="text-[10px] font-mono text-cloudo-muted/70">GATE-AUTH</span>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={toggleTheme}
+                className="p-1.5 border border-cloudo-border text-cloudo-muted hover:text-cloudo-accent hover:border-cloudo-accent transition-all"
+                title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              >
+                {theme === 'dark' ? <HiOutlineSun className="w-3.5 h-3.5" /> : <HiOutlineMoon className="w-3.5 h-3.5" />}
+              </button>
+              <span className="text-[10px] font-mono text-cloudo-muted/70">GATE-AUTH</span>
+            </div>
           </div>
 
           <form onSubmit={handleLogin} className="p-8 space-y-8">
@@ -99,7 +124,7 @@ function LoginForm() {
             )}
             <div className="space-y-4">
               <div className="relative group">
-                <div className="absolute inset-y-0 left-0 w-12 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 transition-colors bg-black/20">
+                <div className="absolute inset-y-0 left-0 w-12 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 transition-colors bg-cloudo-accent/5">
                   <HiOutlineUser className="text-cloudo-muted w-5 h-5 shrink-0 group-focus-within:text-cloudo-accent" />
                 </div>
                 <input
@@ -107,13 +132,13 @@ function LoginForm() {
                   placeholder="USERNAME"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-black/40 border border-cloudo-border/50 rounded-none pl-16 pr-4 py-4 text-sm font-bold tracking-[0.2em] text-white outline-none focus:border-cloudo-accent/40 focus:bg-cloudo-accent/5 transition-all placeholder:text-cloudo-muted/80"
+                  className="w-full bg-cloudo-accent/10 border border-cloudo-border/50 rounded-none pl-16 pr-4 py-4 text-sm font-bold tracking-[0.2em] text-cloudo-text outline-none focus:border-cloudo-accent/40 focus:bg-cloudo-accent/5 transition-all placeholder:text-cloudo-muted/80"
                   required
                 />
               </div>
 
               <div className="relative group">
-                <div className="absolute inset-y-0 left-0 w-12 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 transition-colors bg-black/20">
+                <div className="absolute inset-y-0 left-0 w-12 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 transition-colors bg-cloudo-accent/5">
                   <HiOutlineLockClosed className="text-cloudo-muted w-5 h-5 shrink-0 group-focus-within:text-cloudo-accent" />
                 </div>
                 <input
@@ -121,7 +146,7 @@ function LoginForm() {
                   placeholder="PASSWORD"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-black/40 border border-cloudo-border/50 rounded-none pl-16 pr-4 py-4 text-sm font-bold tracking-[0.2em] text-white outline-none focus:border-cloudo-accent/40 focus:bg-cloudo-accent/5 transition-all placeholder:text-cloudo-muted/80"
+                  className="w-full bg-cloudo-accent/10 border border-cloudo-border/50 rounded-none pl-16 pr-4 py-4 text-sm font-bold tracking-[0.2em] text-cloudo-text outline-none focus:border-cloudo-accent/40 focus:bg-cloudo-accent/5 transition-all placeholder:text-cloudo-muted/80"
                   required
                 />
               </div>
@@ -149,7 +174,7 @@ function LoginForm() {
             </button>
           </form>
 
-          <div className="border-t border-cloudo-border p-4 bg-black/20 flex justify-center">
+          <div className="border-t border-cloudo-border p-4 bg-cloudo-accent/5 flex justify-center">
             <p className="text-[10px] text-cloudo-muted font-bold uppercase tracking-[0.2em] opacity-70">
               Terminal Node: CLOUDO-AUTH-01 // P-SECURE
             </p>

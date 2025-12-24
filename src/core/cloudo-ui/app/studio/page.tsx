@@ -338,12 +338,12 @@ export default function StudioPage() {
             <HiOutlineCode className="text-cloudo-accent w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Runbook Studio & Advisor</h1>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Runbook Studio & Advisor</h1>
             <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Interactive Editor // LIVE_GUIDANCE_ACTIVE</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <button onClick={handleDownload} className="btn btn-ghost border-cloudo-border/40 hover:border-cloudo-accent/40 text-cloudo-muted hover:text-white">
+          <button onClick={handleDownload} className="btn btn-ghost border-cloudo-border/40 hover:border-cloudo-accent/40 text-cloudo-muted hover:text-cloudo-text">
             <HiOutlineDownload className="w-5 h-5" />
             Export File
           </button>
@@ -356,10 +356,10 @@ export default function StudioPage() {
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar: Templates */}
-        <div className="w-72 border-r border-cloudo-border bg-black/20 overflow-y-auto p-6 space-y-6 shrink-0">
+        <div className="w-72 border-r border-cloudo-border bg-cloudo-accent/5 overflow-y-auto p-6 space-y-6 shrink-0">
           <div className="flex items-center gap-2 mb-3">
             <HiOutlineDocumentText className="text-cloudo-accent w-4 h-4" />
-            <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-white">Logic Blueprints</h2>
+            <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Logic Blueprints</h2>
           </div>
           <div className="space-y-3">
             {TEMPLATES.map((tpl) => (
@@ -374,7 +374,7 @@ export default function StudioPage() {
               >
                 <div className="flex items-center gap-3 mb-2">
                   {tpl.lang === 'python' ? <HiOutlineCode className="text-cloudo-accent w-4 h-4" /> : <HiOutlineTerminal className="text-cloudo-accent w-4 h-4" />}
-                  <span className="text-[11px] font-black text-white uppercase tracking-widest">{tpl.name}</span>
+                  <span className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">{tpl.name}</span>
                 </div>
                 <p className="text-[11px] text-cloudo-muted leading-relaxed opacity-60 group-hover:opacity-400">
                   {tpl.description}
@@ -389,11 +389,11 @@ export default function StudioPage() {
           <div className="pt-8 space-y-4">
              <div className="flex items-center gap-2 mb-3">
                 <HiOutlineShieldCheck className="text-cloudo-accent w-4 h-4" />
-                <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-white">Advisor Tips</h2>
+                <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Advisor Tips</h2>
               </div>
               <div className="space-y-3">
                 {suggestions.map((s) => (
-                  <div key={s.id} className={`p-3 border-l-2 bg-black/40 ${
+                  <div key={s.id} className={`p-3 border-l-2 bg-cloudo-accent/10 ${
                     s.type === 'warning' ? 'border-cloudo-warn' :
                     s.type === 'success' ? 'border-green-500' : 'border-cloudo-accent'
                   }`}>
@@ -401,7 +401,7 @@ export default function StudioPage() {
                       {s.type === 'warning' && <HiOutlineExclamationCircle className="text-cloudo-warn w-3 h-3" />}
                       {s.type === 'success' && <HiOutlineCheck className="text-green-500 w-3 h-3" />}
                       {s.type === 'info' && <HiOutlineInformationCircle className="text-cloudo-accent w-3 h-3" />}
-                      <span className="text-[10px] font-bold text-white uppercase tracking-tighter">{s.text}</span>
+                      <span className="text-[10px] font-bold text-cloudo-text uppercase tracking-tighter">{s.text}</span>
                     </div>
                     <p className="text-[10px] text-cloudo-muted italic opacity-60 leading-tight">
                       {s.impact}
@@ -413,7 +413,7 @@ export default function StudioPage() {
         </div>
 
         {/* Center: Editor */}
-        <div className="flex-1 flex flex-col bg-black overflow-hidden relative">
+        <div className="flex-1 flex flex-col bg-cloudo-dark overflow-hidden relative">
           <div className="absolute top-0 left-0 w-full h-[1px] bg-cloudo-accent/10 pointer-events-none" />
           <div className="flex items-center justify-between px-6 py-2 bg-cloudo-panel-2 border-b border-cloudo-border shrink-0">
              <div className="flex items-center gap-3">
@@ -443,13 +443,13 @@ export default function StudioPage() {
         </div>
 
         {/* Right Sidebar: Handbook & Simulator */}
-        <div className="w-96 border-l border-cloudo-border bg-black/20 flex flex-col shrink-0">
+        <div className="w-96 border-l border-cloudo-border bg-cloudo-accent/5 flex flex-col shrink-0">
           {/* Tabs Header */}
           <div className="flex border-b border-cloudo-border bg-cloudo-panel-2/30">
             <button
               onClick={() => setRightTab('simulator')}
               className={`flex-1 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
-                rightTab === 'simulator' ? 'text-cloudo-accent border-b border-cloudo-accent bg-cloudo-accent/5' : 'text-cloudo-muted hover:text-white'
+                rightTab === 'simulator' ? 'text-cloudo-accent border-b border-cloudo-accent bg-cloudo-accent/5' : 'text-cloudo-muted hover:text-cloudo-text'
               }`}
             >
               <HiOutlinePlay className="w-3 h-3" />
@@ -458,7 +458,7 @@ export default function StudioPage() {
             <button
               onClick={() => setRightTab('handbook')}
               className={`flex-1 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
-                rightTab === 'handbook' ? 'text-cloudo-accent border-b border-cloudo-accent bg-cloudo-accent/5' : 'text-cloudo-muted hover:text-white'
+                rightTab === 'handbook' ? 'text-cloudo-accent border-b border-cloudo-accent bg-cloudo-accent/5' : 'text-cloudo-muted hover:text-cloudo-text'
               }`}
             >
               <HiOutlineBookOpen className="w-3 h-3" />
@@ -474,12 +474,12 @@ export default function StudioPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <HiOutlineDatabase className="text-cloudo-accent w-4 h-4" />
-                      <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-white">Input Payload</h2>
+                      <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Input Payload</h2>
                     </div>
                   </div>
                   <div className="relative group">
                     <textarea
-                      className={`w-full h-48 bg-black/40 border p-3 text-[11px] font-mono text-cloudo-text outline-none transition-colors custom-scrollbar resize-none ${
+                      className={`w-full h-48 bg-cloudo-accent/10 border p-3 text-[11px] font-mono text-cloudo-text outline-none transition-colors custom-scrollbar resize-none ${
                         jsonError ? 'border-cloudo-warn/50 focus:border-cloudo-warn' : 'border-cloudo-border focus:border-cloudo-accent/50'
                       }`}
                       value={payload}
@@ -504,7 +504,7 @@ export default function StudioPage() {
                   className={`w-full py-4 border flex items-center justify-center gap-3 transition-all active:scale-[0.98] ${
                     isSimulating || !!jsonError
                     ? 'border-cloudo-muted/80 bg-cloudo-panel/50 cursor-not-allowed text-cloudo-muted opacity-50'
-                    : 'border-cloudo-accent bg-cloudo-accent/20 hover:bg-cloudo-accent/30 text-white'
+                    : 'border-cloudo-accent bg-cloudo-accent/20 hover:bg-cloudo-accent/30 text-cloudo-text'
                   }`}
                 >
                   <HiOutlinePlay className={`w-5 h-5 ${isSimulating ? 'animate-spin' : ''}`} />
@@ -517,9 +517,9 @@ export default function StudioPage() {
                 <div className="space-y-4">
                    <div className="flex items-center gap-2">
                       <HiOutlineClipboardList className="text-cloudo-accent w-4 h-4" />
-                      <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-white">Execution Logs</h2>
+                      <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Execution Logs</h2>
                     </div>
-                    <div className="bg-black border border-cloudo-border p-4 h-64 overflow-y-auto custom-scrollbar font-mono">
+                    <div className="bg-cloudo-dark border border-cloudo-border p-4 h-64 overflow-y-auto custom-scrollbar font-mono">
                       {simulationOutput.length === 0 && !isSimulating && (
                         <div className="h-full flex flex-col items-center justify-center text-cloudo-muted/80 text-center space-y-2">
                           <HiOutlineTerminal className="w-8 h-8 opacity-40" />
@@ -549,7 +549,7 @@ export default function StudioPage() {
                 </HandbookSection>
 
                 <HandbookSection title="Output Capture" icon={<HiOutlineTerminal />}>
-                    ClouDO cattura sia <code className="text-white">stdout</code> che <code className="text-white">stderr</code>. Usa <code className="text-white">stderr</code> per la telemetria e <code className="text-cloudo-accent">stdout</code> per i dati finali.
+                    ClouDO cattura sia <code className="text-cloudo-text">stdout</code> che <code className="text-cloudo-text">stderr</code>. Usa <code className="text-cloudo-text">stderr</code> per la telemetria e <code className="text-cloudo-accent">stdout</code> per i dati finali.
                 </HandbookSection>
 
                 <HandbookSection title="Common Variables" icon={<HiOutlineVariable />}>
@@ -564,7 +564,7 @@ export default function StudioPage() {
                 </HandbookSection>
 
                 <HandbookSection title="Deployment" icon={<HiOutlineDocumentText />}>
-                    Salva lo script sul Worker Node nel path configurato (es: <code className="text-white">/opt/cloudo/runbooks/</code>) e crea uno Schema nel Registry che lo punti.
+                    Salva lo script sul Worker Node nel path configurato (es: <code className="text-cloudo-text">/opt/cloudo/runbooks/</code>) e crea uno Schema nel Registry che lo punti.
                 </HandbookSection>
               </div>
             )}
@@ -605,7 +605,7 @@ function TipItem({ text }: { text: string }) {
 function HandbookSection({ title, icon, children }: { title: string, icon: React.ReactNode, children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-white/80">
+      <div className="flex items-center gap-2 text-cloudo-text/80">
         <span className="text-cloudo-accent">{icon}</span>
         <span className="text-[11px] font-black uppercase tracking-widest">{title}</span>
       </div>

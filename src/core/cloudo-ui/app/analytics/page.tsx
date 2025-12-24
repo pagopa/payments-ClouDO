@@ -177,13 +177,13 @@ export default function AnalyticsPage() {
             <HiOutlineChartBar className="text-cloudo-accent w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Advanced Analytics</h1>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Advanced Analytics</h1>
             <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Performance & Diagnostics</p>
           </div>
         </div>
 
         {/* Time Picker */}
-        <div className="flex items-center gap-2 bg-black/40 border border-cloudo-border p-1">
+        <div className="flex items-center gap-2 bg-cloudo-accent/10 border border-cloudo-border p-1">
           {['24h', '7d', '30d'].map((range) => (
             <button
               key={range}
@@ -191,7 +191,7 @@ export default function AnalyticsPage() {
               className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${
                 timeRange === range
                   ? 'bg-cloudo-accent text-cloudo-dark'
-                  : 'text-cloudo-muted hover:text-white'
+                  : 'text-cloudo-muted hover:text-cloudo-text'
               }`}
             >
               {range}
@@ -255,7 +255,7 @@ export default function AnalyticsPage() {
                   <div key={status} className="space-y-1">
                     <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest">
                       <span className="text-cloudo-muted">{status}</span>
-                      <span className="text-white">{count} ({((count / data.totalRequests) * 100).toFixed(1)}%)</span>
+                      <span className="text-cloudo-text">{count} ({((count / data.totalRequests) * 100).toFixed(1)}%)</span>
                     </div>
                     <div className="w-full h-1 bg-white/5 overflow-hidden">
                       <div
@@ -291,7 +291,7 @@ export default function AnalyticsPage() {
                   <tbody className="divide-y divide-cloudo-border/50">
                     {data.topRunbooks.map((rb, i) => (
                       <tr key={i} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="px-6 py-4 font-bold text-white uppercase tracking-wider">{rb.name}</td>
+                        <td className="px-6 py-4 font-bold text-cloudo-text uppercase tracking-wider">{rb.name}</td>
                         <td className="px-6 py-4 font-mono text-cloudo-muted">{rb.count}</td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
@@ -355,7 +355,7 @@ export default function AnalyticsPage() {
   );
 }
 
-function MetricCard({ title, value, subValue, icon, trend, positive, color = "text-white" }: any) {
+function MetricCard({ title, value, subValue, icon, trend, positive, color = "text-cloudo-text" }: any) {
   return (
     <div className="bg-cloudo-panel border border-cloudo-border p-6 relative overflow-hidden group">
       <div className="absolute top-0 right-0 p-4 opacity-40 group-hover:opacity-50 transition-opacity text-4xl">
@@ -379,7 +379,7 @@ function SectionHeader({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-3">
       <div className="w-1.5 h-4 bg-cloudo-accent" />
-      <h2 className="text-sm font-black uppercase tracking-[0.4em] text-white">{title}</h2>
+      <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">{title}</h2>
     </div>
   );
 }

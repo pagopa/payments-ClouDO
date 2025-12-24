@@ -213,12 +213,12 @@ export default function ApprovalsPage() {
             <HiOutlineShieldCheck className="text-cloudo-warn w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Governance Gate</h1>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Governance Gate</h1>
             <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Filtered Approval Queue</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
-           <div className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted bg-black/40 px-3 py-1.5 border border-cloudo-border">
+           <div className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted bg-cloudo-accent/10 px-3 py-1.5 border border-cloudo-border">
               {pendingList.length} Requests Pending Signature
            </div>
            <button
@@ -239,7 +239,7 @@ export default function ApprovalsPage() {
               <span className="text-[11px] font-black uppercase tracking-[0.3em] text-cloudo-muted">Verifying Registry Compliance...</span>
             </div>
           ) : pendingList.length === 0 ? (
-            <div className="py-32 text-center border border-cloudo-border bg-black/20">
+            <div className="py-32 text-center border border-cloudo-border bg-cloudo-accent/5">
               <HiOutlineShieldCheck className="w-16 h-16 text-cloudo-muted/80 mx-auto mb-6" />
               <p className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-muted">No authorization requests detected</p>
               <p className="text-[11px] text-cloudo-muted/70 uppercase mt-2 tracking-widest">System is currently compliant</p>
@@ -250,7 +250,7 @@ export default function ApprovalsPage() {
               <div className="space-y-4">
                 <div className="flex items-center gap-3 mb-6">
                    <div className="w-1.5 h-4 bg-cloudo-warn" />
-                   <h2 className="text-sm font-black uppercase tracking-[0.4em] text-white">Pending Requests</h2>
+                   <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">Pending Requests</h2>
                 </div>
                 <div className="space-y-3">
                   {pendingList.map((item) => (
@@ -266,7 +266,7 @@ export default function ApprovalsPage() {
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex items-center gap-3">
                           <div className={`w-2 h-2 ${item.Status === 'running' ? 'bg-cloudo-accent animate-pulse' : 'bg-cloudo-warn'}`} />
-                          <h3 className="text-sm font-black text-white uppercase tracking-widest truncate max-w-[180px]">
+                          <h3 className="text-sm font-black text-cloudo-text uppercase tracking-widest truncate max-w-[180px]">
                             {item.Name || 'SYS_TASK'}
                           </h3>
                         </div>
@@ -288,21 +288,21 @@ export default function ApprovalsPage() {
               <div className="space-y-4">
                 <div className="flex items-center gap-3 mb-6">
                    <div className="w-1.5 h-4 bg-cloudo-accent" />
-                   <h2 className="text-sm font-black uppercase tracking-[0.4em] text-white">Resource Details</h2>
+                   <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">Resource Details</h2>
                 </div>
                 {selectedExec ? (
                   <div className="border border-cloudo-border bg-cloudo-panel overflow-hidden sticky top-8 animate-in fade-in slide-in-from-right-4 duration-300">
-                    <div className="p-6 border-b border-cloudo-border bg-black/20 flex justify-between items-center">
+                    <div className="p-6 border-b border-cloudo-border bg-cloudo-accent/5 flex justify-between items-center">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-cloudo-warn/10 border border-cloudo-warn/20 flex items-center justify-center text-cloudo-warn">
                            <HiOutlineFingerPrint className="w-6 h-6" />
                         </div>
                         <div>
-                          <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">{selectedExec.Name}</h2>
+                          <h2 className="text-sm font-black text-cloudo-text uppercase tracking-[0.2em]">{selectedExec.Name}</h2>
                           <p className="text-[11px] font-mono text-cloudo-muted uppercase tracking-widest mt-1">Request_ID: {selectedExec.ExecId}</p>
                         </div>
                       </div>
-                      <button onClick={() => setSelectedExec(null)} className="p-2 text-cloudo-muted hover:text-white transition-colors border border-cloudo-border">
+                      <button onClick={() => setSelectedExec(null)} className="p-2 text-cloudo-muted hover:text-cloudo-text transition-colors border border-cloudo-border">
                         <HiOutlineX className="w-5 h-5" />
                       </button>
                     </div>
@@ -320,9 +320,9 @@ export default function ApprovalsPage() {
                       <div className="space-y-3">
                          <div className="flex items-center gap-2">
                            <div className="w-1.5 h-2.5 bg-cloudo-accent" />
-                           <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white">Runtime Arguments</span>
+                           <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Runtime Arguments</span>
                          </div>
-                         <div className="bg-black/60 border border-cloudo-border p-4 font-mono text-xs text-cloudo-accent/80 whitespace-pre-wrap leading-relaxed">
+                         <div className="bg-cloudo-dark/60 border border-cloudo-border p-4 font-mono text-xs text-cloudo-accent/80 whitespace-pre-wrap leading-relaxed">
                            {selectedExec.Run_Args || 'NO_ARGS_PROVIDED'}
                          </div>
                       </div>
@@ -332,13 +332,13 @@ export default function ApprovalsPage() {
                         <div className="space-y-3">
                            <div className="flex items-center gap-2">
                              <div className="w-1.5 h-2.5 bg-cloudo-warn" />
-                             <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white">Compliance Manifest</span>
+                             <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Compliance Manifest</span>
                            </div>
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                              {Object.entries(approvalLinks.display_info).map(([k, v]: [string, any]) => (
-                               <div key={k} className="bg-black/40 border border-cloudo-border p-3 flex justify-between items-center group">
+                               <div key={k} className="bg-cloudo-accent/10 border border-cloudo-border p-3 flex justify-between items-center group">
                                  <span className="text-[11px] font-black text-cloudo-muted uppercase tracking-widest">{k}</span>
-                                 <span className="text-xs font-mono text-white group-hover:text-cloudo-accent transition-colors">{String(v)}</span>
+                                 <span className="text-xs font-mono text-cloudo-text group-hover:text-cloudo-accent transition-colors">{String(v)}</span>
                                </div>
                              ))}
                            </div>
@@ -350,7 +350,7 @@ export default function ApprovalsPage() {
                         <button
                           onClick={() => handleAction(approvalLinks?.reject)}
                           disabled={isProcessing || !approvalLinks?.reject}
-                          className="flex items-center justify-center gap-2 bg-cloudo-err/10 hover:bg-cloudo-err hover:text-white text-cloudo-err border border-cloudo-err/30 py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all disabled:opacity-60"
+                          className="flex items-center justify-center gap-2 bg-cloudo-err/10 hover:bg-cloudo-err hover:text-cloudo-text text-cloudo-err border border-cloudo-err/30 py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all disabled:opacity-60"
                         >
                           <HiOutlineX className="w-5 h-5" />
                           Reject Request
@@ -367,7 +367,7 @@ export default function ApprovalsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="h-[400px] flex flex-col items-center justify-center border border-cloudo-border/10 bg-black/10 text-cloudo-muted/70">
+                  <div className="h-[400px] flex flex-col items-center justify-center border border-cloudo-border/10 bg-cloudo-dark/10 text-cloudo-muted/70">
                     <HiOutlineShieldCheck className="w-16 h-16 mb-4 opacity-40" />
                     <span className="text-sm font-black uppercase tracking-[0.4em]">Select request to audit</span>
                   </div>
@@ -402,12 +402,12 @@ export default function ApprovalsPage() {
 
 function DetailItem({ label, value, icon }: { label: string, value: string, icon: React.ReactNode }) {
   return (
-    <div className="bg-black/40 border border-cloudo-border p-3 space-y-2">
+    <div className="bg-cloudo-accent/10 border border-cloudo-border p-3 space-y-2">
        <div className="flex items-center gap-2 text-cloudo-muted/60">
           <span className="text-sm">{icon}</span>
           <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
        </div>
-       <div className="text-[11px] font-bold text-white truncate uppercase tracking-tighter">
+       <div className="text-[11px] font-bold text-cloudo-text truncate uppercase tracking-tighter">
           {value}
        </div>
     </div>

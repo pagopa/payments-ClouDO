@@ -151,7 +151,7 @@ export default function UsersPage() {
             <HiOutlineShieldCheck className="text-cloudo-accent w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">User Management</h1>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">User Management</h1>
             <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Access Control // IDENTITY_DB</p>
           </div>
         </div>
@@ -185,7 +185,7 @@ export default function UsersPage() {
 
             <table className="w-full text-left border-collapse text-sm">
               <thead>
-                <tr className="border-b border-cloudo-border bg-black/40">
+                <tr className="border-b border-cloudo-border bg-cloudo-accent/10">
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Identity</th>
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Email Endpoint</th>
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">System Role</th>
@@ -213,7 +213,7 @@ export default function UsersPage() {
                           <div className="w-10 h-10 bg-cloudo-accent/10 border border-cloudo-accent/20 flex items-center justify-center text-cloudo-accent">
                             <HiOutlineUser className="w-5 h-5" />
                           </div>
-                          <span className="text-sm font-black text-white tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">{user.username}</span>
+                          <span className="text-sm font-black text-cloudo-text tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">{user.username}</span>
                         </div>
                       </td>
                       <td className="px-8 py-6 text-cloudo-muted font-mono">
@@ -231,14 +231,14 @@ export default function UsersPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => { setSelectedUser(user); setModalMode('edit'); }}
-                            className="p-2.5 bg-black/40 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-white transition-all group/btn"
+                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn"
                             title="Edit Operator"
                           >
                             <HiOutlinePencil className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
                           </button>
                           <button
                             onClick={() => deleteUser(user.username)}
-                            className="p-2.5 bg-black/40 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-white transition-all group/btn disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn disabled:opacity-60 disabled:cursor-not-allowed"
                             title="Revoke Access"
                             disabled={user.username === 'admin'}
                           >
@@ -259,14 +259,14 @@ export default function UsersPage() {
       {modalMode && (
         <div className="fixed inset-0 bg-cloudo-dark/90 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setModalMode(null)}>
           <div className="bg-cloudo-panel border border-cloudo-border shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 relative" onClick={e => e.stopPropagation()}>
-            <div className="px-8 py-5 border-b border-cloudo-border flex justify-between items-center bg-black/20">
+            <div className="px-8 py-5 border-b border-cloudo-border flex justify-between items-center bg-cloudo-accent/5">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-1.5 bg-cloudo-accent animate-pulse" />
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-text">
                   {modalMode === 'create' ? 'Enroll New Operator' : 'Update Operator Identity'}
                 </h3>
               </div>
-              <button onClick={() => setModalMode(null)} className="p-1.5 hover:bg-cloudo-err hover:text-white border border-cloudo-border text-cloudo-muted transition-colors">
+              <button onClick={() => setModalMode(null)} className="p-1.5 hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-border text-cloudo-muted transition-colors">
                 <HiOutlineX className="w-4 h-4" />
               </button>
             </div>
@@ -332,7 +332,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
         <div className="space-y-2">
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Username</label>
           <div className="relative group">
-            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-black/20">
+            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-cloudo-accent/5">
               <HiOutlineUser className="text-cloudo-muted/70 w-4 h-4" />
             </div>
             <input
@@ -350,7 +350,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
         <div className="space-y-2">
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Email Endpoint</label>
           <div className="relative group">
-            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-black/20">
+            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-cloudo-accent/5">
               <HiOutlineMail className="text-cloudo-muted/70 w-4 h-4" />
             </div>
             <input
@@ -369,7 +369,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
             {mode === 'create' ? 'Initial Password' : 'New Password (leave empty to keep current)'}
           </label>
           <div className="relative group">
-            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-black/20">
+            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-cloudo-accent/5">
               <HiOutlineLockClosed className="text-cloudo-muted/70 w-4 h-4" />
             </div>
             <input

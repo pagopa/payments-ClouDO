@@ -141,7 +141,7 @@ export default function SchemasPage() {
             <MdOutlineSchema className="text-cloudo-accent w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-white uppercase">Runbook Schemas</h1>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Runbook Schemas</h1>
             <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">System Inventory // ASSET_DB</p>
           </div>
         </div>
@@ -183,7 +183,7 @@ export default function SchemasPage() {
 
             <table className="w-full text-left border-collapse table-fixed text-sm">
               <thead>
-                <tr className="border-b border-cloudo-border bg-black/40">
+                <tr className="border-b border-cloudo-border bg-cloudo-accent/10">
                   <th className="w-[30%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Identification</th>
                   <th className="w-[25%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Execution Path</th>
                   <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Node Cluster</th>
@@ -201,10 +201,10 @@ export default function SchemasPage() {
                     <tr key={schema.RowKey} className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40">
                       <td className="px-8 py-6">
                         <div className="flex flex-col gap-2">
-                          <span className="text-sm font-black text-white tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">{schema.name}</span>
+                          <span className="text-sm font-black text-cloudo-text tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">{schema.name}</span>
                           <button
                             onClick={() => copyToClipboard(schema.id)}
-                            className="text-xs font-mono text-cloudo-muted/70 flex items-center gap-2 hover:text-white w-fit transition-colors group/id"
+                            className="text-xs font-mono text-cloudo-muted/70 flex items-center gap-2 hover:text-cloudo-text w-fit transition-colors group/id"
                           >
                             <span className="opacity-70">ID:</span>
                             <span className="font-bold">{schema.id}</span>
@@ -214,16 +214,16 @@ export default function SchemasPage() {
                       </td>
                       <td className="px-8 py-6 text-cloudo-accent/60 font-mono">
                         <div className="flex items-center gap-3">
-                          <div className="p-1.5 bg-black/40 border border-cloudo-border group-hover:border-cloudo-accent/20 transition-colors">
+                          <div className="p-1.5 bg-cloudo-accent/10 border border-cloudo-border group-hover:border-cloudo-accent/20 transition-colors">
                             <HiOutlineTerminal className="opacity-70 w-4 h-4" />
                           </div>
                           <div className="flex flex-col min-w-0">
-                            <span className="truncate text-white/80 font-bold">{schema.runbook}</span>
+                            <span className="truncate text-cloudo-text/80 font-bold">{schema.runbook}</span>
                             <span className="text-[11px] text-cloudo-muted/70 uppercase tracking-widest mt-1">Asset_Source</span>
                           </div>
                         </div>
                       </td>
-                      <td className="px-8 py-6 font-bold text-white/70">
+                      <td className="px-8 py-6 font-bold text-cloudo-text/70">
                         <div className="flex items-center gap-3">
                           <HiOutlineChip className="opacity-60 w-4 h-4 text-cloudo-accent" />
                           <div className="flex flex-col">
@@ -272,7 +272,7 @@ export default function SchemasPage() {
                               className={`p-2.5 border transition-all flex items-center gap-2 ${
                                 confirmRunId === schema.id
                                   ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark'
-                                  : 'bg-black/40 border-cloudo-border text-cloudo-accent hover:border-cloudo-accent/40'
+                                  : 'bg-cloudo-accent/10 border-cloudo-border text-cloudo-accent hover:border-cloudo-accent/40'
                               } ${executingId === schema.id ? 'opacity-50 cursor-wait' : ''}`}
                             >
                               {executingId === schema.id ? (
@@ -285,21 +285,21 @@ export default function SchemasPage() {
                               )}
                             </button>
                             {!confirmRunId && !executingId && (
-                              <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-cloudo-panel border border-cloudo-border text-[9px] text-white uppercase tracking-widest opacity-0 group-hover/run:opacity-400 transition-opacity whitespace-nowrap pointer-events-none">
+                              <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-cloudo-panel border border-cloudo-border text-[9px] text-cloudo-text uppercase tracking-widest opacity-0 group-hover/run:opacity-400 transition-opacity whitespace-nowrap pointer-events-none">
                                 Run Procedure
                               </div>
                             )}
                           </div>
                           <button
                             onClick={() => { setSelectedSchema(schema); setModalMode('edit'); }}
-                            className="p-2.5 bg-black/40 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-white transition-all group/btn"
+                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn"
                             title="Edit Configuration"
                           >
                             <HiOutlinePencil className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
                           </button>
                           <button
                             onClick={() => setSchemaToDelete(schema)}
-                            className="p-2.5 bg-black/40 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-white transition-all group/btn"
+                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn"
                             title="Delete Schema Entry"
                           >
                             <HiOutlineTrash className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
@@ -324,14 +324,14 @@ export default function SchemasPage() {
               <div className="absolute top-[-24px] right-[-24px] w-12 h-12 bg-cloudo-border rotate-45" />
             </div>
 
-            <div className="px-8 py-5 border-b border-cloudo-border flex justify-between items-center bg-black/20">
+            <div className="px-8 py-5 border-b border-cloudo-border flex justify-between items-center bg-cloudo-accent/5">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-1.5 bg-cloudo-accent animate-pulse" />
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-text">
                   {modalMode === 'create' ? 'Register New Schema' : 'Update Configuration'}
                 </h3>
               </div>
-              <button onClick={() => setModalMode(null)} className="p-1.5 hover:bg-cloudo-err hover:text-white border border-cloudo-border text-cloudo-muted transition-colors">
+              <button onClick={() => setModalMode(null)} className="p-1.5 hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-border text-cloudo-muted transition-colors">
                 <HiOutlineX className="w-4 h-4" />
               </button>
             </div>
@@ -360,7 +360,7 @@ export default function SchemasPage() {
   );
 }
 
-function StatSmall({ title, value, icon, label, color = "text-white" }: { title: string, value: number, icon: React.ReactNode, label: string, color?: string }) {
+function StatSmall({ title, value, icon, label, color = "text-cloudo-text" }: { title: string, value: number, icon: React.ReactNode, label: string, color?: string }) {
   return (
     <div className="bg-cloudo-panel border border-cloudo-border p-5 flex items-center justify-between relative overflow-hidden group">
       <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-accent/10 group-hover:bg-cloudo-accent transition-colors" />
@@ -369,7 +369,7 @@ function StatSmall({ title, value, icon, label, color = "text-white" }: { title:
         <p className={`text-2xl font-black ${color} tracking-tighter`}>{value}</p>
         <p className="text-[11px] font-bold text-cloudo-muted/60 uppercase mt-1 tracking-widest">{label}</p>
       </div>
-      <div className="p-2.5 bg-black/40 border border-cloudo-border text-lg shrink-0 group-hover:border-cloudo-accent/30 transition-colors opacity-70 group-hover:opacity-400">
+      <div className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border text-lg shrink-0 group-hover:border-cloudo-accent/30 transition-colors opacity-70 group-hover:opacity-400">
         <div className="text-cloudo-accent w-5 h-5 flex items-center justify-center">
           {icon}
         </div>
@@ -467,7 +467,7 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
         <div className="space-y-2">
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Runbook Path *</label>
           <div className="relative group">
-            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-black/20">
+            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
               <HiOutlineTerminal className="text-cloudo-muted/70 w-4 h-4" />
             </div>
             <input
@@ -483,7 +483,7 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
         <div className="space-y-2">
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1">Worker Pool *</label>
           <div className="relative group">
-            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-black/20">
+            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
               <HiOutlineChip className="text-cloudo-muted/70 w-4 h-4" />
             </div>
             <input
@@ -510,9 +510,9 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
       </div>
 
       <div className="grid grid-cols-2 gap-8 items-start">
-        <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, require_approval: !formData.require_approval})}>
+        <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, require_approval: !formData.require_approval})}>
           <div className="space-y-1">
-            <p className="text-[11px] font-black text-white uppercase tracking-widest">Approval Gate</p>
+            <p className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">Approval Gate</p>
             <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-70">Manual Auth</p>
           </div>
           <div className={`w-5 h-5 border flex items-center justify-center transition-all ${formData.require_approval ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
@@ -520,9 +520,9 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
           </div>
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-black/40 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, oncall: formData.oncall === 'true' ? 'false' : 'true'})}>
+        <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setFormData({...formData, oncall: formData.oncall === 'true' ? 'false' : 'true'})}>
           <div className="space-y-1">
-            <p className="text-[11px] font-black text-white uppercase tracking-widest">On-Call Flow</p>
+            <p className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">On-Call Flow</p>
             <p className="text-[10px] text-cloudo-muted uppercase font-bold opacity-70">Notify Team</p>
           </div>
           <div className={`w-5 h-5 border flex items-center justify-center transition-all ${formData.oncall === 'true' ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
@@ -589,7 +589,7 @@ function DeleteConfirmationModal({ schema, onClose, onSuccess, onError }: {
         </div>
 
         <div className="space-y-3">
-          <h3 className="text-[11px] font-black text-white uppercase tracking-[0.3em]">Destructive Action</h3>
+          <h3 className="text-[11px] font-black text-cloudo-text uppercase tracking-[0.3em]">Destructive Action</h3>
           <p className="text-[9px] text-cloudo-muted uppercase font-bold leading-relaxed">
             Permanently delete schemas entry:<br/>
             <span className="text-cloudo-err mt-2 block font-mono">{schema.id}</span>
@@ -600,14 +600,14 @@ function DeleteConfirmationModal({ schema, onClose, onSuccess, onError }: {
           <button
             onClick={handleDelete}
             disabled={isDeleting}
-            className="w-full bg-cloudo-err text-white py-4 text-[10px] font-black uppercase tracking-[0.3em] hover:bg-cloudo-err/90 transition-all disabled:opacity-50"
+            className="w-full bg-cloudo-err text-cloudo-text py-4 text-[10px] font-black uppercase tracking-[0.3em] hover:bg-cloudo-err/90 transition-all disabled:opacity-50"
           >
             {isDeleting ? 'Destroying...' : 'Confirm Destruction'}
           </button>
           <button
             onClick={onClose}
             disabled={isDeleting}
-            className="text-[9px] font-black text-cloudo-muted hover:text-white uppercase tracking-widest py-2 transition-all"
+            className="text-[9px] font-black text-cloudo-muted hover:text-cloudo-text uppercase tracking-widest py-2 transition-all"
           >
             Cancel Action
           </button>
