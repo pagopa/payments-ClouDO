@@ -2501,10 +2501,10 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return create_cors_response()
 
+    body = req.get_json()
     try:
         from azure.data.tables import TableClient
 
-        body = req.get_json()
         username = body.get("username")
         password = body.get("password")
 
@@ -2527,6 +2527,12 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
         )
 
         if user_entity.get("password") == password:
+            log_audit(
+                user=user_entity.get("RowKey"),
+                action="USER_LOGIN_SUCCESS",
+                target=user_entity.get("email"),
+                details=f"user: {user_entity.get('RowKey')}, email: {user_entity.get('email')}, role: {user_entity.get('role')}",
+            )
             return func.HttpResponse(
                 json.dumps(
                     {
@@ -2551,6 +2557,13 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
             )
     except Exception as e:
         logging.error(f"Login error: {e}")
+        log_audit(
+            user=body.get("username"),
+            action="USER_LOGIN_FAILED",
+            target=body.get("username"),
+            details=f"user: {body.get('username')}",
+        )
+
         return func.HttpResponse(
             json.dumps({"error": "Authentication failed"}),
             status_code=401,
