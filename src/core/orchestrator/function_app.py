@@ -3517,21 +3517,27 @@ def list_runbooks(req: func.HttpRequest) -> func.HttpResponse:
             else:
                 headers_list.append(base_headers)
 
-            api_url = f"https://api.github.com/repos/{owner_repo}/contents/{prefix}"
+            api_url = f"https://api.github.com/repos/{owner_repo}/git/trees/{branch}?recursive=1"
             for h in headers_list:
                 try:
-                    resp = requests.get(
-                        api_url, headers=h, params={"ref": branch}, timeout=10
-                    )
+                    resp = requests.get(api_url, headers=h, timeout=15)
                     if resp.status_code == 200:
                         data = resp.json()
-                        if isinstance(data, list):
-                            for item in data:
-                                if item.get("type") == "file" and (
-                                    item.get("name").endswith(".sh")
-                                    or item.get("name").endswith(".py")
-                                ):
-                                    runbooks.append(item.get("name"))
+                        tree = data.get("tree", [])
+                        for item in tree:
+                            path = item.get("path", "")
+                            # Filter by prefix and extension
+                            if path.startswith(prefix) and (
+                                path.endswith(".sh") or path.endswith(".py")
+                            ):
+                                # If prefix is present, remove it from the path to get relative path
+                                if prefix:
+                                    prefix_len = len(prefix)
+                                    rel_path = path[prefix_len:].lstrip("/")
+                                    if rel_path:
+                                        runbooks.append(rel_path)
+                                else:
+                                    runbooks.append(path)
                         break
                 except Exception as e:
                     logging.error(f"GitHub API list error: {e}")
