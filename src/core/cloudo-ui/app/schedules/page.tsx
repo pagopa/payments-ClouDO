@@ -16,7 +16,8 @@ import {
   HiOutlinePlay,
   HiOutlineRefresh,
   HiOutlineSwitchHorizontal,
-  HiOutlineBan
+  HiOutlineBan,
+  HiOutlineClipboardCopy
 } from "react-icons/hi";
 
 interface Schedule {
@@ -46,6 +47,11 @@ export default function SchedulesPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
+  const [runbookContent, setRunbookContent] = useState<string | null>(null);
+  const [isRunbookModalOpen, setIsRunbookModalOpen] = useState(false);
+  const [fetchingRunbook, setFetchingRunbook] = useState(false);
+  const [availableRunbooks, setAvailableRunbooks] = useState<string[]>([]);
+
   const addNotification = (type: 'success' | 'error', message: string) => {
     const id = Date.now().toString();
     setNotifications(prev => [...prev, { id, type, message }]);
@@ -68,6 +74,37 @@ export default function SchedulesPage() {
       setSchedules([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAvailableRunbooks = async () => {
+    try {
+      const res = await cloudoFetch(`/runbooks/list`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.runbooks)) {
+        setAvailableRunbooks(data.runbooks);
+      }
+    } catch (e) {
+      console.error('Failed to fetch available runbooks', e);
+    }
+  };
+
+  const fetchRunbookContent = async (runbook: string) => {
+    setFetchingRunbook(true);
+    setRunbookContent(null);
+    setIsRunbookModalOpen(true);
+    try {
+      const res = await cloudoFetch(`/runbooks/content?name=${encodeURIComponent(runbook)}`);
+      const data = await res.json();
+      if (res.ok) {
+        setRunbookContent(data.content);
+      } else {
+        setRunbookContent(`Error: ${data.error || 'Failed to fetch content'}`);
+      }
+    } catch (e) {
+      setRunbookContent('Error: Network failure while fetching runbook content');
+    } finally {
+      setFetchingRunbook(false);
     }
   };
 
@@ -169,7 +206,7 @@ export default function SchedulesPage() {
             />
           </div>
           <button
-            onClick={() => { setSelectedSchedule(null); setModalMode('create'); }}
+            onClick={() => { setSelectedSchedule(null); setModalMode('create'); fetchAvailableRunbooks(); }}
             className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
           >
             <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> New Schedule
@@ -216,9 +253,17 @@ export default function SchedulesPage() {
                         </div>
                       </td>
                       <td className="px-8 py-6 text-cloudo-text/70 font-mono">
-                        <div className="flex items-center gap-2">
-                           <HiOutlineTerminal className="w-4 h-4 opacity-60" />
-                           {s.runbook}
+                        <div className="flex items-center gap-3">
+                           <button
+                             onClick={() => fetchRunbookContent(s.runbook)}
+                             className="p-1.5 bg-cloudo-accent/10 border border-cloudo-border hover:bg-cloudo-accent/20 transition-all cursor-pointer"
+                             title="View Source Code"
+                           >
+                             <HiOutlineTerminal className="opacity-150 w-4 h-4" />
+                           </button>
+                           <span className="truncate cursor-pointer hover:text-cloudo-accent transition-colors" onClick={() => fetchRunbookContent(s.runbook)}>
+                             {s.runbook}
+                           </span>
                         </div>
                       </td>
                       <td className="px-8 py-6 text-cloudo-muted opacity-70 font-mono">
@@ -245,7 +290,7 @@ export default function SchedulesPage() {
                             )}
                           </button>
                           <button
-                            onClick={() => { setSelectedSchedule(s); setModalMode('edit'); }}
+                            onClick={() => { setSelectedSchedule(s); setModalMode('edit'); fetchAvailableRunbooks(); }}
                             className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn"
                             title="Edit Schedule"
                           >
@@ -277,7 +322,7 @@ export default function SchedulesPage() {
               <div className="flex items-center gap-3">
                 <HiOutlineClock className="text-cloudo-accent w-5 h-5" />
                 <h3 className="text-sm font-black uppercase tracking-[0.3em] text-cloudo-text">
-                  {modalMode === 'create' ? 'Provision Schedule' : 'Update Cron Policy'}
+                  {modalMode === 'create' ? 'Provision Schedule' : 'Update Cron Schedule'}
                 </h3>
               </div>
               <button onClick={() => setModalMode(null)} className="p-1.5 hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-border text-cloudo-muted transition-colors">
@@ -288,6 +333,7 @@ export default function SchedulesPage() {
             <ScheduleForm
               initialData={selectedSchedule}
               mode={modalMode}
+              availableRunbooks={availableRunbooks}
               onSuccess={(msg: string) => { fetchSchedules(); setModalMode(null); addNotification('success', msg); }}
               onCancel={() => setModalMode(null)}
               onError={(msg: string) => addNotification('error', msg)}
@@ -295,11 +341,56 @@ export default function SchedulesPage() {
           </div>
         </div>
       )}
+
+      {/* Runbook Source Modal */}
+      {isRunbookModalOpen && (
+        <div className="fixed inset-0 bg-cloudo-dark/95 backdrop-blur-md flex items-center justify-center z-[70] p-4" onClick={() => setIsRunbookModalOpen(false)}>
+          <div className="bg-cloudo-panel border border-cloudo-border shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col animate-in zoom-in-95 duration-200 relative" onClick={e => e.stopPropagation()}>
+            <div className="px-8 py-4 border-b border-cloudo-border flex justify-between items-center bg-cloudo-accent/5">
+              <div className="flex items-center gap-3">
+                <HiOutlineTerminal className="text-cloudo-accent w-4 h-4" />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-text">Runbook Source Viewer</h3>
+              </div>
+              <button onClick={() => setIsRunbookModalOpen(false)} className="p-1.5 hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-border text-cloudo-muted transition-colors">
+                <HiOutlineX className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6 font-mono text-xs bg-black/40">
+              {fetchingRunbook ? (
+                <div className="flex items-center justify-center h-64 text-cloudo-accent animate-pulse uppercase tracking-widest font-black">
+                  Retrieving Source from Git...
+                </div>
+              ) : (
+                <pre className="text-cloudo-text/90 whitespace-pre-wrap break-all leading-relaxed">
+                  {runbookContent || 'No content available.'}
+                </pre>
+              )}
+            </div>
+
+            <div className="px-8 py-3 border-t border-cloudo-border bg-cloudo-panel flex justify-between items-center">
+               <span className="text-[9px] text-cloudo-muted uppercase font-bold tracking-widest opacity-60">System Isolated Viewer // READ_ONLY</span>
+               <button
+                 onClick={() => {
+                   if (runbookContent) {
+                     navigator.clipboard.writeText(runbookContent);
+                     addNotification('success', 'Source copied to clipboard');
+                   }
+                 }}
+                 disabled={!runbookContent || fetchingRunbook}
+                 className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-cloudo-accent hover:text-white transition-colors disabled:opacity-30"
+               >
+                 <HiOutlineClipboardCopy className="w-3.5 h-3.5" /> Copy Code
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ScheduleForm({ initialData, mode, onSuccess, onCancel, onError }: any) {
+function ScheduleForm({ initialData, mode, availableRunbooks, onSuccess, onCancel, onError }: any) {
   const [formData, setFormData] = useState({
     id: initialData?.id || '',
     name: initialData?.name || '',
@@ -323,7 +414,7 @@ function ScheduleForm({ initialData, mode, onSuccess, onCancel, onError }: any) 
         body: JSON.stringify(formData)
       });
       if (res.ok) {
-        onSuccess(mode === 'create' ? 'Schedule provisioned' : 'Policy updated');
+        onSuccess(mode === 'create' ? 'Schedule provisioned' : 'Schedule updated');
       } else {
         const d = await res.json();
         onError(d.error || 'Operation failed');
@@ -365,14 +456,25 @@ function ScheduleForm({ initialData, mode, onSuccess, onCancel, onError }: any) 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Runbook Path</label>
-          <input
-            type="text"
-            required
-            className="input h-11 font-mono w-full"
-            value={formData.runbook}
-            onChange={e => setFormData({...formData, runbook: e.target.value})}
-            placeholder="scripts/cleanup.sh"
-          />
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
+              <HiOutlineTerminal className="text-cloudo-muted/70 w-4 h-4" />
+            </div>
+            <input
+              type="text"
+              required
+              className="input input-icon h-11 font-mono w-full"
+              value={formData.runbook}
+              onChange={e => setFormData({...formData, runbook: e.target.value})}
+              placeholder="scripts/cleanup.sh"
+              list="runbooks-list-schedules"
+            />
+            <datalist id="runbooks-list-schedules">
+              {availableRunbooks.map((rb: string) => (
+                <option key={rb} value={rb} />
+              ))}
+            </datalist>
+          </div>
         </div>
         <div className="space-y-2">
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Runtime Arguments</label>
