@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineChartBar,
-  HiOutlineClock,
   HiOutlineExclamationCircle,
   HiOutlineCheckCircle,
   HiOutlineLightningBolt,
@@ -15,7 +14,7 @@ import {
 interface AnalyticsData {
   totalRequests: number;
   successRate: number;
-  avgLatency: number;
+  peakThroughput: number;
   errorCount: number;
   requestsByStatus: Record<string, number>;
   requestsByHour: Record<string, number>;
@@ -28,7 +27,7 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData>({
     totalRequests: 0,
     successRate: 0,
-    avgLatency: 0,
+    peakThroughput: 0,
     errorCount: 0,
     requestsByStatus: {},
     requestsByHour: {},
@@ -95,8 +94,6 @@ export default function AnalyticsPage() {
       const statusMap: Record<string, number> = {};
       const runbookMap: Record<string, { count: number; success: number }> = {};
       const hourMap: Record<string, number> = {};
-      let totalLatency = 0;
-      let latencyCount = 0;
       let succeeded = 0;
 
       processedExecutions.forEach(exec => {
@@ -109,15 +106,6 @@ export default function AnalyticsPage() {
         if (!runbookMap[rb]) runbookMap[rb] = { count: 0, success: 0 };
         runbookMap[rb].count++;
         if (['succeeded', 'completed'].includes(status)) runbookMap[rb].success++;
-
-        // Latency
-        if (exec.start && exec.end) {
-          const duration = exec.end.getTime() - exec.start.getTime();
-          if (duration > 0) {
-            totalLatency += duration;
-            latencyCount++;
-          }
-        }
 
         // Timeline aggregation (by hour if 24h, else by day)
         const date = new Date(exec.requestedAt);
@@ -135,10 +123,14 @@ export default function AnalyticsPage() {
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
+      const peakThroughput = Object.values(hourMap).length > 0
+        ? Math.max(...Object.values(hourMap))
+        : 0;
+
       setData({
         totalRequests: processedExecutions.length,
         successRate: processedExecutions.length > 0 ? (succeeded / processedExecutions.length) * 100 : 0,
-        avgLatency: latencyCount > 0 ? Math.round(totalLatency / latencyCount) : 0,
+        peakThroughput,
         errorCount: (statusMap['failed'] || 0) + (statusMap['error'] || 0),
         requestsByStatus: statusMap,
         requestsByHour: hourMap,
@@ -225,11 +217,11 @@ export default function AnalyticsPage() {
               color="text-cloudo-ok"
             />
             <MetricCard
-              title="Avg Latency"
-              value={`${data.avgLatency}ms`}
-              subValue="Mean Response Time"
-              icon={<HiOutlineClock />}
-              trend={data.avgLatency < 500 ? "FAST" : "NOMINAL"}
+              title="Peak Throughput"
+              value={data.peakThroughput}
+              subValue="Max Requests / Slot"
+              icon={<HiOutlineTrendingUp />}
+              trend={data.peakThroughput > 10 ? "HIGH" : "NORMAL"}
               positive={true}
             />
             <MetricCard

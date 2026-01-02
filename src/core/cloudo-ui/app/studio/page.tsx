@@ -165,8 +165,7 @@ export default function StudioPage() {
       const parsed = JSON.parse(payloadInput);
       const env: Record<string, string> = {};
 
-      // Helper per chiavi case-insensitive (simula lower_keys)
-      const getLower = (obj: any, key: string) => {
+      const getLower = (obj: Record<string, unknown> | null | undefined, key: string) => {
         if (!obj || typeof obj !== 'object') return undefined;
         const lowerKey = key.toLowerCase();
         const foundKey = Object.keys(obj).find(k => k.toLowerCase() === lowerKey);

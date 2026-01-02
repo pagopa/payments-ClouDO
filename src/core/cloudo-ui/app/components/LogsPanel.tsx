@@ -116,6 +116,7 @@ export function LogsPanel() {
 
   useEffect(() => {
     runQuery();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only on mount
 
   const handleReset = () => {
