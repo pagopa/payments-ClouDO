@@ -165,7 +165,8 @@ export default function StudioPage() {
       const parsed = JSON.parse(payloadInput);
       const env: Record<string, string> = {};
 
-      const getLower = (obj: Record<string, unknown> | null | undefined, key: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const getLower = (obj: any, key: string): any => {
         if (!obj || typeof obj !== 'object') return undefined;
         const lowerKey = key.toLowerCase();
         const foundKey = Object.keys(obj).find(k => k.toLowerCase() === lowerKey);
