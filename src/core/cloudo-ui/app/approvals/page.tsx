@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineShieldCheck,
@@ -30,7 +30,7 @@ interface PendingApproval {
   RequestedAt: string;
   Status: string;
   Log?: string;
-  ResourceInfo?: any;
+  ResourceInfo?: Record<string, unknown>;
   Run_Args?: string;
   Worker?: string;
   OnCall?: string;
@@ -56,7 +56,7 @@ export default function ApprovalsPage() {
     try {
       const parsed = JSON.parse(selectedExec.Log);
       const approveUrl = parsed.approve || null;
-      let decodedPayload: any = null;
+      let decodedPayload: { worker?: string; severity?: string; monitorCondition?: string; routing_info?: unknown; resource_info?: unknown } | null = null;
 
       if (approveUrl) {
         try {
@@ -85,7 +85,6 @@ export default function ApprovalsPage() {
       }
 
       const resource_info = decodedPayload?.resource_info || parsed.resource_info || (parsed.response?.resource_info) || {};
-      const routing_info = decodedPayload?.routing_info || parsed.routing_info || {};
 
       return {
         approve: approveUrl,
@@ -133,11 +132,7 @@ export default function ApprovalsPage() {
     }
   };
 
-  useEffect(() => {
-    fetchPendingApprovals();
-  }, []);
-
-  const fetchPendingApprovals = async () => {
+  const fetchPendingApprovals = useCallback(async () => {
     setLoading(true);
     try {
       const now = new Date();
@@ -148,24 +143,24 @@ export default function ApprovalsPage() {
 
       const res = await cloudoFetch(`/logs/query?partitionKey=${partitionKey}`);
       const data = await res.json();
-      const items = data.items || [];
+      const items = (data.items || []) as { ExecId: string; Status: string; RequestedAt: string; ApprovalRequired?: boolean; Name?: string; Runbook?: string; Log?: string; Worker?: string; OnCall?: string }[];
 
       const terminalIds = new Set(
         items
-          .filter((e: any) => {
+          .filter((e) => {
             const s = (e.Status || '').toLowerCase();
             return ['succeeded', 'failed', 'rejected', 'error', 'skipped'].includes(s);
           })
-          .map((e: any) => e.ExecId)
+          .map((e) => e.ExecId)
       );
 
-      const pendingMap = new Map();
+      const pendingMap = new Map<string, PendingApproval>();
 
       const sortedItems = [...items].sort((a, b) =>
         new Date(a.RequestedAt).getTime() - new Date(b.RequestedAt).getTime()
       );
 
-      sortedItems.forEach((e: any) => {
+      sortedItems.forEach((e) => {
         const id = e.ExecId;
         const status = (e.Status || '').toLowerCase();
         const requestedAt = new Date(e.RequestedAt);
@@ -175,8 +170,12 @@ export default function ApprovalsPage() {
         }
 
         if (status === 'pending' || status === 'accepted') {
-          const enriched = {
-            ...e,
+          const enriched: PendingApproval = {
+            ...(e as unknown as PendingApproval),
+            ExecId: e.ExecId,
+            Name: e.Name || 'Unlabeled Request',
+            Runbook: e.Runbook || 'Unknown',
+            RequestedAt: e.RequestedAt,
             Status: status === 'accepted' ? 'running' : 'pending'
           };
           pendingMap.set(id, enriched);
@@ -184,25 +183,25 @@ export default function ApprovalsPage() {
       });
 
       const finalPendingList = Array.from(pendingMap.values())
-        .sort((a: any, b: any) => new Date(b.RequestedAt).getTime() - new Date(a.RequestedAt).getTime());
+        .sort((a, b) => new Date(b.RequestedAt).getTime() - new Date(a.RequestedAt).getTime());
 
       setPendingList(finalPendingList);
 
       // Update selection with new data if it exists, otherwise clear it
-      if (selectedExec) {
-        const updated = pendingMap.get(selectedExec.ExecId);
-        if (updated) {
-          setSelectedExec(updated);
-        } else {
-          setSelectedExec(null);
-        }
-      }
+      setSelectedExec(prev => {
+        if (!prev) return null;
+        return pendingMap.get(prev.ExecId) || null;
+      });
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchPendingApprovals();
+  }, [fetchPendingApprovals]);
 
   return (
     <div className="flex flex-col h-full bg-cloudo-dark text-cloudo-text font-mono selection:bg-cloudo-accent/30">
@@ -265,10 +264,13 @@ export default function ApprovalsPage() {
                     >
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex items-center gap-3">
-                          <div className={`w-2 h-2 ${item.Status === 'running' ? 'bg-cloudo-accent animate-pulse' : 'bg-cloudo-warn'}`} />
+                          <div className={`w-2 h-2 rounded-full ${item.Status === 'running' ? 'bg-cloudo-accent animate-pulse ring-2 ring-cloudo-accent/30' : 'bg-cloudo-warn'}`} />
                           <h3 className="text-sm font-black text-cloudo-text uppercase tracking-widest truncate max-w-[180px]">
                             {item.Name || 'SYS_TASK'}
                           </h3>
+                          {item.Status === 'running' && (
+                            <span className="text-[10px] font-black text-cloudo-accent uppercase tracking-widest animate-pulse">Running</span>
+                          )}
                         </div>
                         <span className="text-[11px] font-mono text-cloudo-muted opacity-70 uppercase">{new Date(item.RequestedAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false})}</span>
                       </div>
@@ -335,7 +337,7 @@ export default function ApprovalsPage() {
                              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Compliance Manifest</span>
                            </div>
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             {Object.entries(approvalLinks.display_info).map(([k, v]: [string, any]) => (
+                             {Object.entries(approvalLinks.display_info as Record<string, unknown>).map(([k, v]) => (
                                <div key={k} className="bg-cloudo-accent/10 border border-cloudo-border p-3 flex justify-between items-center group">
                                  <span className="text-[11px] font-black text-cloudo-muted uppercase tracking-widest">{k}</span>
                                  <span className="text-xs font-mono text-cloudo-text group-hover:text-cloudo-accent transition-colors">{String(v)}</span>

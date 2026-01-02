@@ -38,16 +38,15 @@ export default function RootLayout({
       }
     }
 
-    // Update state only if it changed to avoid redundant renders
-    setIsAuthenticated(prev => {
-      if (prev !== authed) return authed;
-      return prev;
-    });
+    if (isAuthenticated !== authed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsAuthenticated(authed);
+    }
 
     if (!authed && pathname !== '/login') {
       router.push('/login');
     }
-  }, [pathname, router]);
+  }, [pathname, router, isAuthenticated]);
 
   const isLoginPage = pathname === '/login';
 
@@ -55,10 +54,11 @@ export default function RootLayout({
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('cloudo_theme') as 'dark' | 'light';
-    if (savedTheme) {
+    if (savedTheme && theme !== savedTheme) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTheme(savedTheme);
     }
-  }, []);
+  }, [theme]);
 
   useEffect(() => {
     const handleStorageChange = () => {

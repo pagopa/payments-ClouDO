@@ -13,7 +13,6 @@ import {
   HiOutlineCheck,
   HiOutlineCheckCircle,
   HiOutlineExclamationCircle,
-  HiOutlinePlay,
   HiOutlineRefresh,
   HiOutlineSwitchHorizontal,
   HiOutlineBan,
@@ -70,7 +69,7 @@ export default function SchedulesPage() {
       const res = await cloudoFetch(`/schedules`);
       const data = await res.json();
       setSchedules(Array.isArray(data) ? data : []);
-    } catch (e) {
+    } catch {
       setSchedules([]);
     } finally {
       setLoading(false);
@@ -84,8 +83,8 @@ export default function SchedulesPage() {
       if (res.ok && Array.isArray(data.runbooks)) {
         setAvailableRunbooks(data.runbooks);
       }
-    } catch (e) {
-      console.error('Failed to fetch available runbooks', e);
+    } catch {
+      console.error('Failed to fetch available runbooks');
     }
   };
 
@@ -101,7 +100,7 @@ export default function SchedulesPage() {
       } else {
         setRunbookContent(`Error: ${data.error || 'Failed to fetch content'}`);
       }
-    } catch (e) {
+    } catch {
       setRunbookContent('Error: Network failure while fetching runbook content');
     } finally {
       setFetchingRunbook(false);
@@ -118,7 +117,7 @@ export default function SchedulesPage() {
         addNotification('success', `Schedule ${id} destroyed`);
         fetchSchedules();
       }
-    } catch (e) {
+    } catch {
       addNotification('error', 'Destruction failed');
     }
   };
@@ -143,7 +142,7 @@ export default function SchedulesPage() {
         const d = await res.json();
         addNotification('error', d.error || 'Operation failed');
       }
-    } catch (e) {
+    } catch {
       addNotification('error', 'Network error');
     } finally {
       setTogglingId(null);
@@ -390,7 +389,14 @@ export default function SchedulesPage() {
   );
 }
 
-function ScheduleForm({ initialData, mode, availableRunbooks, onSuccess, onCancel, onError }: any) {
+function ScheduleForm({ initialData, mode, availableRunbooks, onSuccess, onCancel, onError }: {
+  initialData: Schedule | null;
+  mode: 'create' | 'edit';
+  availableRunbooks: string[];
+  onSuccess: (msg: string) => void;
+  onCancel: () => void;
+  onError: (msg: string) => void;
+}) {
   const [formData, setFormData] = useState({
     id: initialData?.id || '',
     name: initialData?.name || '',
@@ -419,7 +425,7 @@ function ScheduleForm({ initialData, mode, availableRunbooks, onSuccess, onCance
         const d = await res.json();
         onError(d.error || 'Operation failed');
       }
-    } catch (e) {
+    } catch {
       onError('Uplink failed');
     } finally {
       setSubmitting(false);

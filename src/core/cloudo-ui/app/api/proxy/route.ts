@@ -80,11 +80,12 @@ async function handleRequest(request: NextRequest) {
     }
 
     return NextResponse.json(data, { status: response.status });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`Proxy error connecting to ${targetUrl.toString()}:`, error);
     return NextResponse.json({
       error: 'Proxy request failed',
-      details: error.message,
+      details: errorMessage,
       target: targetUrl.toString()
     }, { status: 500 });
   }

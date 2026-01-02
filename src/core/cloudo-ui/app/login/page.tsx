@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { HiOutlineLockClosed, HiOutlineUser, HiOutlineLightningBolt, HiOutlineCheckCircle, HiOutlineSun, HiOutlineMoon } from 'react-icons/hi';
-import Link from 'next/link';
 
 function LoginForm() {
   const [username, setUsername] = useState('');
@@ -39,10 +38,11 @@ function LoginForm() {
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('cloudo_theme') as 'dark' | 'light';
-    if (savedTheme) {
+    if (savedTheme && theme !== savedTheme) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTheme(savedTheme);
     }
-  }, []);
+  }, [theme]);
 
   const toggleTheme = () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';

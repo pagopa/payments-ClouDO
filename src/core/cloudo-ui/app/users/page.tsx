@@ -6,11 +6,9 @@ import { useRouter } from 'next/navigation';
 import {
   HiOutlinePlus,
   HiOutlineSearch,
-  HiOutlineUserAdd,
   HiOutlineShieldCheck,
   HiOutlineTrash,
   HiOutlineX,
-  HiOutlineCheck,
   HiOutlineUser,
   HiOutlineMail,
   HiOutlineLockClosed,
@@ -60,7 +58,7 @@ export default function UsersPage() {
           router.push('/');
           return;
         }
-      } catch (e) {
+      } catch {
         router.push('/login');
         return;
       }
@@ -83,8 +81,7 @@ export default function UsersPage() {
 
       const data = await res.json();
       setUsers(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error('Error fetching users:', e);
+    } catch {
       setError('Uplink to Identity Gate failed. Check backend status.');
       setUsers([]);
     } finally {
@@ -107,7 +104,7 @@ export default function UsersPage() {
         const data = await res.json();
         addNotification('error', data.error || 'Failed to revoke access');
       }
-    } catch (e) {
+    } catch {
       addNotification('error', 'Uplink failed');
     }
   };
@@ -319,7 +316,7 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
         const data = await res.json();
         onError(data.error || 'Operation failed');
       }
-    } catch (e) {
+    } catch {
       onError('Uplink failed');
     } finally {
       setSubmitting(false);

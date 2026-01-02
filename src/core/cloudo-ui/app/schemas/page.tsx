@@ -67,7 +67,7 @@ export default function SchemasPage() {
       const res = await cloudoFetch(`/schemas`);
       const data = await res.json();
       setSchemas(Array.isArray(data) ? data : []);
-    } catch (e) { setSchemas([]); } finally { setLoading(false); }
+    } catch { setSchemas([]); } finally { setLoading(false); }
   };
 
   const fetchAvailableRunbooks = async () => {
@@ -77,8 +77,8 @@ export default function SchemasPage() {
       if (res.ok && Array.isArray(data.runbooks)) {
         setAvailableRunbooks(data.runbooks);
       }
-    } catch (e) {
-      console.error('Failed to fetch available runbooks', e);
+    } catch {
+      console.error('Failed to fetch available runbooks');
     }
   };
 
@@ -106,7 +106,7 @@ export default function SchemasPage() {
       } else {
         addNotification('success', `Execution triggered for ${id}`);
       }
-    } catch (e) {
+    } catch {
       addNotification('error', 'Network error // execution failed');
     } finally {
       setExecutingId(null);
@@ -125,7 +125,7 @@ export default function SchemasPage() {
       } else {
         setRunbookContent(`Error: ${data.error || 'Failed to fetch content'}`);
       }
-    } catch (e) {
+    } catch {
       setRunbookContent('Error: Network failure while fetching runbook content');
     } finally {
       setFetchingRunbook(false);
@@ -736,7 +736,7 @@ function DeleteConfirmationModal({ schema, onClose, onSuccess, onError }: {
 
       onSuccess(`Entry "${schema.id}" destroyed`);
       onClose();
-    } catch (e) {
+    } catch {
       onError('Network error // destruction failed');
       setIsDeleting(false);
     }

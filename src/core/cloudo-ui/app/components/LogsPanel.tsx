@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineSearch,
@@ -15,7 +15,6 @@ import {
   HiOutlineFingerPrint,
   HiOutlineCalendar
 } from 'react-icons/hi';
-import {DatePicker} from "@heroui/date-picker";
 import {parseDate, today, getLocalTimeZone} from "@internationalized/date";
 
 interface LogEntry {
@@ -52,35 +51,7 @@ export function LogsPanel() {
     setPartitionKey(t.toString().replace(/-/g, ''));
   };
 
-  useEffect(() => {
-    const t = today(getLocalTimeZone());
-    const pk = t.toString().replace(/-/g, '');
-
-    setDateValue(t);
-    setPartitionKey(pk);
-    runQuery({ partitionKey: pk });
-  }, []);
-
-  const handleReset = () => {
-    setExecId('');
-    setStatus('');
-    setQuery('');
-    setLimit('200');
-    setLogs([]);
-    setSelectedLog(null);
-    setTodayDate();
-  };
-
-  const handleDateChange = (val: any) => {
-    setDateValue(val);
-    if (val) {
-      setPartitionKey(val.toString().replace(/-/g, ''));
-    } else {
-      setPartitionKey('');
-    }
-  };
-
-  const runQuery = async (overrideParams?: { partitionKey?: string }) => {
+  const runQuery = useCallback(async (overrideParams?: { partitionKey?: string }) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -140,6 +111,34 @@ export function LogsPanel() {
       setLogs([]);
     } finally {
       setLoading(false);
+    }
+  }, [partitionKey, execId, status, query, limit]);
+
+  useEffect(() => {
+    const t = today(getLocalTimeZone());
+    const pk = t.toString().replace(/-/g, '');
+
+    setDateValue(t);
+    setPartitionKey(pk);
+    runQuery({ partitionKey: pk });
+  }, [runQuery]);
+
+  const handleReset = () => {
+    setExecId('');
+    setStatus('');
+    setQuery('');
+    setLimit('200');
+    setLogs([]);
+    setSelectedLog(null);
+    setTodayDate();
+  };
+
+  const handleDateChange = (val: { toString: () => string } | null) => {
+    setDateValue(val);
+    if (val) {
+      setPartitionKey(val.toString().replace(/-/g, ''));
+    } else {
+      setPartitionKey('');
     }
   };
 
@@ -324,9 +323,11 @@ export function LogsPanel() {
                       <div className="text-[10px] text-cloudo-muted opacity-70">{log.RequestedAt?.split('T')[0]}</div>
                     </td>
                     <td className="px-4 py-4">
-                      <span className={`px-1.5 py-0.5 border text-[10px] font-black uppercase tracking-widest ${getStatusBadgeClass(log.Status)}`}>
-                        {log.Status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-1.5 py-0.5 border text-[10px] font-black uppercase tracking-widest ${getStatusBadgeClass(log.Status)}`}>
+                          {log.Status}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <div className="text-cloudo-text font-bold uppercase tracking-widest truncate max-w-[150px]">{log.Name || 'SYS_TASK'}</div>

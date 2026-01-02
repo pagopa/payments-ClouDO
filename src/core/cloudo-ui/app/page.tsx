@@ -4,25 +4,21 @@ import { useEffect, useState } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineCheckCircle,
-  HiOutlineUsers,
   HiOutlineClock,
   HiOutlineTerminal,
   HiOutlineDatabase,
   HiOutlineArrowRight,
-  HiOutlineLightningBolt,
-  HiOutlineChartBar,
-  HiOutlineShieldCheck,
   HiOutlineServer
 } from "react-icons/hi";
-import { MdOutlineSpaceDashboard, MdOutlineSchema } from "react-icons/md";
+import { MdOutlineSpaceDashboard } from "react-icons/md";
 
 interface DashboardStats {
   totalExecutions: number;
   successRate: number;
   activeWorkers: number;
   pendingApprovals: number;
-  recentExecutions: any[];
-  liveProcesses: any[];
+  recentExecutions: Record<string, unknown>[];
+  liveProcesses: Record<string, unknown>[];
 }
 
 export default function DashboardPage() {
@@ -52,13 +48,13 @@ export default function DashboardPage() {
       const workers = await workersRes.json();
       const activeWorkers = Array.isArray(workers) ? workers : [];
 
-      const processesPromises = activeWorkers.map(async (w: any) => {
+      const processesPromises = activeWorkers.map(async (w: { RowKey: string }) => {
         try {
           const res = await cloudoFetch(`/workers/processes?worker=${encodeURIComponent(w.RowKey)}`);
           if (!res.ok) return [];
           const data = await res.json();
           const procList = Array.isArray(data) ? data : (data.runs || data.processes || []);
-          return procList.map((p: any) => ({ ...p, workerNode: w.RowKey }));
+          return procList.map((p: Record<string, unknown>) => ({ ...p, workerNode: w.RowKey }));
         } catch { return []; }
       });
 
@@ -72,7 +68,7 @@ export default function DashboardPage() {
       const executions = logsData.items || [];
 
       // Group by ExecId and keep only the final status
-      const groupedByExecId = new Map<string, any>();
+      const groupedByExecId = new Map<string, Record<string, unknown>>();
       const statusPriority: Record<string, number> = {
         'succeeded': 5,
         'completed': 5,
@@ -86,20 +82,20 @@ export default function DashboardPage() {
         'routed': 1,
       };
 
-      executions.forEach((log: any) => {
-        const execId = log.ExecId;
+      executions.forEach((log: Record<string, unknown>) => {
+        const execId = log.ExecId as string;
         const existing = groupedByExecId.get(execId);
 
         if (!existing) {
           groupedByExecId.set(execId, log);
         } else {
-          const currentPriority = statusPriority[log.Status?.toLowerCase()] || 0;
-          const existingPriority = statusPriority[existing.Status?.toLowerCase()] || 0;
+          const currentPriority = statusPriority[(log.Status as string)?.toLowerCase()] || 0;
+          const existingPriority = statusPriority[(existing.Status as string)?.toLowerCase()] || 0;
 
           if (currentPriority > existingPriority) {
             groupedByExecId.set(execId, log);
           } else if (currentPriority === existingPriority) {
-            if (new Date(log.RequestedAt).getTime() > new Date(existing.RequestedAt).getTime()) {
+            if (new Date(log.RequestedAt as string).getTime() > new Date(existing.RequestedAt as string).getTime()) {
               groupedByExecId.set(execId, log);
             }
           }
@@ -108,24 +104,24 @@ export default function DashboardPage() {
 
       const finalExecutions = Array.from(groupedByExecId.values());
 
-      const succeeded = finalExecutions.filter((e: any) =>
-        ['succeeded', 'completed'].includes((e.Status || '').toLowerCase())
+      const succeeded = finalExecutions.filter((e: Record<string, unknown>) =>
+        ['succeeded', 'completed'].includes(((e.Status as string) || '').toLowerCase())
       ).length;
 
-      const failed = finalExecutions.filter((e: any) =>
-        ['failed', 'error'].includes((e.Status || '').toLowerCase())
+      const failed = finalExecutions.filter((e: Record<string, unknown>) =>
+        ['failed', 'error'].includes(((e.Status as string) || '').toLowerCase())
       ).length;
 
       const oneHourAgo = Date.now() - (60 * 60 * 1000); // Timestamp di un'ora fa
 
-      const pending = finalExecutions.filter((e: any) => {
-        const isPending = ['pending'].includes((e.Status || '').toLowerCase());
-        const executionTime = new Date(e.CreatedAt).getTime();
+      const pending = finalExecutions.filter((e: Record<string, unknown>) => {
+        const isPending = ['pending'].includes(((e.Status as string) || '').toLowerCase());
+        const executionTime = new Date(e.CreatedAt as string).getTime();
         return isPending && executionTime > oneHourAgo;
       }).length;
 
       const sortedExecutions = [...finalExecutions]
-        .sort((a, b) => new Date(b.RequestedAt || 0).getTime() - new Date(a.RequestedAt || 0).getTime())
+        .sort((a, b) => new Date((b.RequestedAt as string) || 0).getTime() - new Date((a.RequestedAt as string) || 0).getTime())
         .slice(0, 5);
 
       const totalFinished = succeeded + failed;
@@ -135,7 +131,7 @@ export default function DashboardPage() {
         activeWorkers: activeWorkers.length,
         pendingApprovals: pending,
         recentExecutions: sortedExecutions,
-        liveProcesses: allLiveProcesses,
+        liveProcesses: allLiveProcesses as Record<string, unknown>[],
       });
       setIsBackendDown(false);
     } catch (error) {
@@ -238,20 +234,20 @@ export default function DashboardPage() {
                     {stats.recentExecutions.length === 0 ? (
                       <tr><td colSpan={4} className="py-20 text-center text-sm uppercase font-bold text-cloudo-muted italic opacity-60">NO_DATA_STREAM</td></tr>
                     ) : (
-                      stats.recentExecutions.map((exec: any) => (
-                        <tr key={exec.RowKey} className="group hover:bg-white/[0.02] transition-colors">
+                      stats.recentExecutions.map((exec: Record<string, unknown>) => (
+                        <tr key={exec.RowKey as string} className="group hover:bg-white/[0.02] transition-colors">
                           <td className="px-6 py-4 font-mono">
-                            <div className="text-cloudo-text font-bold">{exec.ExecId?.slice(0, 8)}</div>
-                            <div className="text-[11px] text-cloudo-muted/60">{exec.Name || 'SYS_TASK'}</div>
+                            <div className="text-cloudo-text font-bold">{(exec.ExecId as string)?.slice(0, 8)}</div>
+                            <div className="text-[11px] text-cloudo-muted/60">{(exec.Name as string) || 'SYS_TASK'}</div>
                           </td>
                           <td className="px-6 py-4 font-mono text-cloudo-accent/60">
-                            {exec.Runbook || '--'}
+                            {(exec.Runbook as string) || '--'}
                           </td>
                           <td className="px-6 py-4">
-                            <StatusIndicator status={exec.Status} />
+                            <StatusIndicator status={(exec.Status as string)} />
                           </td>
                           <td className="px-6 py-4 text-right font-mono text-cloudo-muted">
-                             {new Date(exec.RequestedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit', hour12: false})}
+                             {new Date(exec.RequestedAt as string).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit', hour12: false})}
                           </td>
                         </tr>
                       ))
@@ -273,18 +269,18 @@ export default function DashboardPage() {
                     <span className="text-[11px] font-black uppercase tracking-widest text-center">IDLE_STATE<br/>NO_ACTIVE_WORKLOADS</span>
                   </div>
                 ) : (
-                  stats.liveProcesses.map((proc: any) => (
-                    <div key={proc.exec_id} className="bg-cloudo-accent/10 border border-cloudo-border p-3 border-l-2 border-l-cloudo-accent group hover:bg-cloudo-accent/5 transition-all">
+                  stats.liveProcesses.map((proc: Record<string, unknown>) => (
+                    <div key={proc.exec_id as string} className="bg-cloudo-accent/10 border border-cloudo-border p-3 border-l-2 border-l-cloudo-accent group hover:bg-cloudo-accent/5 transition-all">
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-center gap-2">
                           <div className="w-1.5 h-1.5 bg-cloudo-accent animate-pulse" />
-                          <span className="text-sm font-bold text-cloudo-text truncate max-w-[140px] uppercase tracking-widest">{proc.name}</span>
+                          <span className="text-sm font-bold text-cloudo-text truncate max-w-[140px] uppercase tracking-widest">{(proc.name as string)}</span>
                         </div>
-                        <span className="text-[11px] font-mono text-cloudo-muted/60">{proc.workerNode}</span>
+                        <span className="text-[11px] font-mono text-cloudo-muted/60">{String(proc.workerNode)}</span>
                       </div>
                       <div className="flex justify-between items-center text-[11px] text-cloudo-muted uppercase font-bold tracking-widest">
-                        <span className="flex items-center gap-1 opacity-60"><HiOutlineTerminal className="w-4 h-4"/> {proc.runbook}</span>
-                        <span className="opacity-60">{proc.exec_id.slice(0, 8)}</span>
+                        <span className="flex items-center gap-1 opacity-60"><HiOutlineTerminal className="w-4 h-4"/> {(proc.runbook as string)}</span>
+                        <span className="opacity-60">{String(proc.exec_id).slice(0, 8)}</span>
                       </div>
                     </div>
                   ))
@@ -305,7 +301,13 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ title, value, icon, status, highlight = false }: any) {
+function StatCard({ title, value, icon, status, highlight = false }: {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+  status: string;
+  highlight?: boolean;
+}) {
   return (
     <div className="bg-cloudo-panel border border-cloudo-border p-6 flex items-center justify-between relative overflow-hidden group">
       <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-accent/20" />
@@ -333,15 +335,17 @@ function StatusIndicator({ status }: { status: string }) {
     accepted: 'bg-cloudo-warn',
   };
 
+  const isRunning = s === 'running' || s === 'accepted' || s === 'routed';
+
   return (
     <div className="flex items-center gap-2">
-      <div className={`w-2 h-2 ${colors[s] || 'bg-cloudo-muted'} ${s === 'running' ? 'animate-pulse' : ''}`} />
+      <div className={`w-2 h-2 ${colors[s] || 'bg-cloudo-muted'} ${isRunning ? 'animate-pulse ring-2 ring-cloudo-accent/30' : ''} rounded-full`} />
       <span className="text-xs font-black uppercase tracking-widest text-cloudo-text/80">{status}</span>
     </div>
   );
 }
 
-function QuickLink({ icon, label, href }: any) {
+function QuickLink({ icon, label, href }: { icon: JSX.Element, label: string, href: string }) {
   return (
     <a href={href} className="flex items-center justify-between p-4 bg-cloudo-panel border border-cloudo-border hover:bg-cloudo-accent/5 hover:border-cloudo-accent transition-all group">
       <div className="flex items-center gap-3 min-w-0">

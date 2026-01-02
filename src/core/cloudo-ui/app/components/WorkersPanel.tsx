@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineRefresh,
@@ -44,11 +44,6 @@ export function WorkersPanel() {
     fetchWorkers();
   }, []);
 
-  useEffect(() => {
-    if (workers.length > 0 && selectedWorker === 'all') {
-      fetchProcesses('all');
-    }
-  }, [workers]);
 
   const fetchWorkers = async () => {
     setLoadingWorkers(true);
@@ -64,7 +59,7 @@ export function WorkersPanel() {
     }
   };
 
-  const fetchProcesses = async (worker: string) => {
+  const fetchProcesses = useCallback(async (worker: string) => {
     if (!worker) return;
     setLoading(true);
     try {
@@ -76,20 +71,20 @@ export function WorkersPanel() {
               if (!res.ok) return [];
               const data = await res.json();
               const items = Array.isArray(data) ? data : (data.runs || data.processes || []);
-              return items.map((item: any) => ({ ...item, workerNode: w.RowKey }));
+              return items.map((item: Record<string, unknown>) => ({ ...item, workerNode: w.RowKey }));
             } catch (e) {
               console.error(`Error fetching processes for ${w.RowKey}:`, e);
               return [];
             }
           })
         );
-        setProcesses(allProcesses.flat());
+        setProcesses(allProcesses.flat() as unknown as WorkerProcess[]);
       } else {
         const res = await cloudoFetch(`/workers/processes?worker=${encodeURIComponent(worker)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const processesData = Array.isArray(data) ? data : (data.runs || data.processes || []);
-        setProcesses(processesData.map((p: any) => ({ ...p, workerNode: worker })));
+        setProcesses(processesData.map((p: Record<string, unknown>) => ({ ...p, workerNode: worker })) as unknown as WorkerProcess[]);
       }
     } catch (error) {
       console.error('Error fetching processes:', error);
@@ -97,7 +92,13 @@ export function WorkersPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workers]);
+
+  useEffect(() => {
+    if (workers.length > 0 && selectedWorker === 'all') {
+      fetchProcesses('all');
+    }
+  }, [workers, selectedWorker, fetchProcesses]);
 
   const stopProcess = async (worker: string, execId: string) => {
     if (!confirm(`Are you sure you want to stop process ${execId} on ${worker}?`)) return;
@@ -221,7 +222,7 @@ export function WorkersPanel() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-cloudo-border/50">
-                      {processes.map((proc) => (
+                      {(processes as (WorkerProcess & { workerNode?: string })[]).map((proc) => (
                         <tr key={proc.exec_id} className="hover:bg-white/[0.02] transition-colors group">
                           <td className="px-6 py-4 font-mono text-cloudo-muted/60 group-hover:text-cloudo-accent">
                             {proc.exec_id?.slice(0, 8)}
@@ -230,7 +231,7 @@ export function WorkersPanel() {
                             <div className="font-bold text-cloudo-text uppercase tracking-widest">{proc.name}</div>
                             <div className="text-[11px] text-cloudo-muted opacity-70 font-mono mt-0.5">{proc.id}</div>
                             {selectedWorker === 'all' && (
-                              <div className="text-[10px] text-cloudo-accent/40 uppercase mt-1">Pool: {(proc as any).workerNode}</div>
+                              <div className="text-[10px] text-cloudo-accent/40 uppercase mt-1">Pool: {proc.workerNode}</div>
                             )}
                           </td>
                           <td className="px-6 py-4">
@@ -240,9 +241,14 @@ export function WorkersPanel() {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            <span className={`px-2 py-0.5 border text-[11px] font-black uppercase tracking-widest ${getStatusBadgeClass(proc.status)}`}>
-                              {proc.status}
-                            </span>
+                            <div className="flex items-center justify-center gap-2">
+                              {proc.status.toLowerCase() === 'running' && (
+                                <div className="w-2 h-2 bg-cloudo-accent animate-pulse ring-2 ring-cloudo-accent/30 rounded-full" />
+                              )}
+                              <span className={`px-2 py-0.5 border text-[11px] font-black uppercase tracking-widest ${getStatusBadgeClass(proc.status)}`}>
+                                {proc.status}
+                              </span>
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-right text-cloudo-muted font-mono opacity-50">
                             {(proc.startedAt || proc.requestedAt || '-').replace('T', ' ').split('.')[0]}
@@ -250,7 +256,7 @@ export function WorkersPanel() {
                           <td className="px-6 py-4 text-right">
                             {proc.status.toLowerCase() === 'running' && (
                               <button
-                                onClick={() => stopProcess((proc as any).workerNode, proc.exec_id)}
+                                onClick={() => stopProcess(proc.workerNode || selectedWorker, (proc as WorkerProcess).exec_id)}
                                 className="text-[11px] font-black text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-err/30 px-2 py-1 transition-all uppercase tracking-widest"
                               >
                                 KILL_PROC

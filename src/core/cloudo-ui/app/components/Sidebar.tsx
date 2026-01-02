@@ -13,7 +13,6 @@ import {
   HiOutlineBookOpen,
   HiOutlineCollection,
   HiOutlineChip,
-  HiOutlineLightningBolt,
   HiOutlineViewGrid,
   HiOutlineShieldCheck,
   HiOutlineUsers,
@@ -57,15 +56,20 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
   const [user, setUser] = useState<{username: string, email: string, role: string} | null>(null);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const userData = localStorage.getItem('cloudo_user');
     if (userData) {
       try {
-        setUser(JSON.parse(userData));
+        const parsed = JSON.parse(userData);
+        if (JSON.stringify(user) !== JSON.stringify(parsed)) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setUser(parsed);
+        }
       } catch (e) {
         console.error("Failed to parse user data", e);
       }
     }
-  }, []);
+  }, [user]);
 
   const handleLogout = () => {
     localStorage.removeItem('cloudo_auth');

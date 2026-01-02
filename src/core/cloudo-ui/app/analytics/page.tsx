@@ -1,19 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineChartBar,
   HiOutlineClock,
-  HiOutlineTerminal,
   HiOutlineExclamationCircle,
   HiOutlineCheckCircle,
-  HiOutlineTrendingUp,
-  HiOutlineTrendingDown,
   HiOutlineLightningBolt,
-  HiOutlineCalendar
+  HiOutlineCalendar,
+  HiOutlineTrendingUp
 } from "react-icons/hi";
-import { MdAnalytics } from "react-icons/md";
 
 interface AnalyticsData {
   totalRequests: number;
@@ -40,15 +37,15 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     fetchAnalytics();
-  }, [timeRange]);
+  }, [fetchAnalytics]);
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     try {
       const days = timeRange === '24h' ? 1 : timeRange === '7d' ? 7 : 30;
       const today = new Date();
 
-      let allLogs: any[] = [];
+      let allLogs: { ExecId: string; Runbook: string; RequestedAt: string; Status: string }[] = [];
 
       for (let i = 0; i < days; i++) {
         const date = new Date(today);
@@ -157,7 +154,7 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [timeRange]);
 
   if (loading) {
     return (
@@ -320,10 +317,9 @@ export default function AnalyticsPage() {
             <SectionHeader title="Traffic Density Timeline" />
             <div className="bg-cloudo-panel border border-cloudo-border p-8 h-48 flex items-end gap-1">
               {Object.entries(data.requestsByHour).length > 0 ? (
-                // Ordiniamo le chiavi (ore o giorni)
                 Object.entries(data.requestsByHour)
                   .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([key, count], i, arr) => {
+                  .map(([key, count]) => {
                     const maxCount = Math.max(...Object.values(data.requestsByHour));
                     const height = (count / maxCount) * 100;
                     return (
@@ -355,7 +351,15 @@ export default function AnalyticsPage() {
   );
 }
 
-function MetricCard({ title, value, subValue, icon, trend, positive, color = "text-cloudo-text" }: any) {
+function MetricCard({ title, value, subValue, icon, trend, positive, color = "text-cloudo-text" }: {
+  title: string;
+  value: string | number;
+  subValue: string;
+  icon: React.ReactNode;
+  trend: string;
+  positive: boolean;
+  color?: string;
+}) {
   return (
     <div className="bg-cloudo-panel border border-cloudo-border p-6 relative overflow-hidden group">
       <div className="absolute top-0 right-0 p-4 opacity-40 group-hover:opacity-50 transition-opacity text-4xl">

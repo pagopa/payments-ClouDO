@@ -1,7 +1,6 @@
 'use client';
 
 import { WorkersPanel } from '../components/WorkersPanel';
-import { MdOutlineSchema } from "react-icons/md";
 
 export default function WorkersPage() {
   return (

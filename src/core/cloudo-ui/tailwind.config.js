@@ -1,8 +1,8 @@
 // tailwind.config.js
-const {heroui} = require("@heroui/theme");
+import { heroui } from "@heroui/theme";
 
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+const config = {
   content: [
     "./node_modules/@heroui/theme/dist/components/(date-picker|button|ripple|spinner|calendar|date-input|form|popover).js",
   ],
@@ -12,3 +12,5 @@ module.exports = {
   darkMode: "class",
   plugins: [heroui()],
 };
+
+export default config;

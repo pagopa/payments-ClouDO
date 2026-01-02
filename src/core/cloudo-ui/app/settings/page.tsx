@@ -11,7 +11,6 @@ import {
   HiOutlineCheckCircle,
   HiOutlineExclamationCircle,
   HiOutlineInformationCircle,
-  HiOutlineBell,
   HiOutlineDatabase
 } from "react-icons/hi";
 
@@ -56,7 +55,7 @@ export default function SettingsPage() {
           router.push('/');
           return;
         }
-      } catch (e) {
+      } catch {
         router.push('/login');
         return;
       }
@@ -78,8 +77,8 @@ export default function SettingsPage() {
           setSettings(prev => ({ ...prev, ...data }));
         }
       }
-    } catch (e) {
-      console.error('Failed to fetch settings', e);
+    } catch {
+      console.error('Failed to fetch settings');
     } finally {
       setLoading(false);
     }
@@ -101,7 +100,7 @@ export default function SettingsPage() {
       } else {
         addNotification('error', 'Failed to update settings');
       }
-    } catch (e) {
+    } catch {
       addNotification('error', 'Uplink failed');
     } finally {
       setSaving(false);

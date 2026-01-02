@@ -12,24 +12,13 @@ import {
   HiOutlineDocumentText,
   HiOutlineVariable,
   HiOutlineCube,
-  HiOutlineSearch,
-  HiOutlinePlus,
-  HiOutlineArrowRight,
-  HiOutlineExclamationCircle,
-  HiOutlineX,
-  HiOutlineInformationCircle,
-  HiOutlineShieldCheck,
   HiOutlinePlay,
   HiOutlineDatabase,
-  HiOutlineClipboardList
+  HiOutlineClipboardList,
+  HiOutlineInformationCircle,
+  HiOutlineExclamationCircle
 } from "react-icons/hi";
 
-interface Suggestion {
-  id: string;
-  type: 'info' | 'warning' | 'success';
-  text: string;
-  impact: string;
-}
 
 const TEMPLATES = [
   {
@@ -177,7 +166,7 @@ export default function StudioPage() {
       const env: Record<string, string> = {};
 
       // Helper per chiavi case-insensitive (simula lower_keys)
-      const getLower = (obj: any, key: string) => {
+      const getLower = (obj: Record<string, unknown>, key: string) => {
         if (!obj || typeof obj !== 'object') return undefined;
         const lowerKey = key.toLowerCase();
         const foundKey = Object.keys(obj).find(k => k.toLowerCase() === lowerKey);
@@ -277,11 +266,13 @@ export default function StudioPage() {
       if (schemaCandidates.length > 0) env['SCHEMA_ID'] = Array.from(new Set(schemaCandidates)).join(',');
 
       env['CLOUDO_PAYLOAD'] = JSON.stringify(parsed);
-      setParsedEnv(env);
-    } catch (e) {
-      // JSON non valido
+      if (JSON.stringify(parsedEnv) !== JSON.stringify(env)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setParsedEnv(env);
+      }
+    } catch {
     }
-  }, [payloadInput]);
+  }, [payloadInput, parsedEnv]);
 
   const addNotification = (type: 'success' | 'error' | 'info', message: string) => {
     const id = Date.now();
@@ -459,13 +450,13 @@ export default function StudioPage() {
                 <h2 className="text-xl font-black uppercase tracking-widest text-cloudo-text">Manuale Sviluppatore Runbook</h2>
               </div>
               <p className="text-sm text-cloudo-muted leading-relaxed">
-                Benvenuto nella guida tecnica di ClouDO. In questa sezione troverai tutto il necessario per costruire runbook robusti, sicuri e integrati correttamente con l'orchestratore.
+                Benvenuto nella guida tecnica di ClouDO. In questa sezione troverai tutto il necessario per costruire runbook robusti, sicuri e integrati correttamente con l&apos;orchestratore.
               </p>
             </section>
 
             <div className="grid grid-cols-2 gap-8">
               <HandbookSection title="Runtime Context" icon={<HiOutlineCube />}>
-                  Il Worker inietta i parametri parsati dal JSON nelle variabili d'ambiente come ad esempio <code className="text-cloudo-accent">RESOURCE_ID</code>. In Python: <code className="text-cloudo-accent">os.environ.get('RESOURCE_ID')</code>.
+                  Il Worker inietta i parametri parsati dal JSON nelle variabili d&apos;ambiente come ad esempio <code className="text-cloudo-accent">RESOURCE_ID</code>. In Python: <code className="text-cloudo-accent">os.environ.get(&apos;RESOURCE_ID&apos;)</code>.
               </HandbookSection>
 
               <HandbookSection title="Output Capture" icon={<HiOutlineTerminal />}>

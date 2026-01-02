@@ -8,11 +8,9 @@ import {
   HiOutlineSearch,
   HiOutlineRefresh,
   HiOutlineUser,
-  HiOutlineCube,
   HiOutlineExclamationCircle,
   HiOutlineClock,
-  HiOutlineTag,
-  HiOutlineIdentification
+  HiOutlineTag
 } from "react-icons/hi";
 
 interface AuditLog {
@@ -39,7 +37,7 @@ export default function AuditPage() {
           router.push('/');
           return;
         }
-      } catch (e) {
+      } catch {
         router.push('/login');
         return;
       }
