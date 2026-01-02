@@ -86,7 +86,10 @@ resource "azurerm_linux_function_app" "orchestrator" {
       "SLACK_TOKEN_DEFAULT"                 = var.slack_integration.token
       "SLACK_CHANNEL_DEFAULT"               = var.slack_integration.channel
       "OPSGENIE_API_KEY_DEFAULT"            = var.opsgenie_api_key
+      "GITHUB_REPO"                         = var.github_repo_info.repo_name
+      "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
       "GITHUB_TOKEN"                        = var.orchestrator_image.registry_password
+      "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
       "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
       "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
       "APPROVAL_SECRET"                     = var.approval_runbook.secret

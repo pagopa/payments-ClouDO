@@ -46,6 +46,10 @@ export default function SchemasPage() {
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
+  const [runbookContent, setRunbookContent] = useState<string | null>(null);
+  const [isRunbookModalOpen, setIsRunbookModalOpen] = useState(false);
+  const [fetchingRunbook, setFetchingRunbook] = useState(false);
+
   const addNotification = (type: 'success' | 'error', message: string) => {
     const id = Date.now().toString();
     setNotifications(prev => [...prev, { id, type, message }]);
@@ -93,6 +97,25 @@ export default function SchemasPage() {
       addNotification('error', 'Network error // execution failed');
     } finally {
       setExecutingId(null);
+    }
+  };
+
+  const fetchRunbookContent = async (runbook: string) => {
+    setFetchingRunbook(true);
+    setRunbookContent(null);
+    setIsRunbookModalOpen(true);
+    try {
+      const res = await cloudoFetch(`/runbooks/content?name=${encodeURIComponent(runbook)}`);
+      const data = await res.json();
+      if (res.ok) {
+        setRunbookContent(data.content);
+      } else {
+        setRunbookContent(`Error: ${data.error || 'Failed to fetch content'}`);
+      }
+    } catch (e) {
+      setRunbookContent('Error: Network failure while fetching runbook content');
+    } finally {
+      setFetchingRunbook(false);
     }
   };
 
@@ -219,9 +242,13 @@ export default function SchemasPage() {
                       </td>
                       <td className="px-8 py-6 text-cloudo-accent/60 font-mono">
                         <div className="flex items-center gap-3">
-                          <div className="p-1.5 bg-cloudo-accent/10 border border-cloudo-border group-hover:border-cloudo-accent/20 transition-colors">
+                          <button
+                            onClick={() => fetchRunbookContent(schema.runbook)}
+                            className="p-1.5 bg-cloudo-accent/10 border border-cloudo-border group-hover:border-cloudo-accent/20 hover:bg-cloudo-accent/20 transition-all cursor-pointer"
+                            title="View Source Code"
+                          >
                             <HiOutlineTerminal className="opacity-150 w-4 h-4" />
-                          </div>
+                          </button>
                           <div className="flex flex-col min-w-0">
                             <span className="truncate text-cloudo-text/80 font-bold">{schema.runbook}</span>
                             <span className="text-[11px] text-cloudo-muted/70 uppercase tracking-widest mt-1">Asset_Source</span>
@@ -384,12 +411,57 @@ export default function SchemasPage() {
 
       {/* Delete Confirmation Modal */}
       {schemaToDelete && (
-        <DeleteConfirmationModal
+          <DeleteConfirmationModal
           schema={schemaToDelete}
           onClose={() => setSchemaToDelete(null)}
           onSuccess={(message) => { fetchSchemas(); addNotification('success', message); }}
           onError={(message) => addNotification('error', message)}
         />
+      )}
+
+      {/* Runbook Source Modal */}
+      {isRunbookModalOpen && (
+        <div className="fixed inset-0 bg-cloudo-dark/95 backdrop-blur-md flex items-center justify-center z-[70] p-4" onClick={() => setIsRunbookModalOpen(false)}>
+          <div className="bg-cloudo-panel border border-cloudo-border shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col animate-in zoom-in-95 duration-200 relative" onClick={e => e.stopPropagation()}>
+            <div className="px-8 py-4 border-b border-cloudo-border flex justify-between items-center bg-cloudo-accent/5">
+              <div className="flex items-center gap-3">
+                <HiOutlineTerminal className="text-cloudo-accent w-4 h-4" />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-text">Runbook Source Viewer</h3>
+              </div>
+              <button onClick={() => setIsRunbookModalOpen(false)} className="p-1.5 hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-border text-cloudo-muted transition-colors">
+                <HiOutlineX className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6 font-mono text-xs bg-black/40">
+              {fetchingRunbook ? (
+                <div className="flex items-center justify-center h-64 text-cloudo-accent animate-pulse uppercase tracking-widest font-black">
+                  Retrieving Source from Git...
+                </div>
+              ) : (
+                <pre className="text-cloudo-text/90 whitespace-pre-wrap break-all leading-relaxed">
+                  {runbookContent || 'No content available.'}
+                </pre>
+              )}
+            </div>
+
+            <div className="px-8 py-3 border-t border-cloudo-border bg-cloudo-panel flex justify-between items-center">
+               <span className="text-[9px] text-cloudo-muted uppercase font-bold tracking-widest opacity-60">System Isolated Viewer // READ_ONLY</span>
+               <button
+                 onClick={() => {
+                   if (runbookContent) {
+                     navigator.clipboard.writeText(runbookContent);
+                     addNotification('success', 'Source copied to clipboard');
+                   }
+                 }}
+                 disabled={!runbookContent || fetchingRunbook}
+                 className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-cloudo-accent hover:text-white transition-colors disabled:opacity-30"
+               >
+                 <HiOutlineClipboardCopy className="w-3.5 h-3.5" /> Copy Code
+               </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

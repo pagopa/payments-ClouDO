@@ -34,6 +34,11 @@ MAX_TABLE_CHARS = int(os.getenv("MAX_TABLE_LOG_CHARS", "32000"))
 APPROVAL_TTL_MIN = int(os.getenv("APPROVAL_TTL_MIN", "60"))
 APPROVAL_SECRET = (os.getenv("APPROVAL_SECRET") or "").strip()
 
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "pagopa/payments-cloudo")
+GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
+GITHUB_PATH_PREFIX = os.environ.get("GITHUB_PATH_PREFIX", "")
+
 if os.getenv("FEATURE_DEV", "false").lower() != "true":
     AUTH = func.AuthLevel.FUNCTION
 else:
@@ -3280,6 +3285,141 @@ def runbook_schemas(
             "Access-Control-Allow-Origin": "*",
         },
     )
+
+
+@app.route(
+    route="runbooks/content",
+    methods=[func.HttpMethod.GET, func.HttpMethod.OPTIONS],
+    auth_level=AUTH,
+)
+def get_runbook_content(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    script_name = req.params.get("name")
+    if not script_name:
+        return func.HttpResponse(
+            json.dumps({"error": "Query parameter 'name' is required"}),
+            status_code=400,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    owner_repo = (GITHUB_REPO or "").strip()
+    if not owner_repo or "/" not in owner_repo:
+        return func.HttpResponse(
+            json.dumps({"error": "GITHUB_REPO not configured correctly"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    branch = (GITHUB_BRANCH or "main").strip()
+    prefix = (GITHUB_PATH_PREFIX or "").strip().strip("/")
+    path_parts = [p for p in [prefix, script_name] if p]
+    repo_path = "/".join(path_parts)
+
+    content_text = None
+    error_msg = "File not found"
+
+    # FEATURE_DEV: read from local file system
+    if os.getenv("FEATURE_DEV", "false").lower() == "true":
+        try:
+            # Check if a dev script path is explicitly set (e.g. in Docker)
+            dev_script_path = os.getenv("DEV_SCRIPT_PATH")
+            if dev_script_path:
+                local_path = os.path.join(dev_script_path, script_name)
+            else:
+                # Fallback to relative path discovery for local development
+                # We assume runbooks are in src/runbooks relative to project root.
+                # The function app runs in src/core/orchestrator.
+                # __file__ is src/core/orchestrator/function_app.py
+                base_dir = os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                )
+                local_path = os.path.join(base_dir, "src", "runbooks", script_name)
+
+            if os.path.exists(local_path):
+                with open(local_path, encoding="utf-8") as f:
+                    content_text = f.read()
+                logging.info(f"Loaded runbook from local path: {local_path}")
+            else:
+                logging.warning(f"Local runbook not found at {local_path}")
+        except Exception as e:
+            logging.error(f"Error reading local runbook: {e}")
+
+    if content_text is not None:
+        return func.HttpResponse(
+            json.dumps({"content": content_text}),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    # We try both Contents API and Raw download
+    import requests
+
+    headers_list = []
+    base_headers = {"Accept": "application/vnd.github.v3+json"}
+    if GITHUB_TOKEN:
+        headers_list.append({**base_headers, "Authorization": f"Bearer {GITHUB_TOKEN}"})
+        headers_list.append({**base_headers, "Authorization": f"token {GITHUB_TOKEN}"})
+    else:
+        headers_list.append(base_headers)
+
+    content_text = None
+    error_msg = "File not found"
+
+    # Try Contents API first
+    api_url = f"https://api.github.com/repos/{owner_repo}/contents/{repo_path}"
+    for h in headers_list:
+        try:
+            resp = requests.get(api_url, headers=h, params={"ref": branch}, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                if (
+                    isinstance(data, dict)
+                    and data.get("encoding") == "base64"
+                    and "content" in data
+                ):
+                    import base64
+
+                    content_text = base64.b64decode(
+                        data["content"].replace("\n", "")
+                    ).decode("utf-8")
+                    break
+            elif resp.status_code in (401, 403):
+                error_msg = f"GitHub Auth Error: {resp.status_code}"
+                continue
+        except Exception as e:
+            logging.error(f"GitHub API error: {e}")
+
+    # Fallback to Raw
+    if content_text is None:
+        raw_url = f"https://raw.githubusercontent.com/{owner_repo}/{branch}/{repo_path}"
+        for h in headers_list:
+            try:
+                resp = requests.get(raw_url, headers=h, timeout=10)
+                if resp.status_code == 200:
+                    content_text = resp.text
+                    break
+            except Exception as e:
+                logging.error(f"GitHub Raw error: {e}")
+
+    if content_text is not None:
+        return func.HttpResponse(
+            json.dumps({"content": content_text}),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    else:
+        return func.HttpResponse(
+            json.dumps({"error": error_msg}),
+            status_code=404,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
 
 
 @app.schedule(

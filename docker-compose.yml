@@ -52,6 +52,7 @@ services:
       - FUNCTIONS_WORKER_RUNTIME=python
       - DOTNET_RUNNING_IN_CONTAINER=true
       - FEATURE_DEV=true
+      - DEV_SCRIPT_PATH=/work/runbooks/
       - CLOUDO_SECRET_KEY=local
       - NEXTJS_URL=http://frontend:3000
     depends_on:
@@ -60,6 +61,7 @@ services:
       - azure-functions
     volumes:
       - ./src/core/orchestrator:/home/site/wwwroot/
+      - ./src/runbooks:/work/runbooks:ro
 
   gateway:
     image: nginx:alpine
