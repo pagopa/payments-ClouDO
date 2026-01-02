@@ -9,6 +9,7 @@ import {
   HiOutlineCheckCircle, HiOutlineExclamationCircle, HiOutlineRefresh
 } from "react-icons/hi";
 import { MdOutlineSchema } from "react-icons/md";
+import { SiTerraform } from "react-icons/si";
 
 interface Schema {
   PartitionKey: string;
@@ -23,6 +24,7 @@ interface Schema {
   require_approval: boolean;
   severity?: string;
   monitor_condition?: string;
+  tags?: string;
 }
 
 interface Notification {
@@ -93,6 +95,8 @@ export default function SchemasPage() {
       setExecutingId(null);
     }
   };
+
+  const isTerraform = (tags?: string) => tags?.split(',').map(t => t.trim().toLowerCase()).includes('terraform');
 
   const filteredSchemas = useMemo(() => {
     return schemas.filter(s =>
@@ -184,18 +188,19 @@ export default function SchemasPage() {
             <table className="w-full text-left border-collapse table-fixed text-sm">
               <thead>
                 <tr className="border-b border-cloudo-border bg-cloudo-accent/10">
-                  <th className="w-[30%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Identification</th>
-                  <th className="w-[25%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Execution Path</th>
+                  <th className="w-[25%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Identification</th>
+                  <th className="w-[20%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Execution Path</th>
                   <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Node Cluster</th>
                   <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Policy</th>
+                  <th className="w-[10%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Tags</th>
                   <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-right text-[11px]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-cloudo-border/30">
                 {loading ? (
-                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-50">Refreshing Schema Data...</td></tr>
+                  <tr key="loading-row"><td colSpan={6} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-50">Refreshing Schema Data...</td></tr>
                 ) : filteredSchemas.length === 0 ? (
-                  <tr key="empty-row"><td colSpan={5} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-40 italic">NO_ENTRIES_FOUND</td></tr>
+                  <tr key="empty-row"><td colSpan={6} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-40 italic">NO_ENTRIES_FOUND</td></tr>
                 ) : (
                   filteredSchemas.map((schema) => (
                     <tr key={schema.RowKey} className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40">
@@ -256,6 +261,26 @@ export default function SchemasPage() {
                           </div>
                         </div>
                       </td>
+                      <td className="px-8 py-6">
+                        <div className="flex flex-wrap gap-1.5">
+                          {schema.tags?.split(',').map(t => t.trim()).filter(t => t !== '').map((tag, idx) => {
+                            const isTf = tag.toLowerCase() === 'terraform';
+                            return (
+                              <span key={idx} className={`px-1.5 py-0.5 border text-[9px] font-black uppercase tracking-tighter flex items-center gap-1 ${
+                                isTf
+                                  ? 'bg-[#7B42BC]/20 border-[#7B42BC]/40 text-[#7B42BC]'
+                                  : 'bg-cloudo-accent/5 border-cloudo-accent/20 text-cloudo-accent'
+                              }`}>
+                                {isTf ? (
+                                  <SiTerraform className="w-3.5 h-3.5" title="Terraform" />
+                                ) : (
+                                  tag
+                                )}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <div className="relative group/run">
@@ -292,17 +317,27 @@ export default function SchemasPage() {
                           </div>
                           <button
                             onClick={() => { setSelectedSchema(schema); setModalMode('edit'); }}
-                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn"
-                            title="Edit Configuration"
+                            disabled={isTerraform(schema.tags)}
+                            className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
+                              isTerraform(schema.tags)
+                                ? 'opacity-20 cursor-not-allowed grayscale'
+                                : 'hover:border-white/20 text-cloudo-muted hover:text-cloudo-text'
+                            }`}
+                            title={isTerraform(schema.tags) ? "Managed by Terraform - Read Only" : "Edit Configuration"}
                           >
-                            <HiOutlinePencil className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                            <HiOutlinePencil className={`w-4 h-4 ${!isTerraform(schema.tags) && 'group-hover/btn:scale-110'} transition-transform`} />
                           </button>
                           <button
                             onClick={() => setSchemaToDelete(schema)}
-                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn"
-                            title="Delete Schema Entry"
+                            disabled={isTerraform(schema.tags)}
+                            className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
+                              isTerraform(schema.tags)
+                                ? 'opacity-20 cursor-not-allowed grayscale'
+                                : 'hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text'
+                            }`}
+                            title={isTerraform(schema.tags) ? "Managed by Terraform - Protected" : "Delete Schema Entry"}
                           >
-                            <HiOutlineTrash className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                            <HiOutlineTrash className={`w-4 h-4 ${!isTerraform(schema.tags) && 'group-hover/btn:scale-110'} transition-transform`} />
                           </button>
                         </div>
                       </td>
@@ -396,17 +431,37 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
     require_approval: initialData?.require_approval || false,
     severity: initialData?.severity || '',
     monitor_condition: initialData?.monitor_condition || '',
+    tags: (initialData?.tags || (mode === 'create' ? 'ui' : '')).split(',').map(t => t.trim()).filter(t => t !== 'ui').join(', '),
   });
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Prevent saving if it's a terraform-managed schema (extra safety)
+    const originalTags = initialData?.tags || '';
+    const isTf = originalTags.split(',').map(t => t.trim().toLowerCase()).includes('terraform');
+    if (mode === 'edit' && isTf) {
+      onError('Cannot modify Terraform-managed schema');
+      return;
+    }
+
     setSubmitting(true);
+
+    // Ensure 'ui' tag is always present
+    const userTags = formData.tags.split(',').map(t => t.trim()).filter(t => t !== '');
+    const finalTags = ['ui', ...userTags].join(', ');
+
     try {
       const response = await cloudoFetch(`/schemas`, {
         method: mode === 'create' ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ PartitionKey: 'RunbookSchema', RowKey: formData.id, ...formData }),
+        body: JSON.stringify({
+          PartitionKey: 'RunbookSchema',
+          RowKey: formData.id,
+          ...formData,
+          tags: finalTags
+        }),
       });
 
       const data = await response.json();
@@ -506,6 +561,22 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
             value={formData.run_args}
             onChange={e => setFormData({...formData, run_args: e.target.value})}
             placeholder="--force --silent"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2 col-span-2">
+        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Tags (comma separated)</label>
+        <div className="flex gap-2">
+          <div className="h-10 px-4 bg-cloudo-accent/10 border border-cloudo-accent/30 text-cloudo-accent text-[11px] font-black flex items-center uppercase tracking-widest">
+            ui
+          </div>
+          <input
+            type="text"
+            className="input flex-1"
+            value={formData.tags}
+            onChange={e => setFormData({...formData, tags: e.target.value})}
+            placeholder="e.g. production, urgent"
           />
         </div>
       </div>

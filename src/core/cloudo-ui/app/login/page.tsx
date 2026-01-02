@@ -17,10 +17,23 @@ function LoginForm() {
   const registered = searchParams.get('registered') === 'true';
 
   useEffect(() => {
-    // Se già loggato, vai alla home
     const auth = localStorage.getItem('cloudo_auth');
+    const expiresAt = localStorage.getItem('cloudo_expires_at');
+
     if (auth === 'true') {
-      router.push('/');
+      if (expiresAt) {
+        const now = new Date();
+        const expirationDate = new Date(expiresAt);
+        if (now < expirationDate) {
+          router.push('/');
+        } else {
+          localStorage.removeItem('cloudo_auth');
+          localStorage.removeItem('cloudo_user');
+          localStorage.removeItem('cloudo_expires_at');
+        }
+      } else {
+        router.push('/');
+      }
     }
   }, [router]);
 
@@ -44,7 +57,6 @@ function LoginForm() {
     setIsLoading(true);
     setError('');
 
-    // Chiamata API reale
     try {
       const res = await cloudoFetch(`/auth/login`, {
         method: 'POST',
@@ -57,6 +69,9 @@ function LoginForm() {
       if (res.ok && data.success) {
         localStorage.setItem('cloudo_auth', 'true');
         localStorage.setItem('cloudo_user', JSON.stringify(data.user));
+        if (data.expires_at) {
+          localStorage.setItem('cloudo_expires_at', data.expires_at);
+        }
         router.push('/');
       } else {
         setError(data.error || 'Invalid credentials. Access denied.');

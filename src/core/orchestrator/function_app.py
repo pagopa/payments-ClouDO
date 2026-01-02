@@ -2533,6 +2533,9 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
                 target=user_entity.get("email"),
                 details=f"user: {user_entity.get('RowKey')}, email: {user_entity.get('email')}, role: {user_entity.get('role')}",
             )
+            # Token expiration (e.g. 8 hours)
+            expires_at = (datetime.now(timezone.utc) + timedelta(hours=8)).isoformat()
+
             return func.HttpResponse(
                 json.dumps(
                     {
@@ -2542,6 +2545,7 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
                             "email": user_entity.get("email"),
                             "role": user_entity.get("role"),
                         },
+                        "expires_at": expires_at,
                     }
                 ),
                 status_code=200,

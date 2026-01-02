@@ -219,6 +219,9 @@ resource "azurerm_storage_table_entity" "schemas" {
   row_key       = random_uuid.uuid[each.key].result
 
   entity = merge(
-    each.value.entity
+    each.value.entity,
+    {
+      tags = lookup(each.value.entity, "tags", null) == null ? "terraform" : contains(split(",", each.value.entity.tags), "terraform") ? each.value.entity.tags : "${each.value.entity.tags},terraform"
+    }
   )
 }

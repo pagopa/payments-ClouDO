@@ -22,7 +22,21 @@ export default function RootLayout({
 
   useEffect(() => {
     const auth = typeof window !== 'undefined' ? localStorage.getItem('cloudo_auth') : null;
-    const authed = auth === 'true';
+    const expiresAt = typeof window !== 'undefined' ? localStorage.getItem('cloudo_expires_at') : null;
+
+    let authed = auth === 'true';
+
+    if (authed && expiresAt) {
+      const now = new Date();
+      const expirationDate = new Date(expiresAt);
+      if (now >= expirationDate) {
+        // Session expired
+        localStorage.removeItem('cloudo_auth');
+        localStorage.removeItem('cloudo_user');
+        localStorage.removeItem('cloudo_expires_at');
+        authed = false;
+      }
+    }
 
     // Update state only if it changed to avoid redundant renders
     setIsAuthenticated(prev => {
