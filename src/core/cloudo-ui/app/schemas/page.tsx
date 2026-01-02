@@ -263,7 +263,7 @@ export default function SchemasPage() {
                             <HiOutlineTerminal className="opacity-150 w-4 h-4" />
                           </button>
                           <div className="flex flex-col min-w-0">
-                            <span className="truncate text-cloudo-text/80 font-bold">{schema.runbook}</span>
+                            <span className="truncate text-cloudo-text/80 font-bold transition-all cursor-pointer" onClick={() => fetchRunbookContent(schema.runbook)}>{schema.runbook}</span>
                             <span className="text-[11px] text-cloudo-muted/70 uppercase tracking-widest mt-1">Asset_Source</span>
                           </div>
                         </div>
