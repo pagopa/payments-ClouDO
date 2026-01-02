@@ -49,6 +49,7 @@ export default function SchemasPage() {
   const [runbookContent, setRunbookContent] = useState<string | null>(null);
   const [isRunbookModalOpen, setIsRunbookModalOpen] = useState(false);
   const [fetchingRunbook, setFetchingRunbook] = useState(false);
+  const [availableRunbooks, setAvailableRunbooks] = useState<string[]>([]);
 
   const addNotification = (type: 'success' | 'error', message: string) => {
     const id = Date.now().toString();
@@ -67,6 +68,18 @@ export default function SchemasPage() {
       const data = await res.json();
       setSchemas(Array.isArray(data) ? data : []);
     } catch (e) { setSchemas([]); } finally { setLoading(false); }
+  };
+
+  const fetchAvailableRunbooks = async () => {
+    try {
+      const res = await cloudoFetch(`/runbooks/list`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.runbooks)) {
+        setAvailableRunbooks(data.runbooks);
+      }
+    } catch (e) {
+      console.error('Failed to fetch available runbooks', e);
+    }
   };
 
   const copyToClipboard = (id: string) => {
@@ -185,7 +198,7 @@ export default function SchemasPage() {
             />
           </div>
           <button
-            onClick={() => { setSelectedSchema(null); setModalMode('create'); }}
+            onClick={() => { setSelectedSchema(null); setModalMode('create'); fetchAvailableRunbooks(); }}
             className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
           >
             <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> New Schema
@@ -343,7 +356,7 @@ export default function SchemasPage() {
                             )}
                           </div>
                           <button
-                            onClick={() => { setSelectedSchema(schema); setModalMode('edit'); }}
+                            onClick={() => { setSelectedSchema(schema); setModalMode('edit'); fetchAvailableRunbooks(); }}
                             disabled={isTerraform(schema.tags)}
                             className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
                               isTerraform(schema.tags)
@@ -401,6 +414,7 @@ export default function SchemasPage() {
             <SchemaForm
               initialData={selectedSchema}
               mode={modalMode}
+              availableRunbooks={availableRunbooks}
               onSuccess={(message) => { fetchSchemas(); setModalMode(null); addNotification('success', message); }}
               onCancel={() => setModalMode(null)}
               onError={(message) => addNotification('error', message)}
@@ -485,9 +499,10 @@ function StatSmall({ title, value, icon, label, color = "text-cloudo-text" }: { 
   );
 }
 
-function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
+function SchemaForm({ initialData, mode, availableRunbooks, onSuccess, onCancel, onError }: {
   initialData?: Schema | null,
   mode: 'create' | 'edit',
+  availableRunbooks: string[],
   onSuccess: (message: string) => void,
   onCancel: () => void,
   onError: (message: string) => void
@@ -601,7 +616,13 @@ function SchemaForm({ initialData, mode, onSuccess, onCancel, onError }: {
             value={formData.runbook}
             onChange={e => setFormData({...formData, runbook: e.target.value})}
             placeholder="script.sh"
+            list="runbooks-list"
           />
+          <datalist id="runbooks-list">
+            {availableRunbooks.map((rb) => (
+              <option key={rb} value={rb} />
+            ))}
+          </datalist>
         </div>
       </div>
       <div className="space-y-2">

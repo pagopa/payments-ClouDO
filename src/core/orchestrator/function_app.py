@@ -3461,6 +3461,89 @@ def get_runbook_content(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
+@app.route(
+    route="runbooks/list",
+    methods=[func.HttpMethod.GET, func.HttpMethod.OPTIONS],
+    auth_level=AUTH,
+)
+def list_runbooks(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    runbooks = []
+
+    # FEATURE_DEV: list from local file system
+    if os.getenv("FEATURE_DEV", "false").lower() == "true":
+        try:
+            dev_script_path = os.getenv("DEV_SCRIPT_PATH")
+            if dev_script_path:
+                local_dir = dev_script_path
+            else:
+                base_dir = os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                )
+                local_dir = os.path.join(base_dir, "src", "runbooks")
+
+            if os.path.exists(local_dir):
+                for root, dirs, files in os.walk(local_dir):
+                    for file in files:
+                        if file.endswith(".sh") or file.endswith(".py"):
+                            rel_path = os.path.relpath(
+                                os.path.join(root, file), local_dir
+                            )
+                            runbooks.append(rel_path)
+                logging.info(f"Listed runbooks from local path: {local_dir}")
+        except Exception as e:
+            logging.error(f"Error listing local runbooks: {e}")
+
+    # If no local runbooks found or not in DEV, try GitHub
+    if not runbooks:
+        owner_repo = (GITHUB_REPO or "").strip()
+        branch = (GITHUB_BRANCH or "main").strip()
+        prefix = (GITHUB_PATH_PREFIX or "").strip().strip("/")
+
+        if owner_repo and "/" in owner_repo:
+            import requests
+
+            headers_list = []
+            base_headers = {"Accept": "application/vnd.github.v3+json"}
+            if GITHUB_TOKEN:
+                headers_list.append(
+                    {**base_headers, "Authorization": f"Bearer {GITHUB_TOKEN}"}
+                )
+                headers_list.append(
+                    {**base_headers, "Authorization": f"token {GITHUB_TOKEN}"}
+                )
+            else:
+                headers_list.append(base_headers)
+
+            api_url = f"https://api.github.com/repos/{owner_repo}/contents/{prefix}"
+            for h in headers_list:
+                try:
+                    resp = requests.get(
+                        api_url, headers=h, params={"ref": branch}, timeout=10
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if isinstance(data, list):
+                            for item in data:
+                                if item.get("type") == "file" and (
+                                    item.get("name").endswith(".sh")
+                                    or item.get("name").endswith(".py")
+                                ):
+                                    runbooks.append(item.get("name"))
+                        break
+                except Exception as e:
+                    logging.error(f"GitHub API list error: {e}")
+
+    return func.HttpResponse(
+        json.dumps({"runbooks": sorted(list(set(runbooks)))}),
+        status_code=200,
+        mimetype="application/json",
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
+
+
 @app.schedule(
     schedule="0 */1 * * * *",
     arg_name="schedulerTimer",

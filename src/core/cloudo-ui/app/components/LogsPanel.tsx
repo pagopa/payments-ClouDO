@@ -404,9 +404,28 @@ export function LogsPanel() {
              </div>
 
              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                   <div className="w-1 h-2 bg-cloudo-accent" />
-                   <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Standard Output Stream</span>
+                <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-2">
+                      <div className="w-1 h-2 bg-cloudo-accent" />
+                      <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Standard Output Stream</span>
+                   </div>
+                   <button
+                     onClick={() => copyToClipboard(selectedLog.Log)}
+                     className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-cloudo-accent hover:text-white transition-colors"
+                     title="Copy all logs"
+                   >
+                     {copied ? (
+                       <>
+                         <HiOutlineClipboardCheck className="w-3.5 h-3.5 text-cloudo-ok" />
+                         <span className="text-cloudo-ok">Copied</span>
+                       </>
+                     ) : (
+                       <>
+                         <HiOutlineClipboard className="w-3.5 h-3.5" />
+                         <span>Copy Logs</span>
+                       </>
+                     )}
+                   </button>
                 </div>
                 <div className="bg-cloudo-dark p-6 border border-cloudo-border font-mono text-xs min-h-[400px]">
                    {formatLogContent(selectedLog.Log)}
