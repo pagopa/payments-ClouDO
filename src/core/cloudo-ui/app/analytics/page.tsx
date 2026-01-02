@@ -35,10 +35,6 @@ export default function AnalyticsPage() {
     topRunbooks: []
   });
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, [fetchAnalytics]);
-
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     try {
@@ -155,6 +151,10 @@ export default function AnalyticsPage() {
       setLoading(false);
     }
   }, [timeRange]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
 
   if (loading) {
     return (

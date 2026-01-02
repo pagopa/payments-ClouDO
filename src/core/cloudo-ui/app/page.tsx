@@ -301,12 +301,13 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ title, value, icon, status, highlight = false }: {
+function StatCard({ title, value, icon, status, highlight = false, trend }: {
   title: string;
   value: string | number;
   icon: React.ReactNode;
   status: string;
   highlight?: boolean;
+  trend?: number[];
 }) {
   return (
     <div className="bg-cloudo-panel border border-cloudo-border p-6 flex items-center justify-between relative overflow-hidden group">
@@ -314,7 +315,20 @@ function StatCard({ title, value, icon, status, highlight = false }: {
       <div className="relative z-10">
         <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/80">{title}</p>
         <p className={`text-3xl font-black mt-1 ${highlight ? 'text-cloudo-warn' : 'text-cloudo-text'} tracking-tighter`}>{value}</p>
-        <p className="text-[11px] font-bold text-cloudo-muted/80 uppercase mt-2 tracking-[0.1em]">{status}</p>
+        <div className="flex items-center gap-2 mt-2">
+           <p className="text-[11px] font-bold text-cloudo-muted/80 uppercase tracking-[0.1em]">{status}</p>
+           {trend && trend.length > 0 && (
+             <div className="flex items-end gap-0.5 h-3">
+               {trend.map((v, i) => (
+                 <div
+                   key={i}
+                   className="w-1 bg-cloudo-accent/30"
+                   style={{ height: `${(v / Math.max(...trend)) * 100}%` }}
+                 />
+               ))}
+             </div>
+           )}
+        </div>
       </div>
       <div className="p-3 bg-cloudo-accent/10 border border-cloudo-border text-xl shrink-0">
         {icon}
@@ -345,7 +359,7 @@ function StatusIndicator({ status }: { status: string }) {
   );
 }
 
-function QuickLink({ icon, label, href }: { icon: JSX.Element, label: string, href: string }) {
+function QuickLink({ icon, label, href }: { icon: React.ReactNode, label: string, href: string }) {
   return (
     <a href={href} className="flex items-center justify-between p-4 bg-cloudo-panel border border-cloudo-border hover:bg-cloudo-accent/5 hover:border-cloudo-accent transition-all group">
       <div className="flex items-center gap-3 min-w-0">

@@ -40,11 +40,6 @@ export function WorkersPanel() {
   const [loading, setLoading] = useState(false);
   const [loadingWorkers, setLoadingWorkers] = useState(true);
 
-  useEffect(() => {
-    fetchWorkers();
-  }, []);
-
-
   const fetchWorkers = async () => {
     setLoadingWorkers(true);
     try {
@@ -58,6 +53,10 @@ export function WorkersPanel() {
       setLoadingWorkers(false);
     }
   };
+
+  useEffect(() => {
+    fetchWorkers();
+  }, []);
 
   const fetchProcesses = useCallback(async (worker: string) => {
     if (!worker) return;

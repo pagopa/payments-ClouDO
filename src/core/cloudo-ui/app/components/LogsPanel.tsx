@@ -15,7 +15,7 @@ import {
   HiOutlineFingerPrint,
   HiOutlineCalendar
 } from 'react-icons/hi';
-import {parseDate, today, getLocalTimeZone} from "@internationalized/date";
+import {parseDate, today, getLocalTimeZone, CalendarDate} from "@internationalized/date";
 
 interface LogEntry {
   PartitionKey: string;
@@ -34,8 +34,8 @@ interface LogEntry {
 }
 
 export function LogsPanel() {
-  const [partitionKey, setPartitionKey] = useState('');
-  const [dateValue, setDateValue] = useState(today(getLocalTimeZone()));
+  const [partitionKey, setPartitionKey] = useState(today(getLocalTimeZone()).toString().replace(/-/g, ''));
+  const [dateValue, setDateValue] = useState<CalendarDate | null>(today(getLocalTimeZone()));
   const [execId, setExecId] = useState('');
   const [status, setStatus] = useState('');
   const [query, setQuery] = useState('');
@@ -115,13 +115,8 @@ export function LogsPanel() {
   }, [partitionKey, execId, status, query, limit]);
 
   useEffect(() => {
-    const t = today(getLocalTimeZone());
-    const pk = t.toString().replace(/-/g, '');
-
-    setDateValue(t);
-    setPartitionKey(pk);
-    runQuery({ partitionKey: pk });
-  }, [runQuery]);
+    runQuery();
+  }, []); // Run only on mount
 
   const handleReset = () => {
     setExecId('');
@@ -133,10 +128,12 @@ export function LogsPanel() {
     setTodayDate();
   };
 
-  const handleDateChange = (val: { toString: () => string } | null) => {
+  const handleDateChange = (val: CalendarDate | null) => {
     setDateValue(val);
     if (val) {
-      setPartitionKey(val.toString().replace(/-/g, ''));
+      const pk = val.toString().replace(/-/g, '');
+      setPartitionKey(pk);
+      runQuery({ partitionKey: pk });
     } else {
       setPartitionKey('');
     }
@@ -205,8 +202,8 @@ export function LogsPanel() {
                   <input
                     type="date"
                     className="input input-icon pl-10 relative bg-transparent border border-cloudo-border text-cloudo-text w-full py-2 px-3 leading-tight focus:outline-none focus:border-cloudo-accent transition-colors block"
-                    value={dateValue.toString()}
-                    onChange={(e) => handleDateChange(parseDate(e.target.value))}
+                    value={dateValue ? dateValue.toString() : ''}
+                    onChange={(e) => handleDateChange(e.target.value ? parseDate(e.target.value) : null)}
                     onKeyDown={handleKeyDown}
                     onClick={(e) => e.currentTarget.showPicker?.()}
                   />
