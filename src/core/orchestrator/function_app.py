@@ -2526,12 +2526,41 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
             conn_str, table_name=TABLE_USERS
         )
 
-        # In a real world app, we should use hashing. For this requirement, we use plain text as per current mock.
         user_entity = table_client.get_entity(
             partition_key="Operator", row_key=username
         )
 
-        if user_entity.get("password") == password:
+        import bcrypt
+
+        db_password = user_entity.get("password")
+        is_valid = False
+
+        if db_password:
+            # Check if it's already hashed (bcrypt hashes start with $2b$ or $2a$)
+            if db_password.startswith("$2b$") or db_password.startswith("$2a$"):
+                try:
+                    if bcrypt.checkpw(
+                        password.encode("utf-8"), db_password.encode("utf-8")
+                    ):
+                        is_valid = True
+                except Exception as e:
+                    logging.warning(f"Bcrypt check failed: {e}")
+            else:
+                # Fallback for plain text (for migration period)
+                if db_password == password:
+                    is_valid = True
+                    # Optional: auto-migrate to hash here if we have the plain password
+                    try:
+                        hashed = bcrypt.hashpw(
+                            password.encode("utf-8"), bcrypt.gensalt()
+                        ).decode("utf-8")
+                        user_entity["password"] = hashed
+                        table_client.update_entity(entity=user_entity)
+                        logging.info(f"User {username} password migrated to hash")
+                    except Exception as e:
+                        logging.error(f"Failed to migrate password for {username}: {e}")
+
+        if is_valid:
             log_audit(
                 user=user_entity.get("RowKey"),
                 action="USER_LOGIN_SUCCESS",
@@ -2675,6 +2704,16 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
             except Exception:
                 created_at = datetime.now(timezone.utc).isoformat()
                 password = body.get("password")
+
+            import bcrypt
+
+            # If password is provided and doesn't look like a bcrypt hash, hash it
+            if password and not (
+                password.startswith("$2b$") or password.startswith("$2a$")
+            ):
+                password = bcrypt.hashpw(
+                    password.encode("utf-8"), bcrypt.gensalt()
+                ).decode("utf-8")
 
             entity = {
                 "PartitionKey": "Operator",
