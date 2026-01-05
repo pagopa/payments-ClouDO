@@ -24,7 +24,7 @@ export default function RootLayout({
     const auth = typeof window !== 'undefined' ? localStorage.getItem('cloudo_auth') : null;
     const expiresAt = typeof window !== 'undefined' ? localStorage.getItem('cloudo_expires_at') : null;
 
-    let authed = auth === 'true';
+    let authed = auth === 'true' && !!expiresAt;
 
     if (authed && expiresAt) {
       const now = new Date();

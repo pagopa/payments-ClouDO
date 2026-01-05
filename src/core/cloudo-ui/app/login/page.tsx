@@ -19,20 +19,20 @@ function LoginForm() {
     const auth = localStorage.getItem('cloudo_auth');
     const expiresAt = localStorage.getItem('cloudo_expires_at');
 
-    if (auth === 'true') {
-      if (expiresAt) {
-        const now = new Date();
-        const expirationDate = new Date(expiresAt);
-        if (now < expirationDate) {
-          router.push('/');
-        } else {
-          localStorage.removeItem('cloudo_auth');
-          localStorage.removeItem('cloudo_user');
-          localStorage.removeItem('cloudo_expires_at');
-        }
-      } else {
+    if (auth === 'true' && expiresAt) {
+      const now = new Date();
+      const expirationDate = new Date(expiresAt);
+      if (now < expirationDate) {
         router.push('/');
+      } else {
+        localStorage.removeItem('cloudo_auth');
+        localStorage.removeItem('cloudo_user');
+        localStorage.removeItem('cloudo_expires_at');
       }
+    } else if (auth === 'true' && !expiresAt) {
+      localStorage.removeItem('cloudo_auth');
+      localStorage.removeItem('cloudo_user');
+      localStorage.removeItem('cloudo_expires_at');
     }
   }, [router]);
 
@@ -66,13 +66,14 @@ function LoginForm() {
 
       const data = await res.json();
 
-      if (res.ok && data.success) {
+      if (res.ok && data.success && data.expires_at) {
         localStorage.setItem('cloudo_auth', 'true');
         localStorage.setItem('cloudo_user', JSON.stringify(data.user));
-        if (data.expires_at) {
-          localStorage.setItem('cloudo_expires_at', data.expires_at);
-        }
+        localStorage.setItem('cloudo_expires_at', data.expires_at);
         router.push('/');
+      } else if (res.ok && data.success && !data.expires_at) {
+        setError('Login successful but no expiration provided. Security protocol violated.');
+        setIsLoading(false);
       } else {
         setError(data.error || 'Invalid credentials. Access denied.');
         setIsLoading(false);

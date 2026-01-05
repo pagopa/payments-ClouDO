@@ -74,6 +74,7 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
   const handleLogout = () => {
     localStorage.removeItem('cloudo_auth');
     localStorage.removeItem('cloudo_user');
+    localStorage.removeItem('cloudo_expires_at');
     router.push('/login');
   };
 

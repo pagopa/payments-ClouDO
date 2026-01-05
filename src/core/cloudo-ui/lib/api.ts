@@ -4,6 +4,18 @@ export async function cloudoFetch(url: string, options: RequestInit = {}) {
   let currentUser = null;
   if (typeof window !== 'undefined') {
     const expiresAt = localStorage.getItem('cloudo_expires_at');
+    const auth = localStorage.getItem('cloudo_auth');
+
+    if (auth === 'true' && !expiresAt) {
+      localStorage.removeItem('cloudo_auth');
+      localStorage.removeItem('cloudo_user');
+      localStorage.removeItem('cloudo_expires_at');
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+      throw new Error('Security protocol violated: Session expiration missing');
+    }
+
     if (expiresAt) {
       const now = new Date();
       const expirationDate = new Date(expiresAt);
