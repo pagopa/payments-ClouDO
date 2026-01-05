@@ -15,7 +15,7 @@ interface AnalyticsData {
   totalRequests: number;
   successRate: number;
   peakThroughput: number;
-  errorCount: number;
+  failedOnCalls: number;
   requestsByStatus: Record<string, number>;
   requestsByHour: Record<string, number>;
   topRunbooks: { name: string; count: number; success: number }[];
@@ -28,7 +28,7 @@ export default function AnalyticsPage() {
     totalRequests: 0,
     successRate: 0,
     peakThroughput: 0,
-    errorCount: 0,
+    failedOnCalls: 0,
     requestsByStatus: {},
     requestsByHour: {},
     topRunbooks: []
@@ -76,9 +76,13 @@ export default function AnalyticsPage() {
         const currentStatus = (log.Status || '').toLowerCase();
         const timestamp = new Date(log.RequestedAt);
 
-        if (['accepted', 'pending', 'routed'].includes(currentStatus)) {
+        if (['accepted', 'pending', 'routed', 'scheduled'].includes(currentStatus)) {
           if (!execMap[id].start || timestamp < execMap[id].start) {
             execMap[id].start = timestamp;
+          }
+          // If it's still unknown, set it to the current in-progress status
+          if (execMap[id].status === 'unknown') {
+            execMap[id].status = currentStatus;
           }
         }
 
@@ -131,7 +135,7 @@ export default function AnalyticsPage() {
         totalRequests: processedExecutions.length,
         successRate: processedExecutions.length > 0 ? (succeeded / processedExecutions.length) * 100 : 0,
         peakThroughput,
-        errorCount: (statusMap['failed'] || 0) + (statusMap['error'] || 0),
+        failedOnCalls: (statusMap['failed'] || 0) + (statusMap['error'] || 0),
         requestsByStatus: statusMap,
         requestsByHour: hourMap,
         topRunbooks
@@ -225,13 +229,13 @@ export default function AnalyticsPage() {
               positive={true}
             />
             <MetricCard
-              title="Error Volume"
-              value={data.errorCount}
-              subValue="Critical Incidents"
+              title="Failed OnCalls"
+              value={data.failedOnCalls}
+              subValue="Failed Executions"
               icon={<HiOutlineExclamationCircle />}
-              trend={data.errorCount === 0 ? "ZERO" : "WARN"}
-              positive={data.errorCount === 0}
-              color={data.errorCount > 0 ? "text-cloudo-err" : "text-cloudo-ok"}
+              trend={data.failedOnCalls === 0 ? "ZERO" : "WARN"}
+              positive={data.failedOnCalls === 0}
+              color={data.failedOnCalls > 0 ? "text-cloudo-err" : "text-cloudo-ok"}
             />
           </div>
 
@@ -251,7 +255,8 @@ export default function AnalyticsPage() {
                         className={`h-full ${
                           ['succeeded', 'completed'].includes(status) ? 'bg-cloudo-ok' :
                           ['failed', 'error'].includes(status) ? 'bg-cloudo-err' :
-                          'bg-cloudo-accent'
+                          ['accepted', 'scheduled', 'pending', 'routed'].includes(status) ? 'bg-cloudo-accent' :
+                          'bg-cloudo-muted'
                         }`}
                         style={{ width: `${(count / data.totalRequests) * 100}%` }}
                       />
@@ -307,33 +312,73 @@ export default function AnalyticsPage() {
           {/* Activity Timeline */}
           <div className="space-y-4">
             <SectionHeader title="Traffic Density Timeline" />
-            <div className="bg-cloudo-panel border border-cloudo-border p-8 h-48 flex items-end gap-1">
-              {Object.entries(data.requestsByHour).length > 0 ? (
-                Object.entries(data.requestsByHour)
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([key, count]) => {
-                    const maxCount = Math.max(...Object.values(data.requestsByHour));
-                    const height = (count / maxCount) * 100;
-                    return (
-                      <div
-                        key={key}
-                        className="flex-1 bg-cloudo-accent/20 hover:bg-cloudo-accent transition-all group relative"
-                        style={{ height: `${height}%` }}
-                      >
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-cloudo-accent text-cloudo-dark text-[10px] font-black px-1.5 py-0.5 opacity-0 group-hover:opacity-400 transition-opacity whitespace-nowrap z-10">
-                          {key}: {count} REQ
-                        </div>
-                      </div>
-                    );
-                  })
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-cloudo-muted/80 italic text-xs">NO_TIMELINE_DATA</div>
-              )}
-            </div>
-            <div className="flex justify-between px-2 text-[10px] font-black text-cloudo-muted/70 uppercase tracking-[0.2em]">
-              <span>{timeRange === '24h' ? '00:00' : 'OLDEST_DATA'}</span>
-              <span>{timeRange === '24h' ? '12:00' : 'MID_PERIOD'}</span>
-              <span>{timeRange === '24h' ? '23:00' : 'RECENT_DATA'}</span>
+            <div className="flex gap-4">
+              {/* Y-Axis */}
+              <div className="flex flex-col justify-between text-[10px] font-black text-cloudo-muted/60 py-1 uppercase tracking-tighter w-8 border-r border-cloudo-border/30">
+                {Object.entries(data.requestsByHour).length > 0 ? (
+                  <>
+                    <span>{Math.max(...Object.values(data.requestsByHour))}</span>
+                    <span>{Math.round(Math.max(...Object.values(data.requestsByHour)) / 2)}</span>
+                    <span>0</span>
+                  </>
+                ) : (
+                  <>
+                    <span>-</span>
+                    <span>-</span>
+                    <span>0</span>
+                  </>
+                )}
+              </div>
+
+              <div className="flex-1 space-y-2">
+                <div className="bg-cloudo-panel border border-cloudo-border p-8 h-48 flex items-end gap-1 relative">
+                  {/* Background Grid Lines */}
+                  <div className="absolute inset-0 flex flex-col justify-between py-8 px-8 pointer-events-none">
+                    <div className="border-t border-cloudo-border/20 w-full" />
+                    <div className="border-t border-cloudo-border/20 w-full" />
+                    <div className="border-t border-cloudo-border/20 w-full" />
+                  </div>
+
+                  {Object.entries(data.requestsByHour).length > 0 ? (
+                    Object.entries(data.requestsByHour)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([key, count]) => {
+                        const maxCount = Math.max(...Object.values(data.requestsByHour));
+                        const height = (count / maxCount) * 100;
+                        return (
+                          <div
+                            key={key}
+                            className="flex-1 bg-cloudo-accent/20 hover:bg-cloudo-accent transition-all group relative z-10"
+                            style={{ height: `${height}%` }}
+                          >
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-cloudo-accent text-cloudo-dark text-[10px] font-black px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20">
+                              {key}: {count} REQ
+                            </div>
+                          </div>
+                        );
+                      })
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-cloudo-muted/80 italic text-xs">NO_TIMELINE_DATA</div>
+                  )}
+                </div>
+
+                {/* X-Axis */}
+                <div className="flex justify-between px-2 text-[10px] font-black text-cloudo-muted/70 uppercase tracking-[0.2em]">
+                  {Object.entries(data.requestsByHour).length > 0 ? (
+                    <>
+                      <span>{Object.keys(data.requestsByHour).sort()[0]}</span>
+                      <span className="opacity-40 text-[9px]">TIMELINE_DISTRIBUTION</span>
+                      <span>{Object.keys(data.requestsByHour).sort()[Object.keys(data.requestsByHour).length - 1]}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{timeRange === '24h' ? '00:00' : 'OLDEST_DATA'}</span>
+                      <span>{timeRange === '24h' ? '12:00' : 'MID_PERIOD'}</span>
+                      <span>{timeRange === '24h' ? '23:00' : 'RECENT_DATA'}</span>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
