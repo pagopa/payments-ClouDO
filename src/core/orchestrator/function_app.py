@@ -161,7 +161,7 @@ def _get_authenticated_user(
         return {"user": "api", "username": "api", "role": "OPERATOR"}, None
 
     # 3. Fallback to x-functions-key (Azure Actions or direct calls)
-    action_key = req.headers.get("x-functions-key") or req.params.get("code")
+    action_key = req.params.get("x-cloud-key")
     expected_action_key = os.environ.get("CLOUDO_SECRET_KEY")
     if action_key and expected_action_key and action_key == expected_action_key:
         return {
