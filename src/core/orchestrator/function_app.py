@@ -33,6 +33,9 @@ STORAGE_CONNECTION = "AzureWebJobsStorage"
 MAX_TABLE_CHARS = int(os.getenv("MAX_TABLE_LOG_CHARS", "32000"))
 APPROVAL_TTL_MIN = int(os.getenv("APPROVAL_TTL_MIN", "60"))
 APPROVAL_SECRET = (os.getenv("APPROVAL_SECRET") or "").strip()
+SESSION_SECRET = (os.getenv("SESSION_SECRET") or "").strip()
+if not SESSION_SECRET and os.getenv("FEATURE_DEV", "false").lower() != "true":
+    logging.error("CRITICAL: SESSION_SECRET not configured. Authentication will fail.")
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "pagopa/payments-cloudo")
@@ -95,6 +98,73 @@ def _verify_signed_payload(exec_id_path: str, p: str, s: str) -> tuple[bool, dic
     except Exception as e:
         logging.warning(f"verify signed payload failed: {e}")
         return False, {}
+
+
+def _create_session_token(username: str, role: str, expires_at: str) -> str:
+    import hashlib
+    import hmac
+
+    payload = json.dumps(
+        {"username": username, "role": role, "expires_at": expires_at}
+    ).encode("utf-8")
+    payload_b64 = _b64url_encode(payload)
+    key = SESSION_SECRET.encode("utf-8")
+    sig = hmac.new(key, payload_b64.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload_b64}.{sig}"
+
+
+def _verify_session_token(token: str) -> tuple[bool, dict]:
+    try:
+        if not token or "." not in token:
+            return False, {}
+        p_b64, s = token.split(".", 1)
+        import hashlib
+        import hmac
+
+        key = SESSION_SECRET.encode("utf-8")
+        expected_s = hmac.new(key, p_b64.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected_s, s):
+            return False, {}
+
+        payload_raw = _b64url_decode(p_b64)
+        payload = json.loads(payload_raw.decode("utf-8"))
+
+        exp_str = payload.get("expires_at")
+        if not exp_str:
+            return False, {}
+
+        exp_dt = datetime.fromisoformat(exp_str)
+        if datetime.now(timezone.utc) > exp_dt.astimezone(timezone.utc):
+            return False, {}
+
+        return True, payload
+    except Exception as e:
+        logging.warning(f"Session verification failed: {e}")
+        return False, {}
+
+
+def _get_authenticated_user(
+    req: func.HttpRequest,
+) -> tuple[Optional[dict], Optional[func.HttpResponse]]:
+    auth_header = req.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None, func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Missing or invalid token"}),
+            status_code=401,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    token = auth_header.split(" ", 1)[1]
+    ok, session = _verify_session_token(token)
+    if not ok:
+        return None, func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Invalid or expired token"}),
+            status_code=401,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    return session, None
 
 
 def _rows_from_binding(rows: Union[str, list[dict]]) -> list[dict]:
@@ -469,7 +539,16 @@ def Trigger(
     requested_at = utils.format_requested_at()
     partition_key = utils.today_partition_key()
     exec_id = str(uuid.uuid4())
-    requester_username = req.headers.get("x-cloudo-user") or ""
+
+    # Security: check session token if not in FEATURE_DEV mode
+    if os.getenv("FEATURE_DEV", "false").lower() != "true":
+        session, error_res = _get_authenticated_user(req)
+        if error_res:
+            return error_res
+        requester_username = session.get("username")
+    else:
+        # Fallback for dev mode (or system calls)
+        requester_username = "SYSTEM"
 
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
@@ -1113,9 +1192,18 @@ def approve(
 
     p = (req.params.get("p") or "").strip()
     s = (req.params.get("s") or "").strip()
-    approver = (
-        req.headers.get("x-cloudo-user") or req.headers.get("X-Approver") or "unknown"
-    ).strip()
+
+    # Security: check session token if not in FEATURE_DEV mode
+    if os.getenv("FEATURE_DEV", "false").lower() != "true":
+        session, error_res = _get_authenticated_user(req)
+        if error_res:
+            # Fallback for Slack/Email links: if no session, we might still allow it if p and s are valid
+            # and the payload is signed. But it's better to log who did it if they are logged in.
+            approver = req.headers.get("X-Approver") or "anonymous-link"
+        else:
+            approver = session.get("username")
+    else:
+        approver = req.headers.get("X-Approver") or "unknown"
 
     if not execId:
         return func.HttpResponse(
@@ -1464,9 +1552,17 @@ def reject(
 
     p = (req.params.get("p") or "").strip()
     s = (req.params.get("s") or "").strip()
-    approver = (
-        req.headers.get("x-cloudo-user") or req.headers.get("X-Approver") or "unknown"
-    ).strip()
+
+    # Security: check session token if not in FEATURE_DEV mode
+    if os.getenv("FEATURE_DEV", "false").lower() != "true":
+        session, error_res = _get_authenticated_user(req)
+        if error_res:
+            # Fallback for Slack/Email links
+            approver = req.headers.get("X-Approver") or "anonymous-link"
+        else:
+            approver = session.get("username")
+    else:
+        approver = req.headers.get("X-Approver") or "unknown"
 
     if not execId:
         return func.HttpResponse(
@@ -1943,6 +2039,14 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
     Returns the entity from the RunbookLogs table identified by PartitionKey and RowKey.
     Uso: GET /api/logs/{partitionKey}/{execId}
     """
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    # Security: check session token
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
+
     # If the entity does not exist, the binding returns None/empty.
     if not log_entity:
         return func.HttpResponse(
@@ -2103,14 +2207,13 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
     - q (contains on some filed), from/to (range on RequestedAt), order, limit -> in memory
     """
     if req.method == "OPTIONS":
-        return func.HttpResponse(
-            status_code=200,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization",
-            },
-        )
+        return create_cors_response()
+
+    # Security: check session token
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
+
     from azure.data.tables import TableClient
 
     try:
@@ -2398,6 +2501,11 @@ def list_workers(req: func.HttpRequest, workers: str) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return create_cors_response()
 
+    # Security: check session token
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
+
     expected_key = os.environ.get("CLOUDO_SECRET_KEY")
     request_key = req.headers.get("x-cloudo-key")
 
@@ -2449,6 +2557,11 @@ def get_worker_processes(req: func.HttpRequest) -> func.HttpResponse:
 
     if req.method == "OPTIONS":
         return create_cors_response()
+
+    # Security: check session token
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
 
     worker = req.params.get("worker")
     if not worker:
@@ -2570,6 +2683,13 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
             # Token expiration (e.g. 8 hours)
             expires_at = (datetime.now(timezone.utc) + timedelta(hours=8)).isoformat()
 
+            # Create session token
+            session_token = _create_session_token(
+                username=user_entity.get("RowKey"),
+                role=user_entity.get("role"),
+                expires_at=expires_at,
+            )
+
             return func.HttpResponse(
                 json.dumps(
                     {
@@ -2580,6 +2700,7 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
                             "role": user_entity.get("role"),
                         },
                         "expires_at": expires_at,
+                        "token": session_token,
                     }
                 ),
                 status_code=200,
@@ -2630,33 +2751,18 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
     table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_USERS)
 
     # Verification of admin role
-    # In a real environment, we should check a JWT or a session token.
-    # Currently, we check for a custom header for simplicity or we assume the frontend sends the user role (less secure)
-    # Better: the frontend sends the requester's username in a header and we check it on the DB.
-    requester_username = req.headers.get("x-cloudo-user")
-    if requester_username:
-        try:
-            requester = table_client.get_entity(
-                partition_key="Operator", row_key=requester_username
-            )
-            if requester.get("role") != "ADMIN":
-                return func.HttpResponse(
-                    json.dumps({"error": "Unauthorized: Admin role required"}),
-                    status_code=403,
-                    mimetype="application/json",
-                    headers={"Access-Control-Allow-Origin": "*"},
-                )
-        except Exception:
-            return func.HttpResponse(
-                json.dumps({"error": "Unauthorized: User not found"}),
-                status_code=403,
-                mimetype="application/json",
-                headers={"Access-Control-Allow-Origin": "*"},
-            )
-    else:
-        # If no user header is provided, we default to unauthorized for security
-        # (Assuming the frontend will be updated to send this header)
-        pass
+    # Security: check session token
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
+
+    if session.get("role") != "ADMIN":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Admin role required"}),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
 
     if req.method == "GET":
         try:
@@ -2727,7 +2833,7 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
 
             # Audit log
             log_audit(
-                user=requester_username or "SYSTEM",
+                user=session.get("username") or "SYSTEM",
                 action="USER_ENROLL" if not body.get("created_at") else "USER_UPDATE",
                 target=username,
                 details=f"Role: {body.get('role')}, Email: {body.get('email')}",
@@ -2754,7 +2860,7 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
 
             # Audit log
             log_audit(
-                user=requester_username or "SYSTEM",
+                user=session.get("username") or "SYSTEM",
                 action="USER_REVOKE",
                 target=username,
                 details="Identity destroyed",
@@ -2790,27 +2896,17 @@ def settings_management(req: func.HttpRequest) -> func.HttpResponse:
     )
 
     # Verification of admin role
-    requester_username = req.headers.get("x-cloudo-user")
-    if requester_username:
-        try:
-            from azure.data.tables import TableClient as TC
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
 
-            user_table = TC.from_connection_string(conn_str, table_name=TABLE_USERS)
-            requester = user_table.get_entity(
-                partition_key="Operator", row_key=requester_username
-            )
-            if requester.get("role") != "ADMIN":
-                return func.HttpResponse(
-                    json.dumps({"error": "Unauthorized"}),
-                    status_code=403,
-                    headers={"Access-Control-Allow-Origin": "*"},
-                )
-        except Exception:
-            return func.HttpResponse(
-                json.dumps({"error": "Unauthorized"}),
-                status_code=403,
-                headers={"Access-Control-Allow-Origin": "*"},
-            )
+    if session.get("role") != "ADMIN":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Admin role required"}),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
 
     if req.method == "GET":
         try:
@@ -2843,7 +2939,7 @@ def settings_management(req: func.HttpRequest) -> func.HttpResponse:
                 table_client.upsert_entity(entity=entity)
 
             log_audit(
-                user=requester_username or "SYSTEM",
+                user=session.get("username") or "SYSTEM",
                 action="SETTINGS_UPDATE",
                 target="GLOBAL_CONFIG",
                 details=str(list(body.keys())),
@@ -2874,6 +2970,19 @@ def get_audit_logs(req: func.HttpRequest) -> func.HttpResponse:
 
     conn_str = os.environ.get(STORAGE_CONN)
     table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_AUDIT)
+
+    # Verification of admin role
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
+
+    if session.get("role") != "ADMIN":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Admin role required"}),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
 
     try:
         entities = table_client.query_entities(query_filter="")
@@ -2925,28 +3034,10 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
         conn_str, table_name=TABLE_SCHEDULES
     )
 
-    # Verification of admin role
-    requester_username = req.headers.get("x-cloudo-user")
-    if requester_username:
-        try:
-            from azure.data.tables import TableClient as TC
-
-            user_table = TC.from_connection_string(conn_str, table_name=TABLE_USERS)
-            requester = user_table.get_entity(
-                partition_key="Operator", row_key=requester_username
-            )
-            if requester.get("role") != "ADMIN":
-                return func.HttpResponse(
-                    json.dumps({"error": "Unauthorized"}),
-                    status_code=403,
-                    headers={"Access-Control-Allow-Origin": "*"},
-                )
-        except Exception:
-            return func.HttpResponse(
-                json.dumps({"error": "User not found"}),
-                status_code=403,
-                headers={"Access-Control-Allow-Origin": "*"},
-            )
+    # Verification of authentication
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
 
     if req.method == "GET":
         try:
@@ -3001,7 +3092,7 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
             table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
 
             log_audit(
-                user=requester_username or "SYSTEM",
+                user=session.get("username") or "SYSTEM",
                 action="SCHEDULE_UPSERT",
                 target=schedule_id,
                 details=f"Name: {body.get('name')}, Cron: {body.get('cron')}",
@@ -3030,7 +3121,7 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
 
             table_client.delete_entity(partition_key="Schedule", row_key=schedule_id)
             log_audit(
-                user=requester_username or "SYSTEM",
+                user=session.get("username") or "SYSTEM",
                 action="SCHEDULE_DELETE",
                 target=schedule_id,
             )
@@ -3059,9 +3150,15 @@ def stop_worker_process(req: func.HttpRequest) -> func.HttpResponse:
     """
     import requests
 
+    logging.info(f"Stop worker process requested. Params: {req.params}")
+
     if req.method == "OPTIONS":
         return create_cors_response()
 
+    # Security: check session token
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
     worker = req.params.get("worker")
     exec_id = req.params.get("exec_id")
 
@@ -3078,12 +3175,14 @@ def stop_worker_process(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     if os.getenv("FEATURE_DEV", "false").lower() != "true":
-        target_url = f"https://{worker}.azurewebsites.net/api/stop?exec_id={exec_id}"
+        target_url = (
+            f"https://{worker}.azurewebsites.net/api/processes/stop?exec_id={exec_id}"
+        )
     else:
-        target_url = f"http://{worker}/api/stop?exec_id={exec_id}"
+        target_url = f"http://{worker}/api/processes/stop?exec_id={exec_id}"
 
     try:
-        resp = requests.post(
+        resp = requests.delete(
             target_url,
             headers={"x-cloudo-key": os.getenv("CLOUDO_SECRET_KEY")},
             timeout=5,
@@ -3133,7 +3232,12 @@ def runbook_schemas(
     if req.method == "OPTIONS":
         return create_cors_response()
 
-    requester_username = req.headers.get("x-cloudo-user")
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
+
+    requester_username = session.get("username")
+    # OPERATOR and ADMIN can manage schemas
 
     if req.method == "GET":
         try:

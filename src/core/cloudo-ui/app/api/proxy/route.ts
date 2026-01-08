@@ -48,7 +48,7 @@ async function handleRequest(request: NextRequest) {
   });
 
   const headers = new Headers();
-  const headersToForward = ['content-type', 'x-cloudo-user', 'authorization'];
+  const headersToForward = ['content-type', 'authorization'];
   headersToForward.forEach(header => {
     const value = request.headers.get(header);
     if (value) {

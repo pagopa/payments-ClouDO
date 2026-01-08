@@ -593,7 +593,7 @@ def process_runbook(
             logging.error(e)
 
         if not stopped:
-            log_msg = f"Script succeeded.\nstdout:\n{result.stdout.strip()}"
+            log_msg = f"{result.stdout.strip()}"
             logging.info(f"[{payload.get('exec_id')}] {log_msg}")
             cloudo_notification_q.set(
                 _post_status(payload, status="completed", log_message=log_msg)

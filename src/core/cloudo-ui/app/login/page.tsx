@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { HiOutlineLockClosed, HiOutlineUser, HiOutlineLightningBolt, HiOutlineCheckCircle, HiOutlineSun, HiOutlineMoon, HiOutlineShieldCheck, HiOutlineDatabase, HiOutlineServer } from 'react-icons/hi';
+import { HiOutlineLockClosed, HiOutlineUser, HiOutlineCloud, HiOutlineCheckCircle, HiOutlineSun, HiOutlineMoon, HiOutlineShieldCheck, HiOutlineDatabase, HiOutlineServer } from 'react-icons/hi';
 import { motion, AnimatePresence } from 'framer-motion';
 
 function LoadingOverlay() {
@@ -38,7 +38,6 @@ function LoadingOverlay() {
           <motion.div
             animate={{
               scale: [1, 1.1, 1],
-              rotate: [0, 90, 180, 270, 360],
               borderColor: ['rgba(var(--color-cloudo-accent), 0.2)', 'rgba(var(--color-cloudo-accent), 1)', 'rgba(var(--color-cloudo-accent), 0.2)']
             }}
             transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
@@ -110,11 +109,13 @@ function LoginForm() {
         localStorage.removeItem('cloudo_auth');
         localStorage.removeItem('cloudo_user');
         localStorage.removeItem('cloudo_expires_at');
+        localStorage.removeItem('cloudo_token');
       }
     } else if (auth === 'true' && !expiresAt) {
       localStorage.removeItem('cloudo_auth');
       localStorage.removeItem('cloudo_user');
       localStorage.removeItem('cloudo_expires_at');
+      localStorage.removeItem('cloudo_token');
     }
   }, [router]);
 
@@ -152,6 +153,9 @@ function LoginForm() {
         localStorage.setItem('cloudo_auth', 'true');
         localStorage.setItem('cloudo_user', JSON.stringify(data.user));
         localStorage.setItem('cloudo_expires_at', data.expires_at);
+        if (data.token) {
+          localStorage.setItem('cloudo_token', data.token);
+        }
         router.push('/');
       } else if (res.ok && data.success && !data.expires_at) {
         setError('Login successful but no expiration provided. Security protocol violated.');
@@ -188,7 +192,7 @@ function LoginForm() {
             <div className="absolute -top-1 -right-1 w-2 h-2 border-t border-r border-cloudo-accent" />
             <div className="absolute -bottom-1 -left-1 w-2 h-2 border-b border-l border-cloudo-accent" />
             <div className="absolute -bottom-1 -right-1 w-2 h-2 border-b border-r border-cloudo-accent" />
-            <HiOutlineLightningBolt className="text-cloudo-accent w-12 h-12 shrink-0" />
+            <HiOutlineCloud className="text-cloudo-accent w-12 h-12 shrink-0" />
           </motion.div>
           <motion.h1
             initial={{ letterSpacing: '0.5em', opacity: 0 }}

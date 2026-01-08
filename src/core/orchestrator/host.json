@@ -12,6 +12,7 @@
       "Function.ui": "None",
       "Functions.heartbeat": "Warning",
       "Function.list_workers": "Warning",
+      "Function.stop_worker_process": "Warning",
       "Function.get_worker_processes": "Warning",
       "Host": "Error",
       "Host.Results": "Error",

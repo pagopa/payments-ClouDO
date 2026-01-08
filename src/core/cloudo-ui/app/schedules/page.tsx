@@ -45,6 +45,7 @@ export default function SchedulesPage() {
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [user, setUser] = useState<{role: string} | null>(null);
 
   const [runbookContent, setRunbookContent] = useState<string | null>(null);
   const [isRunbookModalOpen, setIsRunbookModalOpen] = useState(false);
@@ -61,6 +62,14 @@ export default function SchedulesPage() {
 
   useEffect(() => {
     fetchSchedules();
+    const userData = localStorage.getItem('cloudo_user');
+    if (userData) {
+      try {
+        setUser(JSON.parse(userData));
+      } catch (e) {
+        console.error("Failed to parse user data", e);
+      }
+    }
   }, []);
 
   const fetchSchedules = async () => {
@@ -156,6 +165,16 @@ export default function SchedulesPage() {
     );
   }, [schedules, searchQuery]);
 
+  if (user && user.role !== 'ADMIN' && user.role !== 'OPERATOR') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-cloudo-dark text-cloudo-text font-mono">
+        <HiOutlineBan className="w-16 h-16 text-cloudo-err mb-4" />
+        <h1 className="text-xl font-black uppercase tracking-[0.3em]">Access Denied</h1>
+        <p className="text-cloudo-muted mt-2 uppercase tracking-widest text-sm">Authorized role required to view schedules</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-cloudo-dark text-cloudo-text font-mono selection:bg-cloudo-accent/30">
       {/* Notifications */}
@@ -206,7 +225,7 @@ export default function SchedulesPage() {
           </div>
           <button
             onClick={() => { setSelectedSchedule(null); setModalMode('create'); fetchAvailableRunbooks(); }}
-            className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
+            className={`btn btn-primary h-10 px-4 flex items-center gap-2 group ${(user?.role !== 'ADMIN' && user?.role !== 'OPERATOR') ? 'hidden' : ''}`}
           >
             <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> New Schedule
           </button>
@@ -277,7 +296,7 @@ export default function SchedulesPage() {
                               s.enabled
                                 ? 'bg-cloudo-accent/10 border-cloudo-border text-cloudo-ok hover:border-cloudo-ok/40'
                                 : 'bg-cloudo-accent/10 border-cloudo-border text-cloudo-muted hover:border-white/20'
-                            } ${togglingId === s.id ? 'opacity-50 cursor-wait' : ''}`}
+                            } ${togglingId === s.id ? 'opacity-50 cursor-wait' : ''} ${(user?.role !== 'ADMIN' && user?.role !== 'OPERATOR') ? 'hidden' : ''}`}
                             title={s.enabled ? "Disable Schedule" : "Enable Schedule"}
                           >
                             {togglingId === s.id ? (
@@ -290,14 +309,14 @@ export default function SchedulesPage() {
                           </button>
                           <button
                             onClick={() => { setSelectedSchedule(s); setModalMode('edit'); fetchAvailableRunbooks(); }}
-                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn"
+                            className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn ${(user?.role !== 'ADMIN' && user?.role !== 'OPERATOR') ? 'hidden' : ''}`}
                             title="Edit Schedule"
                           >
                             <HiOutlinePencil className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => deleteSchedule(s.id)}
-                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn"
+                            className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn ${(user?.role !== 'ADMIN' && user?.role !== 'OPERATOR') ? 'hidden' : ''}`}
                             title="Delete Schedule"
                           >
                             <HiOutlineTrash className="w-4 h-4" />

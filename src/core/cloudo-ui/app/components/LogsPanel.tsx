@@ -77,6 +77,7 @@ export function LogsPanel() {
         'running': 3,
         'skipped': 3,
         'rejected': 3,
+        'stopped': 3,
         'accepted': 2,
         'pending': 1,
       };
@@ -154,6 +155,7 @@ export function LogsPanel() {
     if (s === 'failed' || s === 'error') return 'border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5';
     if (s === 'rejected') return 'border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5';
     if (s === 'pending') return 'border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5';
+    if (s === 'stopped') return 'border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5';
     return 'border-cloudo-muted/60 text-cloudo-muted bg-cloudo-muted/5';
   };
 

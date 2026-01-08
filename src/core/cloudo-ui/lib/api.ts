@@ -2,14 +2,17 @@ export const API_URL = '/api/proxy';
 
 export async function cloudoFetch(url: string, options: RequestInit = {}) {
   let currentUser = null;
+  let sessionToken = null;
   if (typeof window !== 'undefined') {
     const expiresAt = localStorage.getItem('cloudo_expires_at');
     const auth = localStorage.getItem('cloudo_auth');
+    sessionToken = localStorage.getItem('cloudo_token');
 
     if (auth === 'true' && !expiresAt) {
       localStorage.removeItem('cloudo_auth');
       localStorage.removeItem('cloudo_user');
       localStorage.removeItem('cloudo_expires_at');
+      localStorage.removeItem('cloudo_token');
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
@@ -24,6 +27,7 @@ export async function cloudoFetch(url: string, options: RequestInit = {}) {
         localStorage.removeItem('cloudo_auth');
         localStorage.removeItem('cloudo_user');
         localStorage.removeItem('cloudo_expires_at');
+        localStorage.removeItem('cloudo_token');
         // Force redirect to login if not already there
         if (window.location.pathname !== '/login') {
           window.location.href = '/login';
@@ -40,8 +44,8 @@ export async function cloudoFetch(url: string, options: RequestInit = {}) {
     ...Object.fromEntries(Object.entries(options.headers || {})),
   };
 
-  if (currentUser?.username && !headers['x-cloudo-user']) {
-    headers['x-cloudo-user'] = currentUser.username;
+  if (sessionToken && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${sessionToken}`;
   }
 
   const urlObj = new URL(url, 'http://localhost');

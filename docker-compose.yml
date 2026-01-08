@@ -1,6 +1,7 @@
 services:
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite
+    command: azurite --skipApiVersionCheck --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --location /data
     ports:
       - "10000:10000"  # Blob
       - "10001:10001"  # Queue
@@ -27,7 +28,6 @@ services:
       - ./src/core/cloudo-ui:/app
       - /app/node_modules
       - /app/.next
-    command: npm run dev
     depends_on:
       - orchestrator
 

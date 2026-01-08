@@ -34,6 +34,7 @@ export default function RootLayout({
         localStorage.removeItem('cloudo_auth');
         localStorage.removeItem('cloudo_user');
         localStorage.removeItem('cloudo_expires_at');
+        localStorage.removeItem('cloudo_token');
         authed = false;
       }
     }

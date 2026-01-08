@@ -45,6 +45,7 @@ export default function SchemasPage() {
   const [confirmRunId, setConfirmRunId] = useState<string | null>(null);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [user, setUser] = useState<{role: string} | null>(null);
 
   const [runbookContent, setRunbookContent] = useState<string | null>(null);
   const [isRunbookModalOpen, setIsRunbookModalOpen] = useState(false);
@@ -59,7 +60,17 @@ export default function SchemasPage() {
     }, 4000);
   };
 
-  useEffect(() => { fetchSchemas(); }, []);
+  useEffect(() => {
+    fetchSchemas();
+    const userData = localStorage.getItem('cloudo_user');
+    if (userData) {
+      try {
+        setUser(JSON.parse(userData));
+      } catch (e) {
+        console.error("Failed to parse user data", e);
+      }
+    }
+  }, []);
 
   const fetchSchemas = async () => {
     setLoading(true);
@@ -197,12 +208,14 @@ export default function SchemasPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button
-            onClick={() => { setSelectedSchema(null); setModalMode('create'); fetchAvailableRunbooks(); }}
-            className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
-          >
-            <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> New Schema
-          </button>
+          {(user?.role === 'ADMIN' || user?.role === 'OPERATOR') && (
+            <button
+              onClick={() => { setSelectedSchema(null); setModalMode('create'); fetchAvailableRunbooks(); }}
+              className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
+            >
+              <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> New Schema
+            </button>
+          )}
         </div>
       </div>
 
@@ -355,30 +368,34 @@ export default function SchemasPage() {
                               </div>
                             )}
                           </div>
-                          <button
-                            onClick={() => { setSelectedSchema(schema); setModalMode('edit'); fetchAvailableRunbooks(); }}
-                            disabled={isTerraform(schema.tags)}
-                            className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
-                              isTerraform(schema.tags)
-                                ? 'opacity-20 cursor-not-allowed grayscale'
-                                : 'hover:border-white/20 text-cloudo-muted hover:text-cloudo-text'
-                            }`}
-                            title={isTerraform(schema.tags) ? "Managed by Terraform - Read Only" : "Edit Configuration"}
-                          >
-                            <HiOutlinePencil className={`w-4 h-4 ${!isTerraform(schema.tags) && 'group-hover/btn:scale-110'} transition-transform`} />
-                          </button>
-                          <button
-                            onClick={() => setSchemaToDelete(schema)}
-                            disabled={isTerraform(schema.tags)}
-                            className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
-                              isTerraform(schema.tags)
-                                ? 'opacity-20 cursor-not-allowed grayscale'
-                                : 'hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text'
-                            }`}
-                            title={isTerraform(schema.tags) ? "Managed by Terraform - Protected" : "Delete Schema Entry"}
-                          >
-                            <HiOutlineTrash className={`w-4 h-4 ${!isTerraform(schema.tags) && 'group-hover/btn:scale-110'} transition-transform`} />
-                          </button>
+                          {(user?.role === 'ADMIN' || user?.role === 'OPERATOR') && (
+                            <>
+                              <button
+                                onClick={() => { setSelectedSchema(schema); setModalMode('edit'); fetchAvailableRunbooks(); }}
+                                disabled={isTerraform(schema.tags)}
+                                className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
+                                  isTerraform(schema.tags)
+                                    ? 'opacity-20 cursor-not-allowed grayscale'
+                                    : 'hover:border-white/20 text-cloudo-muted hover:text-cloudo-text'
+                                }`}
+                                title={isTerraform(schema.tags) ? "Managed by Terraform - Read Only" : "Edit Configuration"}
+                              >
+                                <HiOutlinePencil className={`w-4 h-4 ${!isTerraform(schema.tags) && 'group-hover/btn:scale-110'} transition-transform`} />
+                              </button>
+                              <button
+                                onClick={() => setSchemaToDelete(schema)}
+                                disabled={isTerraform(schema.tags)}
+                                className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
+                                  isTerraform(schema.tags)
+                                    ? 'opacity-20 cursor-not-allowed grayscale'
+                                    : 'hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text'
+                                }`}
+                                title={isTerraform(schema.tags) ? "Managed by Terraform - Protected" : "Delete Schema Entry"}
+                              >
+                                <HiOutlineTrash className={`w-4 h-4 ${!isTerraform(schema.tags) && 'group-hover/btn:scale-110'} transition-transform`} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
