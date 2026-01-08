@@ -139,9 +139,6 @@ resource "azurerm_linux_web_app" "ui" {
     "API_URL"                             = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api"
     "FUNCTION_KEY"                        = data.azurerm_function_app_host_keys.orchestrator.default_function_key
     "CLOUDO_KEY"                          = random_password.internal_auth_token.result
-    "DOCKER_REGISTRY_SERVER_URL"          = var.ui_image.registry_url
-    "DOCKER_REGISTRY_SERVER_USERNAME"     = var.ui_image.registry_username
-    "DOCKER_REGISTRY_SERVER_PASSWORD"     = var.ui_image.registry_password
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
   }
 
