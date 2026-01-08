@@ -125,8 +125,10 @@ resource "azurerm_linux_web_app" "ui" {
     #   retention_period_days = var.app_service_logs.retention_period_days
     # }
     application_stack {
-      docker_image_name   = "${var.ui_image.image_name}:${var.ui_image.image_tag}"
-      docker_registry_url = var.ui_image.registry_url
+      docker_image_name        = "${var.ui_image.image_name}:${var.ui_image.image_tag}"
+      docker_registry_url      = var.ui_image.registry_url
+      docker_registry_password = var.ui_image.registry_password
+      docker_registry_username = var.ui_image.registry_username
     }
     # application_insights_connection_string = data.azurerm_application_insights.this.connection_string
     # application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
