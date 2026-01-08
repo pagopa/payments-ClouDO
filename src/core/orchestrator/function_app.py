@@ -2894,6 +2894,12 @@ def get_audit_logs(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     try:
+        limit = req.params.get("limit")
+        try:
+            limit = int(limit) if limit and limit.lower() != "all" else None
+        except ValueError:
+            limit = None
+
         entities = table_client.query_entities(query_filter="")
         logs = []
         for e in entities:
@@ -2908,8 +2914,12 @@ def get_audit_logs(req: func.HttpRequest) -> func.HttpResponse:
             )
         # Sort by timestamp descending
         logs.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+
+        if limit:
+            logs = logs[:limit]
+
         return func.HttpResponse(
-            json.dumps(logs[:100]),
+            json.dumps(logs),
             status_code=200,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"},

@@ -41,6 +41,7 @@ export default function AuditPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fetchLimit, setFetchLimit] = useState<string>("100");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,13 +65,13 @@ export default function AuditPage() {
       return;
     }
     fetchLogs();
-  }, [router]);
+  }, [router, fetchLimit]);
 
   const fetchLogs = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await cloudoFetch(`/audit`);
+      const res = await cloudoFetch(`/audit?limit=${fetchLimit}`);
 
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
 
@@ -126,7 +127,6 @@ export default function AuditPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, activeFilter, actionTypeFilter, fromDate, toDate]);
-
   const totalPages = Math.ceil(filteredLogs.length / pageSize);
   const paginatedLogs = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -226,6 +226,22 @@ export default function AuditPage() {
               />
               Refresh Trail
             </button>
+            <div className="flex items-center gap-2 border-l border-cloudo-border pl-6">
+              <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest">
+                Fetch
+              </span>
+              <select
+                value={fetchLimit}
+                onChange={(e) => setFetchLimit(e.target.value)}
+                className="bg-cloudo-dark border border-cloudo-border text-cloudo-text text-[10px] font-black px-2 py-1 outline-none focus:border-cloudo-accent/50 transition-colors cursor-pointer h-10"
+              >
+                {[50, 100, 500, 1000, "all"].map((limit) => (
+                  <option key={limit} value={limit}>
+                    {limit === "all" ? "ALL" : limit}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -481,7 +497,7 @@ export default function AuditPage() {
                     }}
                     className="bg-cloudo-dark border border-cloudo-border text-cloudo-text text-[10px] font-black px-2 py-1 outline-none focus:border-cloudo-accent/50 transition-colors cursor-pointer"
                   >
-                    {[10, 20, 50, 100].map((size) => (
+                    {[10, 20, 50, 100, 500].map((size) => (
                       <option key={size} value={size}>
                         {size}
                       </option>
