@@ -6,7 +6,8 @@ import {
   HiOutlinePlus, HiOutlineSearch, HiOutlineChip, HiOutlineTerminal,
   HiOutlineUserGroup, HiOutlineShieldCheck, HiOutlineTrash,
   HiOutlinePlay, HiOutlinePencil, HiOutlineX, HiOutlineClipboardCopy, HiOutlineCheck,
-  HiOutlineCheckCircle, HiOutlineExclamationCircle, HiOutlineRefresh
+  HiOutlineCheckCircle, HiOutlineExclamationCircle, HiOutlineRefresh, HiOutlineCloud,
+  HiOutlineChevronLeft, HiOutlineChevronRight
 } from "react-icons/hi";
 import { MdOutlineSchema } from "react-icons/md";
 import { SiTerraform } from "react-icons/si";
@@ -37,6 +38,7 @@ export default function SchemasPage() {
   const [schemas, setSchemas] = useState<Schema[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'terraform' | 'ui'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
@@ -51,6 +53,11 @@ export default function SchemasPage() {
   const [isRunbookModalOpen, setIsRunbookModalOpen] = useState(false);
   const [fetchingRunbook, setFetchingRunbook] = useState(false);
   const [availableRunbooks, setAvailableRunbooks] = useState<string[]>([]);
+  const [availableWorkers, setAvailableWorkers] = useState<string[]>([]);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const addNotification = (type: 'success' | 'error', message: string) => {
     const id = Date.now().toString();
@@ -90,6 +97,20 @@ export default function SchemasPage() {
       }
     } catch {
       console.error('Failed to fetch available runbooks');
+    }
+  };
+
+  const fetchWorkers = async () => {
+    try {
+      const res = await cloudoFetch(`/workers`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        // Use PartitionKey as the capability as requested
+        const capabilities = Array.from(new Set(data.map((w: { PartitionKey?: string }) => w.PartitionKey).filter(c => c))) as string[];
+        setAvailableWorkers(capabilities);
+      }
+    } catch {
+      console.error('Failed to fetch available workers');
     }
   };
 
@@ -146,11 +167,32 @@ export default function SchemasPage() {
   const isTerraform = (tags?: string) => tags?.split(',').map(t => t.trim().toLowerCase()).includes('terraform');
 
   const filteredSchemas = useMemo(() => {
-    return schemas.filter(s =>
-      s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.id?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [schemas, searchQuery]);
+    return schemas.filter(s => {
+      const matchesSearch = (
+        s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.id?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+      const isTf = isTerraform(s.tags);
+      const matchesFilter =
+        activeFilter === 'all' ||
+        (activeFilter === 'terraform' && isTf) ||
+        (activeFilter === 'ui' && !isTf);
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [schemas, searchQuery, activeFilter]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeFilter]);
+
+  const totalPages = Math.ceil(filteredSchemas.length / pageSize);
+  const paginatedSchemas = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredSchemas.slice(start, start + pageSize);
+  }, [filteredSchemas, currentPage, pageSize]);
 
   const stats = useMemo(() => {
     return {
@@ -186,36 +228,72 @@ export default function SchemasPage() {
       </div>
 
       {/* Top Bar - Solid Technical Style */}
-      <div className="flex items-center justify-between px-8 py-4 border-b border-cloudo-border bg-cloudo-panel sticky top-0 z-20">
-        <div className="flex items-center gap-4 shrink-0">
-          <div className="p-2 bg-cloudo-accent/5 border border-cloudo-accent/20 shrink-0">
-            <MdOutlineSchema className="text-cloudo-accent w-4 h-4" />
+      <div className="flex flex-col border-b border-cloudo-border bg-cloudo-panel sticky top-0 z-20">
+        <div className="flex items-center justify-between px-8 py-4">
+          <div className="flex items-center gap-4 shrink-0">
+            <div className="p-2 bg-cloudo-accent/5 border border-cloudo-accent/20 shrink-0">
+              <MdOutlineSchema className="text-cloudo-accent w-4 h-4" />
+            </div>
+            <div>
+              <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Runbook Schemas</h1>
+              <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">System Inventory // ASSET_DB</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Runbook Schemas</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">System Inventory // ASSET_DB</p>
+
+          <div className="flex items-center gap-6">
+            <div className="relative group">
+              <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
+              <input
+                type="text"
+                placeholder="Search schemas..."
+                className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            {(user?.role === 'ADMIN' || user?.role === 'OPERATOR') && (
+              <button
+                onClick={() => { setSelectedSchema(null); setModalMode('create'); fetchAvailableRunbooks(); fetchWorkers(); }}
+                className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
+              >
+                <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> New Schema
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="relative group">
-            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
-            <input
-              type="text"
-              placeholder="Search schemas..."
-              className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          {(user?.role === 'ADMIN' || user?.role === 'OPERATOR') && (
-            <button
-              onClick={() => { setSelectedSchema(null); setModalMode('create'); fetchAvailableRunbooks(); }}
-              className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
-            >
-              <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> New Schema
-            </button>
-          )}
+        {/* Filter Bar */}
+        <div className="flex items-center gap-2 px-8 pb-4">
+          <button
+            onClick={() => setActiveFilter('all')}
+            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest border transition-all ${
+              activeFilter === 'all'
+                ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark'
+                : 'bg-cloudo-accent/5 border-cloudo-border text-cloudo-muted hover:border-cloudo-accent/30'
+            }`}
+          >
+            All Schemas
+          </button>
+          <button
+            onClick={() => setActiveFilter('terraform')}
+            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest border transition-all flex items-center gap-2 ${
+              activeFilter === 'terraform'
+                ? 'bg-[#7B42BC] border-[#7B42BC] text-white'
+                : 'bg-[#7B42BC]/5 border-cloudo-border text-cloudo-muted hover:border-[#7B42BC]/40'
+            }`}
+          >
+            <SiTerraform className="w-3 h-3" /> Terraform Only
+          </button>
+          <button
+            onClick={() => setActiveFilter('ui')}
+            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest border transition-all flex items-center gap-2 ${
+              activeFilter === 'ui'
+                ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark'
+                : 'bg-cloudo-accent/5 border-cloudo-border text-cloudo-muted hover:border-cloudo-accent/30'
+            }`}
+          >
+            <HiOutlineCloud className="w-3 h-3" /> UI Entry
+          </button>
         </div>
       </div>
 
@@ -239,7 +317,7 @@ export default function SchemasPage() {
                 <tr className="border-b border-cloudo-border bg-cloudo-accent/10">
                   <th className="w-[25%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Identification</th>
                   <th className="w-[20%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Execution Path</th>
-                  <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Node Cluster</th>
+                  <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Worker Capability</th>
                   <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Policy</th>
                   <th className="w-[10%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Tags</th>
                   <th className="w-[15%] px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-right text-[11px]">Actions</th>
@@ -251,7 +329,7 @@ export default function SchemasPage() {
                 ) : filteredSchemas.length === 0 ? (
                   <tr key="empty-row"><td colSpan={6} className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-40 italic">NO_ENTRIES_FOUND</td></tr>
                 ) : (
-                  filteredSchemas.map((schema) => (
+                  paginatedSchemas.map((schema) => (
                     <tr key={schema.RowKey} className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40">
                       <td className="px-8 py-6">
                         <div className="flex flex-col gap-2">
@@ -286,7 +364,7 @@ export default function SchemasPage() {
                           <HiOutlineChip className="opacity-60 w-4 h-4 text-cloudo-accent" />
                           <div className="flex flex-col">
                             <span className="uppercase tracking-[0.1em]">{schema.worker}</span>
-                            <span className="text-[10px] text-cloudo-muted/70 uppercase mt-0.5 font-black tracking-widest">CLUSTER_ID</span>
+                            <span className="text-[10px] text-cloudo-muted/70 uppercase mt-0.5 font-black tracking-widest">CAPABILITY_ID</span>
                           </div>
                         </div>
                       </td>
@@ -371,7 +449,7 @@ export default function SchemasPage() {
                           {(user?.role === 'ADMIN' || user?.role === 'OPERATOR') && (
                             <>
                               <button
-                                onClick={() => { setSelectedSchema(schema); setModalMode('edit'); fetchAvailableRunbooks(); }}
+                                onClick={() => { setSelectedSchema(schema); setModalMode('edit'); fetchAvailableRunbooks(); fetchWorkers(); }}
                                 disabled={isTerraform(schema.tags)}
                                 className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
                                   isTerraform(schema.tags)
@@ -404,6 +482,70 @@ export default function SchemasPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {filteredSchemas.length > 0 && (
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 px-2 py-4 border-t border-cloudo-border/30 bg-cloudo-panel/30">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest">Show</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="bg-cloudo-dark border border-cloudo-border text-cloudo-text text-[10px] font-black px-2 py-1 outline-none focus:border-cloudo-accent/50 transition-colors cursor-pointer"
+                  >
+                    {[5, 10, 25, 50].map(size => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                  <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest ml-1">Entries</span>
+                </div>
+                <div className="h-4 w-[1px] bg-cloudo-border/30" />
+                <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest">
+                  Showing <span className="text-cloudo-text">{(currentPage - 1) * pageSize + 1}</span> to <span className="text-cloudo-text">{Math.min(currentPage * pageSize, filteredSchemas.length)}</span> of <span className="text-cloudo-text">{filteredSchemas.length}</span>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 border border-cloudo-border text-cloudo-muted hover:text-cloudo-accent hover:border-cloudo-accent/40 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+                >
+                  <HiOutlineChevronLeft className="w-4 h-4" />
+                </button>
+
+                <div className="flex items-center gap-1 mx-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    value={currentPage}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val >= 1 && val <= totalPages) {
+                        setCurrentPage(val);
+                      }
+                    }}
+                    className="w-12 bg-cloudo-dark border border-cloudo-border text-cloudo-text text-[10px] font-black px-2 py-1 text-center outline-none focus:border-cloudo-accent/50 transition-colors"
+                  />
+                  <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest mx-1">of</span>
+                  <span className="text-[10px] font-black text-cloudo-text uppercase tracking-widest">{totalPages}</span>
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-2 border border-cloudo-border text-cloudo-muted hover:text-cloudo-accent hover:border-cloudo-accent/40 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+                >
+                  <HiOutlineChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -432,6 +574,7 @@ export default function SchemasPage() {
               initialData={selectedSchema}
               mode={modalMode}
               availableRunbooks={availableRunbooks}
+              availableWorkers={availableWorkers}
               onSuccess={(message) => { fetchSchemas(); setModalMode(null); addNotification('success', message); }}
               onCancel={() => setModalMode(null)}
               onError={(message) => addNotification('error', message)}
@@ -516,10 +659,20 @@ function StatSmall({ title, value, icon, label, color = "text-cloudo-text" }: { 
   );
 }
 
-function SchemaForm({ initialData, mode, availableRunbooks, onSuccess, onCancel, onError }: {
+function LabelWithTooltip({ children, tooltip }: { children: React.ReactNode, tooltip: string }) {
+  return (
+    <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 flex items-center gap-2 group/label relative cursor-help" title={tooltip}>
+      {children}
+      <HiOutlineExclamationCircle className="w-3 h-3 opacity-40 group-hover/label:opacity-100 transition-opacity" />
+    </label>
+  );
+}
+
+function SchemaForm({ initialData, mode, availableRunbooks, availableWorkers, onSuccess, onCancel, onError }: {
   initialData?: Schema | null,
   mode: 'create' | 'edit',
   availableRunbooks: string[],
+  availableWorkers: string[],
   onSuccess: (message: string) => void,
   onCancel: () => void,
   onError: (message: string) => void
@@ -587,7 +740,7 @@ function SchemaForm({ initialData, mode, availableRunbooks, onSuccess, onCancel,
   return (
     <form onSubmit={submit} className="p-8 grid grid-cols-2 gap-x-8 gap-y-6">
       <div className="space-y-2">
-        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">SCHEMAS ID *</label>
+        <LabelWithTooltip tooltip="Unique identifier for the schema. Cannot be changed after creation.">SCHEMAS ID *</LabelWithTooltip>
         <input
           type="text"
           required
@@ -599,7 +752,7 @@ function SchemaForm({ initialData, mode, availableRunbooks, onSuccess, onCancel,
         />
       </div>
       <div className="space-y-2">
-        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Schema Name *</label>
+        <LabelWithTooltip tooltip="Human-readable name for this schema.">Schema Name *</LabelWithTooltip>
         <input
           type="text"
           required
@@ -611,7 +764,7 @@ function SchemaForm({ initialData, mode, availableRunbooks, onSuccess, onCancel,
       </div>
 
       <div className="space-y-2 col-span-2">
-        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Purpose Description</label>
+        <LabelWithTooltip tooltip="Detailed explanation of what this automation does.">Purpose Description</LabelWithTooltip>
         <textarea
           className="input min-h-[100px] py-4 resize-none w-full"
           value={formData.description}
@@ -621,7 +774,7 @@ function SchemaForm({ initialData, mode, availableRunbooks, onSuccess, onCancel,
       </div>
 
       <div className="space-y-2">
-        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Runbook Path *</label>
+        <LabelWithTooltip tooltip="Path to the script or executable in the runbook repository.">Runbook Path *</LabelWithTooltip>
         <div className="relative group">
           <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
             <HiOutlineTerminal className="text-cloudo-muted/70 w-4 h-4" />
@@ -643,24 +796,34 @@ function SchemaForm({ initialData, mode, availableRunbooks, onSuccess, onCancel,
         </div>
       </div>
       <div className="space-y-2">
-        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Worker Pool *</label>
+        <LabelWithTooltip tooltip="The required worker capability to execute this schema.">Worker Capability *</LabelWithTooltip>
         <div className="relative group">
           <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
             <HiOutlineChip className="text-cloudo-muted/70 w-4 h-4" />
           </div>
-          <input
-            type="text"
+          <select
             required
-            className="input input-icon font-mono w-full"
+            className="input input-icon font-mono w-full appearance-none cursor-pointer"
             value={formData.worker}
             onChange={e => setFormData({...formData, worker: e.target.value})}
-            placeholder="pool-01"
-          />
+          >
+            <option value="" disabled className="bg-cloudo-panel text-cloudo-muted italic">Select Worker Capability...</option>
+            {availableWorkers.map((worker) => (
+              <option key={worker} value={worker} className="bg-cloudo-panel text-cloudo-text py-2">
+                {worker}
+              </option>
+            ))}
+          </select>
+          <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-cloudo-muted">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
         </div>
       </div>
 
       <div className="space-y-2 col-span-2">
-        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Run Arguments</label>
+        <LabelWithTooltip tooltip="Optional arguments passed to the script during execution.">Run Arguments</LabelWithTooltip>
         <div className="relative group">
           <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
             <HiOutlineTerminal className="text-cloudo-muted/70 w-4 h-4 opacity-50" />
@@ -676,7 +839,7 @@ function SchemaForm({ initialData, mode, availableRunbooks, onSuccess, onCancel,
       </div>
 
       <div className="space-y-2 col-span-2">
-        <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Tags (comma separated)</label>
+        <LabelWithTooltip tooltip="Metadata tags for categorization.">Tags (comma separated)</LabelWithTooltip>
         <div className="flex gap-2">
           <div className="h-10 px-4 bg-cloudo-accent/10 border border-cloudo-accent/30 text-cloudo-accent text-[11px] font-black flex items-center uppercase tracking-widest">
             ui

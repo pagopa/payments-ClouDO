@@ -3,19 +3,21 @@
 import { useState, useEffect, Suspense } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { HiOutlineLockClosed, HiOutlineUser, HiOutlineCloud, HiOutlineCheckCircle, HiOutlineSun, HiOutlineMoon, HiOutlineShieldCheck, HiOutlineDatabase, HiOutlineServer } from 'react-icons/hi';
+import { HiOutlineLockClosed, HiOutlineUser, HiOutlineCloud, HiOutlineCheckCircle, HiOutlineSun, HiOutlineMoon, HiOutlineShieldCheck } from 'react-icons/hi';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const LOADING_STEPS = [
+  { id: 1, text: 'INITIALIZING UPLINK...', status: 'pending' },
+  { id: 2, text: 'CONNECTION STATUS...', status: 'pending' },
+  { id: 3, text: 'DECRYPTING DATA...', status: 'pending' },
+  { id: 4, text: 'AUTHORIZING ACCESS...', status: 'pending' },
+];
+
 function LoadingOverlay() {
-  const [steps, setSteps] = useState([
-    { id: 1, text: 'INITIALIZING UPLINK...', status: 'pending' },
-    { id: 2, text: 'CONNECTION STATUS...', status: 'pending' },
-    { id: 3, text: 'DECRYPTING DATA...', status: 'pending' },
-    { id: 4, text: 'AUTHORIZING ACCESS...', status: 'pending' },
-  ]);
+  const [steps, setSteps] = useState(LOADING_STEPS);
 
   useEffect(() => {
-    const intervals = steps.map((_, i) => {
+    const intervals = LOADING_STEPS.map((_, i) => {
       return setTimeout(() => {
         setSteps(prev => prev.map((step, idx) =>
           idx === i ? { ...step, status: 'complete' } : step

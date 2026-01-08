@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { cloudoFetch } from '@/lib/api';
 import {
   HiOutlineSearch, HiOutlineTerminal,
@@ -11,10 +11,6 @@ import {
 } from "react-icons/hi";
 import { HiOutlineCollection } from "react-icons/hi";
 import { SiGithub } from "react-icons/si";
-
-interface Runbook {
-  name: string;
-}
 
 interface Notification {
   id: string;
@@ -44,9 +40,9 @@ export default function CollectionPage() {
 
   useEffect(() => {
     fetchRunbooks();
-  }, []);
+  }, [fetchRunbooks]);
 
-  const fetchRunbooks = async () => {
+  const fetchRunbooks = useCallback(async () => {
     setLoading(true);
     try {
       const res = await cloudoFetch(`/runbooks/list`);
@@ -62,7 +58,7 @@ export default function CollectionPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const fetchRunbookContent = async (name: string) => {
     setFetchingContent(true);

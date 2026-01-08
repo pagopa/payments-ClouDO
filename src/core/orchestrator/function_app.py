@@ -146,25 +146,36 @@ def _verify_session_token(token: str) -> tuple[bool, dict]:
 def _get_authenticated_user(
     req: func.HttpRequest,
 ) -> tuple[Optional[dict], Optional[func.HttpResponse]]:
+    # 1. Check Bearer Token
     auth_header = req.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return None, func.HttpResponse(
-            json.dumps({"error": "Unauthorized: Missing or invalid token"}),
-            status_code=401,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"},
-        )
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1]
+        ok, session = _verify_session_token(token)
+        if ok:
+            return session, None
 
-    token = auth_header.split(" ", 1)[1]
-    ok, session = _verify_session_token(token)
-    if not ok:
-        return None, func.HttpResponse(
-            json.dumps({"error": "Unauthorized: Invalid or expired token"}),
-            status_code=401,
-            mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"},
-        )
-    return session, None
+    # 2. Fallback to x-cloudo-key
+    cloudo_key = req.headers.get("x-cloudo-key")
+    expected_cloudo_key = os.environ.get("CLOUDO_SECRET_KEY")
+    if cloudo_key and expected_cloudo_key and cloudo_key == expected_cloudo_key:
+        return {"user": "api", "username": "api", "role": "ADMIN"}, None
+
+    # 3. Fallback to x-functions-key (Azure Actions or direct calls)
+    func_key = req.headers.get("x-functions-key")
+    expected_func_key = os.environ.get("FUNCTION_KEY")
+    if func_key and expected_func_key and func_key == expected_func_key:
+        return {
+            "user": "azure-action",
+            "username": "azure-action",
+            "role": "ADMIN",
+        }, None
+
+    return None, func.HttpResponse(
+        json.dumps({"error": "Unauthorized: Missing or invalid credentials"}),
+        status_code=401,
+        mimetype="application/json",
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
 
 
 def _rows_from_binding(rows: Union[str, list[dict]]) -> list[dict]:
@@ -540,15 +551,12 @@ def Trigger(
     partition_key = utils.today_partition_key()
     exec_id = str(uuid.uuid4())
 
-    # Security: check session token if not in FEATURE_DEV mode
-    if os.getenv("FEATURE_DEV", "false").lower() != "true":
-        session, error_res = _get_authenticated_user(req)
-        if error_res:
-            return error_res
-        requester_username = session.get("username")
-    else:
-        # Fallback for dev mode (or system calls)
-        requester_username = "SYSTEM"
+    # Security: check session token
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
+    requester_username = session.get("username")
+    logging.warning(requester_username)
 
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
@@ -2341,92 +2349,6 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
-# @app.route(route="app/_next/{*path}", methods=[func.HttpMethod.GET, func.HttpMethod.OPTIONS], auth_level=func.AuthLevel.ANONYMOUS)
-# def nextjs_static_proxy(req: func.HttpRequest) -> func.HttpResponse:
-#     """
-#     Proxy per file statici Next.js (/api/app/_next/static/*, /api/app/_next/*)
-#     """
-#     import requests
-#
-#     if req.method == "OPTIONS":
-#         return create_cors_response()
-#
-#     nextjs_url = os.getenv("NEXTJS_URL", "http://localhost:3000")
-#     path = req.route_params.get("path", "")
-#     target_url = f"{nextjs_url}/_next/{path}"
-#
-#     try:
-#         resp = requests.get(target_url, headers=dict(req.headers), timeout=30)
-#
-#         response_headers = {}
-#         for header in ['Content-Type', 'Cache-Control', 'ETag', 'Last-Modified']:
-#             if header in resp.headers:
-#                 response_headers[header] = resp.headers[header]
-#         response_headers["Access-Control-Allow-Origin"] = "*"
-#         return func.HttpResponse(
-#             resp.content,
-#             status_code=resp.status_code,
-#             headers=response_headers,
-#             mimetype=resp.headers.get("Content-Type", "application/octet-stream")
-#         )
-#
-#     except Exception as e:
-#         logging.error(f"Next.js static proxy error: {e}")
-#         return func.HttpResponse(
-#             f"Static file not found: {str(e)}",
-#             status_code=404
-#         )
-#
-#
-# @app.route(route="app/{*path}", methods=[func.HttpMethod.GET, func.HttpMethod.POST, func.HttpMethod.OPTIONS], auth_level=AUTH)
-# def nextjs_proxy(req: func.HttpRequest) -> func.HttpResponse:
-#     """
-#     Proxy per Next.js server standalone
-#     """
-#     import requests
-#
-#     if req.method == "OPTIONS":
-#         return create_cors_response()
-#
-#     nextjs_url = os.getenv("NEXTJS_URL", "http://localhost:3000")
-#
-#     path = req.route_params.get("path", "")
-#     target_url = f"{nextjs_url}/{path}" if path else f"{nextjs_url}/"
-#
-#     if req.params:
-#         query_string = "&".join([f"{k}={v}" for k, v in req.params.items()])
-#         target_url += f"?{query_string}"
-#
-#     logging.info(f"Next.js proxy request to: {target_url}")
-#     try:
-#         # Forward request a Next.js
-#         if req.method == "GET":
-#             resp = requests.get(target_url, headers=dict(req.headers), timeout=30)
-#         else:
-#             resp = requests.post(
-#                 target_url,
-#                 headers=dict(req.headers),
-#                 data=req.get_body(),
-#                 timeout=30
-#             )
-#
-#         response_headers = dict(resp.headers)
-#         response_headers["Access-Control-Allow-Origin"] = "*"
-#         return func.HttpResponse(
-#             resp.content,
-#             status_code=resp.status_code,
-#             headers=response_headers,
-#             mimetype=resp.headers.get("Content-Type", "text/html")
-#         )
-#
-#     except Exception as e:
-#         logging.error(f"Next.js proxy error: {e}")
-#         return func.HttpResponse(
-#             f"Frontend service unavailable: {str(e)}",
-#             status_code=502
-#         )
-
-
 @app.route(
     route="workers/register",
     methods=[func.HttpMethod.POST],
@@ -2505,19 +2427,6 @@ def list_workers(req: func.HttpRequest, workers: str) -> func.HttpResponse:
     session, error_res = _get_authenticated_user(req)
     if error_res:
         return error_res
-
-    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
-    request_key = req.headers.get("x-cloudo-key")
-
-    if not expected_key or request_key != expected_key:
-        return func.HttpResponse(
-            json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
-            status_code=401,
-            mimetype="application/json",
-            headers={
-                "Access-Control-Allow-Origin": "*",
-            },
-        )
 
     try:
         # Parse binding result (can be string or list depending on extension version)

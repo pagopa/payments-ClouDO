@@ -1,7 +1,6 @@
 export const API_URL = '/api/proxy';
 
 export async function cloudoFetch(url: string, options: RequestInit = {}) {
-  let currentUser = null;
   let sessionToken = null;
   if (typeof window !== 'undefined') {
     const expiresAt = localStorage.getItem('cloudo_expires_at');
@@ -36,8 +35,6 @@ export async function cloudoFetch(url: string, options: RequestInit = {}) {
       }
     }
 
-    const userData = localStorage.getItem('cloudo_user');
-    currentUser = userData ? JSON.parse(userData) : null;
   }
 
   const headers: Record<string, string> = {

@@ -12,7 +12,6 @@ import {
   HiOutlineGlobeAlt,
   HiOutlineClock,
   HiOutlineSearch,
-  HiOutlineX,
   HiOutlineExclamation,
   HiOutlineCheckCircle,
   HiOutlineExclamationCircle
@@ -53,7 +52,7 @@ export function WorkersPanel() {
   const [loadingWorkers, setLoadingWorkers] = useState(true);
   const [user, setUser] = useState<{role: string} | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [processToStop, setProcessToStop] = useState<{worker: string, execId: string} | null>(null);
+  const [processToStop, setProcessToStop] = useState<{worker: string, execId: string, id: string, name: string} | null>(null);
 
   const addNotification = (type: 'success' | 'error', message: string) => {
     const id = Date.now().toString();
