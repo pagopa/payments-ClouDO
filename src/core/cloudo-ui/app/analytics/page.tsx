@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useCallback } from 'react';
-import { cloudoFetch } from '@/lib/api';
+import { useEffect, useState, useCallback } from "react";
+import { cloudoFetch } from "@/lib/api";
 import {
   HiOutlineChartBar,
   HiOutlineExclamationCircle,
   HiOutlineCheckCircle,
   HiOutlineLightningBolt,
   HiOutlineCalendar,
-  HiOutlineTrendingUp
+  HiOutlineTrendingUp,
 } from "react-icons/hi";
 
 interface AnalyticsData {
@@ -23,7 +23,7 @@ interface AnalyticsData {
 
 export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState('24h');
+  const [timeRange, setTimeRange] = useState("24h");
   const [data, setData] = useState<AnalyticsData>({
     totalRequests: 0,
     successRate: 0,
@@ -31,24 +31,33 @@ export default function AnalyticsPage() {
     failedOnCalls: 0,
     requestsByStatus: {},
     requestsByHour: {},
-    topRunbooks: []
+    topRunbooks: [],
   });
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     try {
-      const days = timeRange === '24h' ? 1 : timeRange === '7d' ? 7 : 30;
+      const days = timeRange === "24h" ? 1 : timeRange === "7d" ? 7 : 30;
       const today = new Date();
 
-      let allLogs: { ExecId: string; Runbook: string; RequestedAt: string; Status: string }[] = [];
+      let allLogs: {
+        ExecId: string;
+        Runbook: string;
+        RequestedAt: string;
+        Status: string;
+      }[] = [];
 
       for (let i = 0; i < days; i++) {
         const date = new Date(today);
         date.setDate(today.getDate() - i);
-        const partitionKey = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+        const partitionKey = `${date.getFullYear()}${String(
+          date.getMonth() + 1,
+        ).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
 
         try {
-          const res = await cloudoFetch(`/logs/query?partitionKey=${partitionKey}&limit=1000`);
+          const res = await cloudoFetch(
+            `/logs/query?partitionKey=${partitionKey}&limit=1000`,
+          );
           if (res.ok) {
             const result = await res.json();
             allLogs = [...allLogs, ...(result.items || [])];
@@ -59,34 +68,47 @@ export default function AnalyticsPage() {
       }
 
       // Group by ExecId to calculate duration
-      const execMap: Record<string, { start?: Date; end?: Date; status: string; runbook: string; requestedAt: string }> = {};
+      const execMap: Record<
+        string,
+        {
+          start?: Date;
+          end?: Date;
+          status: string;
+          runbook: string;
+          requestedAt: string;
+        }
+      > = {};
 
-      allLogs.forEach(log => {
+      allLogs.forEach((log) => {
         const id = log.ExecId;
         if (!id) return;
 
         if (!execMap[id]) {
           execMap[id] = {
-            status: 'unknown',
-            runbook: log.Runbook || 'Unknown',
-            requestedAt: log.RequestedAt
+            status: "unknown",
+            runbook: log.Runbook || "Unknown",
+            requestedAt: log.RequestedAt,
           };
         }
 
-        const currentStatus = (log.Status || '').toLowerCase();
+        const currentStatus = (log.Status || "").toLowerCase();
         const timestamp = new Date(log.RequestedAt);
 
-        if (['accepted', 'pending', 'routed', 'scheduled'].includes(currentStatus)) {
+        if (
+          ["accepted", "pending", "routed", "scheduled"].includes(currentStatus)
+        ) {
           if (!execMap[id].start || timestamp < execMap[id].start) {
             execMap[id].start = timestamp;
           }
           // If it's still unknown, set it to the current in-progress status
-          if (execMap[id].status === 'unknown') {
+          if (execMap[id].status === "unknown") {
             execMap[id].status = currentStatus;
           }
         }
 
-        if (['succeeded', 'completed', 'failed', 'error'].includes(currentStatus)) {
+        if (
+          ["succeeded", "completed", "failed", "error"].includes(currentStatus)
+        ) {
           if (!execMap[id].end || timestamp > execMap[id].end) {
             execMap[id].end = timestamp;
             execMap[id].status = currentStatus;
@@ -100,24 +122,25 @@ export default function AnalyticsPage() {
       const hourMap: Record<string, number> = {};
       let succeeded = 0;
 
-      processedExecutions.forEach(exec => {
+      processedExecutions.forEach((exec) => {
         const status = exec.status;
         statusMap[status] = (statusMap[status] || 0) + 1;
 
-        if (['succeeded', 'completed'].includes(status)) succeeded++;
+        if (["succeeded", "completed"].includes(status)) succeeded++;
 
         const rb = exec.runbook;
         if (!runbookMap[rb]) runbookMap[rb] = { count: 0, success: 0 };
         runbookMap[rb].count++;
-        if (['succeeded', 'completed'].includes(status)) runbookMap[rb].success++;
+        if (["succeeded", "completed"].includes(status))
+          runbookMap[rb].success++;
 
         // Timeline aggregation (by hour if 24h, else by day)
         const date = new Date(exec.requestedAt);
         let timeKey = "";
-        if (timeRange === '24h') {
-           timeKey = `${date.getHours()}:00`;
+        if (timeRange === "24h") {
+          timeKey = `${date.getHours()}:00`;
         } else {
-           timeKey = date.toISOString().split('T')[0];
+          timeKey = date.toISOString().split("T")[0];
         }
         hourMap[timeKey] = (hourMap[timeKey] || 0) + 1;
       });
@@ -127,22 +150,25 @@ export default function AnalyticsPage() {
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
-      const peakThroughput = Object.values(hourMap).length > 0
-        ? Math.max(...Object.values(hourMap))
-        : 0;
+      const peakThroughput =
+        Object.values(hourMap).length > 0
+          ? Math.max(...Object.values(hourMap))
+          : 0;
 
       setData({
         totalRequests: processedExecutions.length,
-        successRate: processedExecutions.length > 0 ? (succeeded / processedExecutions.length) * 100 : 0,
+        successRate:
+          processedExecutions.length > 0
+            ? (succeeded / processedExecutions.length) * 100
+            : 0,
         peakThroughput,
-        failedOnCalls: (statusMap['failed'] || 0) + (statusMap['error'] || 0),
+        failedOnCalls: (statusMap["failed"] || 0) + (statusMap["error"] || 0),
         requestsByStatus: statusMap,
         requestsByHour: hourMap,
-        topRunbooks
+        topRunbooks,
       });
-
     } catch (error) {
-      console.error('Error fetching analytics:', error);
+      console.error("Error fetching analytics:", error);
     } finally {
       setLoading(false);
     }
@@ -156,7 +182,9 @@ export default function AnalyticsPage() {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-cloudo-dark">
         <div className="w-8 h-8 border-2 border-cloudo-accent/30 border-t-cloudo-accent rounded-full animate-spin mb-4" />
-        <span className="text-xs font-black uppercase tracking-[0.3em] text-cloudo-muted">Calculating Analytics...</span>
+        <span className="text-xs font-black uppercase tracking-[0.3em] text-cloudo-muted">
+          Calculating Analytics...
+        </span>
       </div>
     );
   }
@@ -170,21 +198,25 @@ export default function AnalyticsPage() {
             <HiOutlineChartBar className="text-cloudo-accent w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">Advanced Analytics</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Performance & Diagnostics</p>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">
+              Advanced Analytics
+            </h1>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">
+              Performance & Diagnostics
+            </p>
           </div>
         </div>
 
         {/* Time Picker */}
         <div className="flex items-center gap-2 bg-cloudo-accent/10 border border-cloudo-border p-1">
-          {['24h', '7d', '30d'].map((range) => (
+          {["24h", "7d", "30d"].map((range) => (
             <button
               key={range}
               onClick={() => setTimeRange(range)}
               className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${
                 timeRange === range
-                  ? 'bg-cloudo-accent text-cloudo-dark'
-                  : 'text-cloudo-muted hover:text-cloudo-text'
+                  ? "bg-cloudo-accent text-cloudo-dark"
+                  : "text-cloudo-muted hover:text-cloudo-text"
               }`}
             >
               {range}
@@ -193,14 +225,15 @@ export default function AnalyticsPage() {
           <div className="w-px h-4 bg-cloudo-border mx-2" />
           <div className="flex items-center gap-2 px-3 text-cloudo-muted/70">
             <HiOutlineCalendar className="w-4 h-4" />
-            <span className="text-[10px] font-bold uppercase tracking-tighter">Custom Range</span>
+            <span className="text-[10px] font-bold uppercase tracking-tighter">
+              Custom Range
+            </span>
           </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-[1400px] mx-auto space-y-8">
-
           {/* Main KPI Row */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard
@@ -235,7 +268,9 @@ export default function AnalyticsPage() {
               icon={<HiOutlineExclamationCircle />}
               trend={data.failedOnCalls === 0 ? "ZERO" : "WARN"}
               positive={data.failedOnCalls === 0}
-              color={data.failedOnCalls > 0 ? "text-cloudo-err" : "text-cloudo-ok"}
+              color={
+                data.failedOnCalls > 0 ? "text-cloudo-err" : "text-cloudo-ok"
+              }
             />
           </div>
 
@@ -244,27 +279,44 @@ export default function AnalyticsPage() {
             <div className="lg:col-span-1 space-y-4">
               <SectionHeader title="Status Distribution" />
               <div className="bg-cloudo-panel border border-cloudo-border p-6 space-y-4">
-                {Object.entries(data.requestsByStatus).map(([status, count]) => (
-                  <div key={status} className="space-y-1">
-                    <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest">
-                      <span className="text-cloudo-muted">{status}</span>
-                      <span className="text-cloudo-text">{count} ({((count / data.totalRequests) * 100).toFixed(1)}%)</span>
+                {Object.entries(data.requestsByStatus).map(
+                  ([status, count]) => (
+                    <div key={status} className="space-y-1">
+                      <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest">
+                        <span className="text-cloudo-muted">{status}</span>
+                        <span className="text-cloudo-text">
+                          {count} (
+                          {((count / data.totalRequests) * 100).toFixed(1)}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-1 bg-white/5 overflow-hidden">
+                        <div
+                          className={`h-full ${
+                            ["succeeded", "completed"].includes(status)
+                              ? "bg-cloudo-ok"
+                              : ["failed", "error"].includes(status)
+                                ? "bg-cloudo-err"
+                                : [
+                                      "accepted",
+                                      "scheduled",
+                                      "pending",
+                                      "routed",
+                                    ].includes(status)
+                                  ? "bg-cloudo-accent"
+                                  : "bg-cloudo-muted"
+                          }`}
+                          style={{
+                            width: `${(count / data.totalRequests) * 100}%`,
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full h-1 bg-white/5 overflow-hidden">
-                      <div
-                        className={`h-full ${
-                          ['succeeded', 'completed'].includes(status) ? 'bg-cloudo-ok' :
-                          ['failed', 'error'].includes(status) ? 'bg-cloudo-err' :
-                          ['accepted', 'scheduled', 'pending', 'routed'].includes(status) ? 'bg-cloudo-accent' :
-                          'bg-cloudo-muted'
-                        }`}
-                        style={{ width: `${(count / data.totalRequests) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  ),
+                )}
                 {Object.keys(data.requestsByStatus).length === 0 && (
-                  <div className="py-10 text-center text-cloudo-muted/60 text-xs italic">NO_DATA_AVAILABLE</div>
+                  <div className="py-10 text-center text-cloudo-muted/60 text-xs italic">
+                    NO_DATA_AVAILABLE
+                  </div>
                 )}
               </div>
             </div>
@@ -284,14 +336,28 @@ export default function AnalyticsPage() {
                   </thead>
                   <tbody className="divide-y divide-cloudo-border/50">
                     {data.topRunbooks.map((rb, i) => (
-                      <tr key={i} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="px-6 py-4 font-bold text-cloudo-text uppercase tracking-wider">{rb.name}</td>
-                        <td className="px-6 py-4 font-mono text-cloudo-muted">{rb.count}</td>
+                      <tr
+                        key={i}
+                        className="hover:bg-white/[0.02] transition-colors"
+                      >
+                        <td className="px-6 py-4 font-bold text-cloudo-text uppercase tracking-wider">
+                          {rb.name}
+                        </td>
+                        <td className="px-6 py-4 font-mono text-cloudo-muted">
+                          {rb.count}
+                        </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs">{((rb.success / rb.count) * 100).toFixed(1)}%</span>
+                            <span className="font-mono text-xs">
+                              {((rb.success / rb.count) * 100).toFixed(1)}%
+                            </span>
                             <div className="flex-1 max-w-[100px] h-1 bg-white/5">
-                              <div className="h-full bg-cloudo-ok" style={{ width: `${(rb.success / rb.count) * 100}%` }} />
+                              <div
+                                className="h-full bg-cloudo-ok"
+                                style={{
+                                  width: `${(rb.success / rb.count) * 100}%`,
+                                }}
+                              />
                             </div>
                           </div>
                         </td>
@@ -301,7 +367,14 @@ export default function AnalyticsPage() {
                       </tr>
                     ))}
                     {data.topRunbooks.length === 0 && (
-                      <tr><td colSpan={4} className="py-20 text-center text-cloudo-muted/60 text-xs italic">NO_ACTIVE_RUNBOOKS</td></tr>
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="py-20 text-center text-cloudo-muted/60 text-xs italic"
+                        >
+                          NO_ACTIVE_RUNBOOKS
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
@@ -317,8 +390,14 @@ export default function AnalyticsPage() {
               <div className="flex flex-col justify-between text-[10px] font-black text-cloudo-muted/60 py-1 uppercase tracking-tighter w-8 border-r border-cloudo-border/30">
                 {Object.entries(data.requestsByHour).length > 0 ? (
                   <>
-                    <span>{Math.max(...Object.values(data.requestsByHour))}</span>
-                    <span>{Math.round(Math.max(...Object.values(data.requestsByHour)) / 2)}</span>
+                    <span>
+                      {Math.max(...Object.values(data.requestsByHour))}
+                    </span>
+                    <span>
+                      {Math.round(
+                        Math.max(...Object.values(data.requestsByHour)) / 2,
+                      )}
+                    </span>
                     <span>0</span>
                   </>
                 ) : (
@@ -343,7 +422,9 @@ export default function AnalyticsPage() {
                     Object.entries(data.requestsByHour)
                       .sort(([a], [b]) => a.localeCompare(b))
                       .map(([key, count]) => {
-                        const maxCount = Math.max(...Object.values(data.requestsByHour));
+                        const maxCount = Math.max(
+                          ...Object.values(data.requestsByHour),
+                        );
                         const height = (count / maxCount) * 100;
                         return (
                           <div
@@ -358,7 +439,9 @@ export default function AnalyticsPage() {
                         );
                       })
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-cloudo-muted/80 italic text-xs">NO_TIMELINE_DATA</div>
+                    <div className="w-full h-full flex items-center justify-center text-cloudo-muted/80 italic text-xs">
+                      NO_TIMELINE_DATA
+                    </div>
                   )}
                 </div>
 
@@ -367,28 +450,49 @@ export default function AnalyticsPage() {
                   {Object.entries(data.requestsByHour).length > 0 ? (
                     <>
                       <span>{Object.keys(data.requestsByHour).sort()[0]}</span>
-                      <span className="opacity-40 text-[9px]">TIMELINE_DISTRIBUTION</span>
-                      <span>{Object.keys(data.requestsByHour).sort()[Object.keys(data.requestsByHour).length - 1]}</span>
+                      <span className="opacity-40 text-[9px]">
+                        TIMELINE_DISTRIBUTION
+                      </span>
+                      <span>
+                        {
+                          Object.keys(data.requestsByHour).sort()[
+                            Object.keys(data.requestsByHour).length - 1
+                          ]
+                        }
+                      </span>
                     </>
                   ) : (
                     <>
-                      <span>{timeRange === '24h' ? '00:00' : 'OLDEST_DATA'}</span>
-                      <span>{timeRange === '24h' ? '12:00' : 'MID_PERIOD'}</span>
-                      <span>{timeRange === '24h' ? '23:00' : 'RECENT_DATA'}</span>
+                      <span>
+                        {timeRange === "24h" ? "00:00" : "OLDEST_DATA"}
+                      </span>
+                      <span>
+                        {timeRange === "24h" ? "12:00" : "MID_PERIOD"}
+                      </span>
+                      <span>
+                        {timeRange === "24h" ? "23:00" : "RECENT_DATA"}
+                      </span>
                     </>
                   )}
                 </div>
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </div>
   );
 }
 
-function MetricCard({ title, value, subValue, icon, trend, positive, color = "text-cloudo-text" }: {
+function MetricCard({
+  title,
+  value,
+  subValue,
+  icon,
+  trend,
+  positive,
+  color = "text-cloudo-text",
+}: {
   title: string;
   value: string | number;
   subValue: string;
@@ -402,16 +506,26 @@ function MetricCard({ title, value, subValue, icon, trend, positive, color = "te
       <div className="absolute top-0 right-0 p-4 opacity-40 group-hover:opacity-50 transition-opacity text-4xl">
         {icon}
       </div>
-      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/60 mb-1">{title}</p>
+      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/60 mb-1">
+        {title}
+      </p>
       <div className="flex items-baseline gap-3">
-        <h3 className={`text-3xl font-black tracking-tighter ${color}`}>{value}</h3>
-        <span className={`text-[10px] font-bold px-1.5 py-0.5 border ${
-          positive ? 'border-cloudo-ok/30 text-cloudo-ok bg-cloudo-ok/5' : 'border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5'
-        }`}>
+        <h3 className={`text-3xl font-black tracking-tighter ${color}`}>
+          {value}
+        </h3>
+        <span
+          className={`text-[10px] font-bold px-1.5 py-0.5 border ${
+            positive
+              ? "border-cloudo-ok/30 text-cloudo-ok bg-cloudo-ok/5"
+              : "border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5"
+          }`}
+        >
           {trend}
         </span>
       </div>
-      <p className="text-[10px] font-bold text-cloudo-muted/70 uppercase mt-2 tracking-widest">{subValue}</p>
+      <p className="text-[10px] font-bold text-cloudo-muted/70 uppercase mt-2 tracking-widest">
+        {subValue}
+      </p>
     </div>
   );
 }
@@ -420,7 +534,9 @@ function SectionHeader({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-3">
       <div className="w-1.5 h-4 bg-cloudo-accent" />
-      <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">{title}</h2>
+      <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">
+        {title}
+      </h2>
     </div>
   );
 }

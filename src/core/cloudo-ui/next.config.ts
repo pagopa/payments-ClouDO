@@ -1,13 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  output: "standalone",
   images: {
     unoptimized: true,
   },
   compress: true,
   env: {
-    FUNCTION_API_URL: process.env.FUNCTION_API_URL || '/api'
-  }
-}
+    FUNCTION_API_URL: process.env.FUNCTION_API_URL || "/api",
+  },
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;

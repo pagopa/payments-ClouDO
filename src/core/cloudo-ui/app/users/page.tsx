@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useMemo } from 'react';
-import { cloudoFetch } from '@/lib/api';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useMemo } from "react";
+import { cloudoFetch } from "@/lib/api";
+import { useRouter } from "next/navigation";
 import {
   HiOutlinePlus,
   HiOutlineSearch,
@@ -14,7 +14,7 @@ import {
   HiOutlineLockClosed,
   HiOutlineCheckCircle,
   HiOutlineExclamationCircle,
-  HiOutlinePencil
+  HiOutlinePencil,
 } from "react-icons/hi";
 
 interface User {
@@ -27,7 +27,7 @@ interface User {
 
 interface Notification {
   id: string;
-  type: 'success' | 'error';
+  type: "success" | "error";
   message: string;
 }
 
@@ -36,34 +36,34 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  const addNotification = (type: 'success' | 'error', message: string) => {
+  const addNotification = (type: "success" | "error", message: string) => {
     const id = Date.now().toString();
-    setNotifications(prev => [...prev, { id, type, message }]);
+    setNotifications((prev) => [...prev, { id, type, message }]);
     setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 4000);
   };
 
   useEffect(() => {
-    const userData = localStorage.getItem('cloudo_user');
+    const userData = localStorage.getItem("cloudo_user");
     if (userData) {
       try {
         const user = JSON.parse(userData);
-        if (user.role !== 'ADMIN') {
-          router.push('/');
+        if (user.role !== "ADMIN") {
+          router.push("/");
           return;
         }
       } catch {
-        router.push('/login');
+        router.push("/login");
         return;
       }
     } else {
-      router.push('/login');
+      router.push("/login");
       return;
     }
     fetchUsers();
@@ -82,7 +82,7 @@ export default function UsersPage() {
       const data = await res.json();
       setUsers(Array.isArray(data) ? data : []);
     } catch {
-      setError('Uplink to Identity Gate failed. Check backend status.');
+      setError("Uplink to Identity Gate failed. Check backend status.");
       setUsers([]);
     } finally {
       setLoading(false);
@@ -90,29 +90,31 @@ export default function UsersPage() {
   };
 
   const deleteUser = async (username: string) => {
-    if (!confirm(`Are you sure you want to revoke access for ${username}?`)) return;
+    if (!confirm(`Are you sure you want to revoke access for ${username}?`))
+      return;
 
     try {
       const res = await cloudoFetch(`/users?username=${username}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       if (res.ok) {
-        addNotification('success', `Access revoked for ${username}`);
+        addNotification("success", `Access revoked for ${username}`);
         fetchUsers();
       } else {
         const data = await res.json();
-        addNotification('error', data.error || 'Failed to revoke access');
+        addNotification("error", data.error || "Failed to revoke access");
       }
     } catch {
-      addNotification('error', 'Uplink failed');
+      addNotification("error", "Uplink failed");
     }
   };
 
   const filteredUsers = useMemo(() => {
-    return users.filter(u =>
-      u.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    return users.filter(
+      (u) =>
+        u.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email?.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [users, searchQuery]);
 
@@ -124,18 +126,20 @@ export default function UsersPage() {
           <div
             key={notif.id}
             className={`pointer-events-auto min-w-[320px] p-4 border shadow-2xl animate-in slide-in-from-right-5 duration-300 ${
-              notif.type === 'success'
-                ? 'bg-cloudo-panel border-cloudo-ok/30 text-cloudo-ok'
-                : 'bg-cloudo-panel border-cloudo-err/30 text-cloudo-err'
+              notif.type === "success"
+                ? "bg-cloudo-panel border-cloudo-ok/30 text-cloudo-ok"
+                : "bg-cloudo-panel border-cloudo-err/30 text-cloudo-err"
             }`}
           >
             <div className="flex items-center gap-3">
-              {notif.type === 'success' ? (
+              {notif.type === "success" ? (
                 <HiOutlineCheckCircle className="w-5 h-5 flex-shrink-0" />
               ) : (
                 <HiOutlineExclamationCircle className="w-5 h-5 flex-shrink-0" />
               )}
-              <p className="text-[11px] font-black uppercase tracking-widest">{notif.message}</p>
+              <p className="text-[11px] font-black uppercase tracking-widest">
+                {notif.message}
+              </p>
             </div>
           </div>
         ))}
@@ -148,8 +152,12 @@ export default function UsersPage() {
             <HiOutlineShieldCheck className="text-cloudo-accent w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">User Management</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Access Control // IDENTITY_DB</p>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">
+              User Management
+            </h1>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">
+              Access Control // IDENTITY_DB
+            </p>
           </div>
         </div>
 
@@ -165,10 +173,11 @@ export default function UsersPage() {
             />
           </div>
           <button
-            onClick={() => setModalMode('create')}
+            onClick={() => setModalMode("create")}
             className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
           >
-            <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Add
+            <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" />{" "}
+            Add
           </button>
         </div>
       </div>
@@ -176,48 +185,88 @@ export default function UsersPage() {
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-[1400px] mx-auto">
           <div className="border border-cloudo-border bg-cloudo-panel overflow-hidden relative">
-             {/* Decorative corners */}
+            {/* Decorative corners */}
             <div className="absolute top-0 left-0 w-8 h-8 border-t border-l border-cloudo-accent/20 pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-8 h-8 border-b border-r border-cloudo-accent/20 pointer-events-none" />
 
             <table className="w-full text-left border-collapse text-sm">
               <thead>
                 <tr className="border-b border-cloudo-border bg-cloudo-accent/10">
-                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Identity</th>
-                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Email Endpoint</th>
-                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">System Role</th>
-                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">Enrollment Date</th>
-                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-right text-[11px]">Actions</th>
+                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">
+                    Identity
+                  </th>
+                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">
+                    Email Endpoint
+                  </th>
+                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">
+                    System Role
+                  </th>
+                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">
+                    Enrollment Date
+                  </th>
+                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-right text-[11px]">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-cloudo-border/30">
                 {loading ? (
-                  <tr key="loading-row"><td colSpan={5} className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-50">Syncing Identity Data...</td></tr>
+                  <tr key="loading-row">
+                    <td
+                      colSpan={5}
+                      className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-50"
+                    >
+                      Syncing Identity Data...
+                    </td>
+                  </tr>
                 ) : error ? (
-                  <tr key="error-row"><td colSpan={5} className="py-32 text-center text-cloudo-err font-black uppercase tracking-[0.2em]">
-                    <div className="flex flex-col items-center gap-4">
-                      <HiOutlineExclamationCircle className="w-8 h-8 opacity-70" />
-                      {error}
-                    </div>
-                  </td></tr>
+                  <tr key="error-row">
+                    <td
+                      colSpan={5}
+                      className="py-32 text-center text-cloudo-err font-black uppercase tracking-[0.2em]"
+                    >
+                      <div className="flex flex-col items-center gap-4">
+                        <HiOutlineExclamationCircle className="w-8 h-8 opacity-70" />
+                        {error}
+                      </div>
+                    </td>
+                  </tr>
                 ) : filteredUsers.length === 0 ? (
-                  <tr key="empty-row"><td colSpan={5} className="py-32 text-center text-[10px] font-black uppercase tracking-[0.5em] opacity-40 italic">NO_OPERATORS_FOUND</td></tr>
+                  <tr key="empty-row">
+                    <td
+                      colSpan={5}
+                      className="py-32 text-center text-[10px] font-black uppercase tracking-[0.5em] opacity-40 italic"
+                    >
+                      NO_OPERATORS_FOUND
+                    </td>
+                  </tr>
                 ) : (
                   filteredUsers.map((user) => (
-                    <tr key={user.username} className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40">
+                    <tr
+                      key={user.username}
+                      className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40"
+                    >
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-cloudo-accent/10 border border-cloudo-accent/20 flex items-center justify-center text-cloudo-accent">
                             <HiOutlineUser className="w-5 h-5" />
                           </div>
-                          <span className="text-sm font-black text-cloudo-text tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">{user.username}</span>
+                          <span className="text-sm font-black text-cloudo-text tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">
+                            {user.username}
+                          </span>
                         </div>
                       </td>
                       <td className="px-8 py-6 text-cloudo-muted font-mono">
                         {user.email}
                       </td>
                       <td className="px-8 py-6">
-                        <span className={`px-2 py-0.5 border text-[11px] font-black uppercase tracking-widest ${user.role === 'ADMIN' ? 'border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5' : 'border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5'}`}>
+                        <span
+                          className={`px-2 py-0.5 border text-[11px] font-black uppercase tracking-widest ${
+                            user.role === "ADMIN"
+                              ? "border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5"
+                              : "border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5"
+                          }`}
+                        >
                           {user.role}
                         </span>
                       </td>
@@ -227,7 +276,10 @@ export default function UsersPage() {
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => { setSelectedUser(user); setModalMode('edit'); }}
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setModalMode("edit");
+                            }}
                             className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn"
                             title="Edit Operator"
                           >
@@ -237,7 +289,7 @@ export default function UsersPage() {
                             onClick={() => deleteUser(user.username)}
                             className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn disabled:opacity-60 disabled:cursor-not-allowed"
                             title="Revoke Access"
-                            disabled={user.username === 'admin'}
+                            disabled={user.username === "admin"}
                           >
                             <HiOutlineTrash className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
                           </button>
@@ -254,16 +306,27 @@ export default function UsersPage() {
 
       {/* Add/Edit User Modal */}
       {modalMode && (
-        <div className="fixed inset-0 bg-cloudo-dark/90 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setModalMode(null)}>
-          <div className="bg-cloudo-panel border border-cloudo-border shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 relative" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-cloudo-dark/90 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setModalMode(null)}
+        >
+          <div
+            className="bg-cloudo-panel border border-cloudo-border shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="px-8 py-5 border-b border-cloudo-border flex justify-between items-center bg-cloudo-accent/5">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-1.5 bg-cloudo-accent animate-pulse" />
                 <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-text">
-                  {modalMode === 'create' ? 'Enroll New Operator' : 'Update Operator Identity'}
+                  {modalMode === "create"
+                    ? "Enroll New Operator"
+                    : "Update Operator Identity"}
                 </h3>
               </div>
-              <button onClick={() => setModalMode(null)} className="p-1.5 hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-border text-cloudo-muted transition-colors">
+              <button
+                onClick={() => setModalMode(null)}
+                className="p-1.5 hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-border text-cloudo-muted transition-colors"
+              >
                 <HiOutlineX className="w-4 h-4" />
               </button>
             </div>
@@ -271,9 +334,13 @@ export default function UsersPage() {
             <UserForm
               initialData={selectedUser}
               mode={modalMode}
-              onSuccess={(msg) => { fetchUsers(); setModalMode(null); addNotification('success', msg); }}
+              onSuccess={(msg) => {
+                fetchUsers();
+                setModalMode(null);
+                addNotification("success", msg);
+              }}
               onCancel={() => setModalMode(null)}
-              onError={(msg) => addNotification('error', msg)}
+              onError={(msg) => addNotification("error", msg)}
             />
           </div>
         </div>
@@ -282,18 +349,24 @@ export default function UsersPage() {
   );
 }
 
-function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
-  initialData?: User | null,
-  mode: 'create' | 'edit',
-  onSuccess: (m: string) => void,
-  onCancel: () => void,
-  onError: (m: string) => void
+function UserForm({
+  initialData,
+  mode,
+  onSuccess,
+  onCancel,
+  onError,
+}: {
+  initialData?: User | null;
+  mode: "create" | "edit";
+  onSuccess: (m: string) => void;
+  onCancel: () => void;
+  onError: (m: string) => void;
 }) {
   const [formData, setFormData] = useState({
-    username: initialData?.username || '',
-    email: initialData?.email || '',
-    password: '',
-    role: initialData?.role || 'OPERATOR'
+    username: initialData?.username || "",
+    email: initialData?.email || "",
+    password: "",
+    role: initialData?.role || "OPERATOR",
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -303,21 +376,25 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
 
     try {
       const res = await cloudoFetch(`/users`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       });
 
       if (res.ok) {
-        onSuccess(mode === 'create' ? `Identity provisioned for ${formData.username}` : `Identity updated for ${formData.username}`);
+        onSuccess(
+          mode === "create"
+            ? `Identity provisioned for ${formData.username}`
+            : `Identity updated for ${formData.username}`,
+        );
       } else {
         const data = await res.json();
-        onError(data.error || 'Operation failed');
+        onError(data.error || "Operation failed");
       }
     } catch {
-      onError('Uplink failed');
+      onError("Uplink failed");
     } finally {
       setSubmitting(false);
     }
@@ -327,7 +404,9 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
     <form onSubmit={handleSubmit} className="p-8 space-y-6">
       <div className="space-y-4">
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Username</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+            Username
+          </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-cloudo-accent/5">
               <HiOutlineUser className="text-cloudo-muted/70 w-4 h-4" />
@@ -335,17 +414,21 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
             <input
               type="text"
               required
-              disabled={mode === 'edit'}
+              disabled={mode === "edit"}
               className="input input-icon h-11 uppercase tracking-widest disabled:opacity-50 w-full"
               value={formData.username}
-              onChange={e => setFormData({...formData, username: e.target.value})}
+              onChange={(e) =>
+                setFormData({ ...formData, username: e.target.value })
+              }
               placeholder="OPERATOR_ID"
             />
           </div>
         </div>
 
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Email Endpoint</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+            Email Endpoint
+          </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-cloudo-accent/5">
               <HiOutlineMail className="text-cloudo-muted/70 w-4 h-4" />
@@ -355,7 +438,9 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
               required
               className="input input-icon h-11 w-full"
               value={formData.email}
-              onChange={e => setFormData({...formData, email: e.target.value})}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
               placeholder="operator@cloudo.sys"
             />
           </div>
@@ -363,7 +448,9 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
 
         <div className="space-y-2">
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
-            {mode === 'create' ? 'Initial Password' : 'New Password (leave empty to keep current)'}
+            {mode === "create"
+              ? "Initial Password"
+              : "New Password (leave empty to keep current)"}
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 bg-cloudo-accent/5">
@@ -371,21 +458,25 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
             </div>
             <input
               type="password"
-              required={mode === 'create'}
+              required={mode === "create"}
               className="input input-icon h-11 w-full"
               value={formData.password}
-              onChange={e => setFormData({...formData, password: e.target.value})}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
               placeholder="••••••••"
             />
           </div>
         </div>
 
         <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">System Privilege</label>
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+            System Privilege
+          </label>
           <select
             className="input h-11 appearance-none w-full"
             value={formData.role}
-            onChange={e => setFormData({...formData, role: e.target.value})}
+            onChange={(e) => setFormData({ ...formData, role: e.target.value })}
           >
             <option value="OPERATOR">OPERATOR (Standard Access)</option>
             <option value="ADMIN">ADMIN (Full System Control)</option>
@@ -394,9 +485,23 @@ function UserForm({ initialData, mode, onSuccess, onCancel, onError }: {
       </div>
 
       <div className="flex gap-4 pt-6 border-t border-cloudo-border">
-        <button type="button" onClick={onCancel} className="btn btn-ghost flex-1 h-12">Cancel</button>
-        <button type="submit" disabled={submitting} className="btn btn-primary flex-1 h-12">
-          {submitting ? 'Committing...' : mode === 'create' ? 'Commit Identity' : 'Update Identity'}
+        <button
+          type="button"
+          onClick={onCancel}
+          className="btn btn-ghost flex-1 h-12"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="btn btn-primary flex-1 h-12"
+        >
+          {submitting
+            ? "Committing..."
+            : mode === "create"
+              ? "Commit Identity"
+              : "Update Identity"}
         </button>
       </div>
     </form>

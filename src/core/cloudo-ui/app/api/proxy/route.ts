@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   return handleRequest(request);
@@ -22,45 +22,50 @@ export async function PATCH(request: NextRequest) {
 
 async function handleRequest(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const path = searchParams.get('path');
+  const path = searchParams.get("path");
 
   if (!path) {
-    return NextResponse.json({ error: 'Missing path parameter' }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing path parameter" },
+      { status: 400 },
+    );
   }
 
-  const apiUrl = process.env.API_URL || 'http://localhost:7071/api';
-  const cloudoKey = process.env.CLOUDO_KEY || '';
-  const functionKey = process.env.FUNCTION_KEY || '';
+  const apiUrl = process.env.API_URL || "http://localhost:7071/api";
+  const cloudoKey = process.env.CLOUDO_KEY || "";
+  const functionKey = process.env.FUNCTION_KEY || "";
 
   let cleanPath = path;
-  const apiPrefix = '/api';
+  const apiPrefix = "/api";
   if (apiUrl.endsWith(apiPrefix) && path.startsWith(apiPrefix)) {
     cleanPath = path.substring(apiPrefix.length);
   }
 
-  const targetUrl = new URL(`${apiUrl}${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`);
+  const targetUrl = new URL(
+    `${apiUrl}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`,
+  );
 
   // Only append search params that are not already in the path
   searchParams.forEach((value, key) => {
-    if (key !== 'path' && !targetUrl.searchParams.has(key)) {
+    if (key !== "path" && !targetUrl.searchParams.has(key)) {
       targetUrl.searchParams.append(key, value);
     }
   });
 
   const headers = new Headers();
-  const headersToForward = ['content-type', 'authorization'];
-  headersToForward.forEach(header => {
+  const headersToForward = ["content-type", "authorization"];
+  headersToForward.forEach((header) => {
     const value = request.headers.get(header);
     if (value) {
       headers.set(header, value);
     }
   });
 
-  headers.set('x-cloudo-key', cloudoKey);
-  headers.set('x-functions-key', functionKey);
+  headers.set("x-cloudo-key", cloudoKey);
+  headers.set("x-functions-key", functionKey);
 
   try {
-    const body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)
+    const body = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)
       ? await request.text()
       : undefined;
 
@@ -70,9 +75,9 @@ async function handleRequest(request: NextRequest) {
       body: body || undefined,
     });
 
-    const contentType = response.headers.get('content-type');
+    const contentType = response.headers.get("content-type");
     let data;
-    if (contentType && contentType.includes('application/json')) {
+    if (contentType && contentType.includes("application/json")) {
       const text = await response.text();
       data = text ? JSON.parse(text) : {};
     } else {
@@ -81,12 +86,16 @@ async function handleRequest(request: NextRequest) {
 
     return NextResponse.json(data, { status: response.status });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     console.error(`Proxy error connecting to ${targetUrl.toString()}:`, error);
-    return NextResponse.json({
-      error: 'Proxy request failed',
-      details: errorMessage,
-      target: targetUrl.toString()
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Proxy request failed",
+        details: errorMessage,
+        target: targetUrl.toString(),
+      },
+      { status: 500 },
+    );
   }
 }

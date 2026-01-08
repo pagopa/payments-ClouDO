@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { cloudoFetch } from '@/lib/api';
+import { useState, useEffect, useCallback } from "react";
+import { cloudoFetch } from "@/lib/api";
 import {
   HiOutlineSearch,
   HiOutlineDatabase,
@@ -13,9 +13,14 @@ import {
   HiOutlineClipboard,
   HiOutlineTag,
   HiOutlineFingerPrint,
-  HiOutlineCalendar
-} from 'react-icons/hi';
-import {parseDate, today, getLocalTimeZone, CalendarDate} from "@internationalized/date";
+  HiOutlineCalendar,
+} from "react-icons/hi";
+import {
+  parseDate,
+  today,
+  getLocalTimeZone,
+  CalendarDate,
+} from "@internationalized/date";
 
 interface LogEntry {
   PartitionKey: string;
@@ -34,12 +39,16 @@ interface LogEntry {
 }
 
 export function LogsPanel() {
-  const [partitionKey, setPartitionKey] = useState(today(getLocalTimeZone()).toString().replace(/-/g, ''));
-  const [dateValue, setDateValue] = useState<CalendarDate | null>(today(getLocalTimeZone()));
-  const [execId, setExecId] = useState('');
-  const [status, setStatus] = useState('');
-  const [query, setQuery] = useState('');
-  const [limit, setLimit] = useState('200');
+  const [partitionKey, setPartitionKey] = useState(
+    today(getLocalTimeZone()).toString().replace(/-/g, ""),
+  );
+  const [dateValue, setDateValue] = useState<CalendarDate | null>(
+    today(getLocalTimeZone()),
+  );
+  const [execId, setExecId] = useState("");
+  const [status, setStatus] = useState("");
+  const [query, setQuery] = useState("");
+  const [limit, setLimit] = useState("200");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
@@ -48,72 +57,82 @@ export function LogsPanel() {
   const setTodayDate = () => {
     const t = today(getLocalTimeZone());
     setDateValue(t);
-    setPartitionKey(t.toString().replace(/-/g, ''));
+    setPartitionKey(t.toString().replace(/-/g, ""));
   };
 
-  const runQuery = useCallback(async (overrideParams?: { partitionKey?: string }) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      const pKey = overrideParams?.partitionKey !== undefined ? overrideParams.partitionKey : partitionKey;
+  const runQuery = useCallback(
+    async (overrideParams?: { partitionKey?: string }) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        const pKey =
+          overrideParams?.partitionKey !== undefined
+            ? overrideParams.partitionKey
+            : partitionKey;
 
-      if (pKey) params.set('partitionKey', pKey);
-      if (execId) params.set('execId', execId);
-      if (status) params.set('status', status);
-      if (query) params.set('q', query);
-      if (limit) params.set('limit', limit);
+        if (pKey) params.set("partitionKey", pKey);
+        if (execId) params.set("execId", execId);
+        if (status) params.set("status", status);
+        if (query) params.set("q", query);
+        if (limit) params.set("limit", limit);
 
-      const res = await cloudoFetch(`/logs/query?${params}`);
-      const data = await res.json();
-      const rawLogs = data.items || [];
+        const res = await cloudoFetch(`/logs/query?${params}`);
+        const data = await res.json();
+        const rawLogs = data.items || [];
 
-      // Group by ExecId and keep only the final status
-      const groupedByExecId = new Map<string, LogEntry>();
-      const statusPriority: Record<string, number> = {
-        'succeeded': 5,
-        'completed': 5,
-        'failed': 4,
-        'error': 4,
-        'running': 3,
-        'skipped': 3,
-        'rejected': 3,
-        'stopped': 3,
-        'accepted': 2,
-        'pending': 1,
-      };
+        // Group by ExecId and keep only the final status
+        const groupedByExecId = new Map<string, LogEntry>();
+        const statusPriority: Record<string, number> = {
+          succeeded: 5,
+          completed: 5,
+          failed: 4,
+          error: 4,
+          running: 3,
+          skipped: 3,
+          rejected: 3,
+          stopped: 3,
+          accepted: 2,
+          pending: 1,
+        };
 
-      rawLogs.forEach((log: LogEntry) => {
-        const execId = log.ExecId;
-        const existing = groupedByExecId.get(execId);
+        rawLogs.forEach((log: LogEntry) => {
+          const execId = log.ExecId;
+          const existing = groupedByExecId.get(execId);
 
-        if (!existing) {
-          groupedByExecId.set(execId, log);
-        } else {
-          // Keep the entry with higher priority status
-          const currentPriority = statusPriority[log.Status?.toLowerCase()] || 0;
-          const existingPriority = statusPriority[existing.Status?.toLowerCase()] || 0;
-
-          if (currentPriority > existingPriority) {
+          if (!existing) {
             groupedByExecId.set(execId, log);
-          } else if (currentPriority === existingPriority) {
-            // If same priority, keep the most recent
-            if (log.RequestedAt > existing.RequestedAt) {
+          } else {
+            // Keep the entry with higher priority status
+            const currentPriority =
+              statusPriority[log.Status?.toLowerCase()] || 0;
+            const existingPriority =
+              statusPriority[existing.Status?.toLowerCase()] || 0;
+
+            if (currentPriority > existingPriority) {
               groupedByExecId.set(execId, log);
+            } else if (currentPriority === existingPriority) {
+              // If same priority, keep the most recent
+              if (log.RequestedAt > existing.RequestedAt) {
+                groupedByExecId.set(execId, log);
+              }
             }
           }
-        }
-      });
+        });
 
-      setLogs(Array.from(groupedByExecId.values()).sort((a, b) =>
-        b.RequestedAt.localeCompare(a.RequestedAt)
-      ));
-    } catch (error) {
-      console.error('Error fetching logs:', error);
-      setLogs([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [partitionKey, execId, status, query, limit]);
+        setLogs(
+          Array.from(groupedByExecId.values()).sort((a, b) =>
+            b.RequestedAt.localeCompare(a.RequestedAt),
+          ),
+        );
+      } catch (error) {
+        console.error("Error fetching logs:", error);
+        setLogs([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [partitionKey, execId, status, query, limit],
+  );
 
   useEffect(() => {
     runQuery();
@@ -121,10 +140,10 @@ export function LogsPanel() {
   }, []); // Run only on mount
 
   const handleReset = () => {
-    setExecId('');
-    setStatus('');
-    setQuery('');
-    setLimit('200');
+    setExecId("");
+    setStatus("");
+    setQuery("");
+    setLimit("200");
     setLogs([]);
     setSelectedLog(null);
     setTodayDate();
@@ -133,16 +152,16 @@ export function LogsPanel() {
   const handleDateChange = (val: CalendarDate | null) => {
     setDateValue(val);
     if (val) {
-      const pk = val.toString().replace(/-/g, '');
+      const pk = val.toString().replace(/-/g, "");
       setPartitionKey(pk);
       runQuery({ partitionKey: pk });
     } else {
-      setPartitionKey('');
+      setPartitionKey("");
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       runQuery();
     }
@@ -150,23 +169,45 @@ export function LogsPanel() {
 
   const getStatusBadgeClass = (status: string) => {
     const s = status.toLowerCase();
-    if (s === 'succeeded' || s === 'completed') return 'border-cloudo-ok/30 text-cloudo-ok bg-cloudo-ok/5';
-    if (s === 'running' || s === 'accepted') return 'border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5';
-    if (s === 'failed' || s === 'error') return 'border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5';
-    if (s === 'rejected') return 'border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5';
-    if (s === 'pending') return 'border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5';
-    if (s === 'stopped') return 'border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5';
-    return 'border-cloudo-muted/60 text-cloudo-muted bg-cloudo-muted/5';
+    if (s === "succeeded" || s === "completed")
+      return "border-cloudo-ok/30 text-cloudo-ok bg-cloudo-ok/5";
+    if (s === "running" || s === "accepted")
+      return "border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5";
+    if (s === "failed" || s === "error")
+      return "border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5";
+    if (s === "rejected")
+      return "border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5";
+    if (s === "pending")
+      return "border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5";
+    if (s === "stopped")
+      return "border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5";
+    return "border-cloudo-muted/60 text-cloudo-muted bg-cloudo-muted/5";
   };
 
   const formatLogContent = (content: string) => {
-    if (!content) return <span className="italic text-cloudo-muted opacity-20">No log data available</span>;
-    return content.split('\n').map((line, i) => {
-      let color = 'text-cloudo-text/80';
-      if (line.toUpperCase().includes('ERROR') || line.toUpperCase().includes('EXCEPTION')) color = 'text-red-600';
-      if (line.toUpperCase().includes('WARN')) color = 'text-yellow-600';
-      if (line.toUpperCase().includes('INFO')) color = 'text-blue-600';
-      return <div key={i} className={`${color} font-mono text-xs leading-relaxed py-1 border-b border-white/[0.02]`}>{line}</div>;
+    if (!content)
+      return (
+        <span className="italic text-cloudo-muted opacity-20">
+          No log data available
+        </span>
+      );
+    return content.split("\n").map((line, i) => {
+      let color = "text-cloudo-text/80";
+      if (
+        line.toUpperCase().includes("ERROR") ||
+        line.toUpperCase().includes("EXCEPTION")
+      )
+        color = "text-red-600";
+      if (line.toUpperCase().includes("WARN")) color = "text-yellow-600";
+      if (line.toUpperCase().includes("INFO")) color = "text-blue-600";
+      return (
+        <div
+          key={i}
+          className={`${color} font-mono text-xs leading-relaxed py-1 border-b border-white/[0.02]`}
+        >
+          {line}
+        </div>
+      );
     });
   };
 
@@ -179,14 +220,19 @@ export function LogsPanel() {
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-full bg-cloudo-dark font-mono">
       {/* Search & List Section */}
-      <div className={`flex flex-col gap-4 overflow-hidden transition-all duration-500 ${selectedLog ? 'lg:max-w-[40%]' : 'w-full'}`}>
-
+      <div
+        className={`flex flex-col gap-4 overflow-hidden transition-all duration-500 ${
+          selectedLog ? "lg:max-w-[40%]" : "w-full"
+        }`}
+      >
         {/* Filters Card */}
         <div className="bg-cloudo-panel border border-cloudo-border shadow-none">
           <div className="px-6 py-4 border-b border-cloudo-border flex justify-between items-center bg-cloudo-panel-2">
             <div className="flex items-center gap-3 shrink-0">
               <HiOutlineDatabase className="text-cloudo-accent w-5 h-5 shrink-0" />
-              <h2 className="text-sm font-black uppercase tracking-[0.2em] text-cloudo-text truncate">Log Explorer</h2>
+              <h2 className="text-sm font-black uppercase tracking-[0.2em] text-cloudo-text truncate">
+                Log Explorer
+              </h2>
             </div>
             <button
               onClick={handleReset}
@@ -199,23 +245,30 @@ export function LogsPanel() {
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Date</label>
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+                  Date
+                </label>
                 <div className="relative group">
                   <HiOutlineCalendar className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="date"
                     className="input input-icon pl-10 relative bg-transparent border border-cloudo-border text-cloudo-text w-full py-2 px-3 leading-tight focus:outline-none focus:border-cloudo-accent transition-colors block"
-                    value={dateValue ? dateValue.toString() : ''}
-                    onChange={(e) => handleDateChange(e.target.value ? parseDate(e.target.value) : null)}
+                    value={dateValue ? dateValue.toString() : ""}
+                    onChange={(e) =>
+                      handleDateChange(
+                        e.target.value ? parseDate(e.target.value) : null,
+                      )
+                    }
                     onKeyDown={handleKeyDown}
                     onClick={(e) => e.currentTarget.showPicker?.()}
                   />
                 </div>
               </div>
 
-
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">State</label>
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+                  State
+                </label>
                 <div className="relative group">
                   <HiOutlineTag className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <select
@@ -236,7 +289,9 @@ export function LogsPanel() {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Exec_ID</label>
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+                  Exec_ID
+                </label>
                 <div className="relative group">
                   <HiOutlineFingerPrint className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
@@ -250,7 +305,9 @@ export function LogsPanel() {
                 </div>
               </div>
               <div className="col-span-2 md:col-span-1 space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Search_Term</label>
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+                  Search_Term
+                </label>
                 <div className="relative group">
                   <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
@@ -264,7 +321,9 @@ export function LogsPanel() {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Limit</label>
+                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+                  Limit
+                </label>
                 <div className="relative group">
                   <HiOutlineDatabase className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
@@ -285,8 +344,12 @@ export function LogsPanel() {
               className="w-full btn btn-primary py-3"
               onKeyDown={handleKeyDown}
             >
-              {loading ? <HiOutlineRefresh className="animate-spin w-3.5 h-3.5" /> : <HiOutlineFilter className="w-3.5 h-3.5" />}
-              {loading ? 'Executing...' : 'Run Diagnostics'}
+              {loading ? (
+                <HiOutlineRefresh className="animate-spin w-3.5 h-3.5" />
+              ) : (
+                <HiOutlineFilter className="w-3.5 h-3.5" />
+              )}
+              {loading ? "Executing..." : "Run Diagnostics"}
             </button>
           </div>
         </div>
@@ -296,7 +359,8 @@ export function LogsPanel() {
           {logs.length > 0 && (
             <div className="px-6 py-2 border-b border-cloudo-border bg-cloudo-panel-2 flex justify-between items-center">
               <span className="text-[10px] font-black uppercase tracking-widest text-cloudo-muted">
-                Displaying {logs.length} unique execution{logs.length !== 1 ? 's' : ''}
+                Displaying {logs.length} unique execution
+                {logs.length !== 1 ? "s" : ""}
                 {limit && ` (limited to ${limit} raw logs)`}
               </span>
             </div>
@@ -316,25 +380,41 @@ export function LogsPanel() {
                   <tr
                     key={log.RowKey}
                     onClick={() => setSelectedLog(log)}
-                    className={`cursor-pointer transition-colors hover:bg-white/[0.02] ${selectedLog?.RowKey === log.RowKey ? 'bg-cloudo-accent/5 border-l-2 border-cloudo-accent' : ''}`}
+                    className={`cursor-pointer transition-colors hover:bg-white/[0.02] ${
+                      selectedLog?.RowKey === log.RowKey
+                        ? "bg-cloudo-accent/5 border-l-2 border-cloudo-accent"
+                        : ""
+                    }`}
                   >
                     <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-cloudo-text font-bold">{log.RequestedAt?.split('T')[1]?.slice(0, 8)}</div>
-                      <div className="text-[10px] text-cloudo-muted opacity-70">{log.RequestedAt?.split('T')[0]}</div>
+                      <div className="text-cloudo-text font-bold">
+                        {log.RequestedAt?.split("T")[1]?.slice(0, 8)}
+                      </div>
+                      <div className="text-[10px] text-cloudo-muted opacity-70">
+                        {log.RequestedAt?.split("T")[0]}
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
-                        <span className={`px-1.5 py-0.5 border text-[10px] font-black uppercase tracking-widest ${getStatusBadgeClass(log.Status)}`}>
+                        <span
+                          className={`px-1.5 py-0.5 border text-[10px] font-black uppercase tracking-widest ${getStatusBadgeClass(
+                            log.Status,
+                          )}`}
+                        >
                           {log.Status}
                         </span>
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <div className="text-cloudo-text font-bold uppercase tracking-widest truncate max-w-[150px]">{log.Name || 'SYS_TASK'}</div>
-                      <div className="text-[10px] text-cloudo-muted/60 opacity-50 truncate max-w-[150px]">{log.ExecId.slice(0, 12)}</div>
+                      <div className="text-cloudo-text font-bold uppercase tracking-widest truncate max-w-[150px]">
+                        {log.Name || "SYS_TASK"}
+                      </div>
+                      <div className="text-[10px] text-cloudo-muted/60 opacity-50 truncate max-w-[150px]">
+                        {log.ExecId.slice(0, 12)}
+                      </div>
                     </td>
                     <td className="px-4 py-4 text-center">
-                      {(log.OnCall === true || log.OnCall === 'true') && (
+                      {(log.OnCall === true || log.OnCall === "true") && (
                         <div className="flex justify-center">
                           <div className="w-1.5 h-1.5 bg-cloudo-err animate-pulse" />
                         </div>
@@ -347,7 +427,9 @@ export function LogsPanel() {
             {logs.length === 0 && !loading && (
               <div className="py-20 text-center flex flex-col items-center gap-3 opacity-50">
                 <HiOutlineTerminal className="w-8 h-8" />
-                <span className="text-[10px] font-black uppercase tracking-widest">interrogation_idle // no_data</span>
+                <span className="text-[10px] font-black uppercase tracking-widest">
+                  interrogation_idle // no_data
+                </span>
               </div>
             )}
           </div>
@@ -363,75 +445,107 @@ export function LogsPanel() {
                 <HiOutlineTerminal className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-xs font-black text-cloudo-text uppercase tracking-[0.2em]">{selectedLog.Name || 'Runtime Process'}</h3>
+                <h3 className="text-xs font-black text-cloudo-text uppercase tracking-[0.2em]">
+                  {selectedLog.Name || "Runtime Process"}
+                </h3>
                 <div className="flex items-center gap-2 mt-1">
-                  <code className="text-[10px] text-cloudo-muted font-mono">{selectedLog.ExecId}</code>
+                  <code className="text-[10px] text-cloudo-muted font-mono">
+                    {selectedLog.ExecId}
+                  </code>
                 </div>
               </div>
             </div>
-            <button onClick={() => setSelectedLog(null)} className="p-2 text-cloudo-muted hover:text-cloudo-text border border-cloudo-border transition-colors">
+            <button
+              onClick={() => setSelectedLog(null)}
+              className="p-2 text-cloudo-muted hover:text-cloudo-text border border-cloudo-border transition-colors"
+            >
               <HiOutlineX className="w-4 h-4" />
             </button>
           </div>
 
           <div className="flex-1 overflow-auto p-8 space-y-8 custom-scrollbar bg-cloudo-accent/10">
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-cloudo-accent/10 border border-cloudo-border p-3">
-                   <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">Asset_Path</span>
-                   <span className="text-[11px] font-bold text-cloudo-accent truncate block">{selectedLog.Runbook}</span>
-                </div>
-                <div className="bg-cloudo-accent/10 border border-cloudo-border p-3">
-                   <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">Date</span>
-                   <span className="text-[11px] font-bold text-cloudo-text block truncate">{selectedLog.RequestedAt}</span>
-                </div>
-                <div className="bg-cloudo-accent/10 border border-cloudo-border p-3">
-                   <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">On_Call</span>
-                   <span className="text-[11px] font-bold text-cloudo-text block">{String(selectedLog.OnCall || 'NONE')}</span>
-                </div>
-                <div className="bg-cloudo-accent/10 border border-cloudo-border p-3 flex flex-col justify-center items-center gap-1 cursor-pointer hover:bg-cloudo-accent/5 transition-colors" onClick={() => copyToClipboard(selectedLog.ExecId)}>
-                   <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block">Copy_ID</span>
-                   {copied ? <HiOutlineClipboardCheck className="text-cloudo-ok w-3 h-3" /> : <HiOutlineClipboard className="w-3 h-3" />}
-                </div>
-             </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-cloudo-accent/10 border border-cloudo-border p-3">
+                <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">
+                  Asset_Path
+                </span>
+                <span className="text-[11px] font-bold text-cloudo-accent truncate block">
+                  {selectedLog.Runbook}
+                </span>
+              </div>
+              <div className="bg-cloudo-accent/10 border border-cloudo-border p-3">
+                <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">
+                  Date
+                </span>
+                <span className="text-[11px] font-bold text-cloudo-text block truncate">
+                  {selectedLog.RequestedAt}
+                </span>
+              </div>
+              <div className="bg-cloudo-accent/10 border border-cloudo-border p-3">
+                <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">
+                  On_Call
+                </span>
+                <span className="text-[11px] font-bold text-cloudo-text block">
+                  {String(selectedLog.OnCall || "NONE")}
+                </span>
+              </div>
+              <div
+                className="bg-cloudo-accent/10 border border-cloudo-border p-3 flex flex-col justify-center items-center gap-1 cursor-pointer hover:bg-cloudo-accent/5 transition-colors"
+                onClick={() => copyToClipboard(selectedLog.ExecId)}
+              >
+                <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block">
+                  Copy_ID
+                </span>
+                {copied ? (
+                  <HiOutlineClipboardCheck className="text-cloudo-ok w-3 h-3" />
+                ) : (
+                  <HiOutlineClipboard className="w-3 h-3" />
+                )}
+              </div>
+            </div>
 
-             <div className="space-y-3">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-2 bg-cloudo-accent" />
+                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">
+                  Runtime Arguments
+                </span>
+              </div>
+              <div className="bg-cloudo-dark/60 border border-cloudo-border p-4 font-mono text-[11px] text-cloudo-accent whitespace-pre-wrap break-all leading-relaxed">
+                {selectedLog.Run_Args || "EMPTY_ARGS"}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                   <div className="w-1 h-2 bg-cloudo-accent" />
-                   <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Runtime Arguments</span>
+                  <div className="w-1 h-2 bg-cloudo-accent" />
+                  <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">
+                    Standard Output Stream
+                  </span>
                 </div>
-                <div className="bg-cloudo-dark/60 border border-cloudo-border p-4 font-mono text-[11px] text-cloudo-accent whitespace-pre-wrap break-all leading-relaxed">
-                   {selectedLog.Run_Args || 'EMPTY_ARGS'}
-                </div>
-             </div>
-
-             <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                   <div className="flex items-center gap-2">
-                      <div className="w-1 h-2 bg-cloudo-accent" />
-                      <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">Standard Output Stream</span>
-                   </div>
-                   <button
-                     onClick={() => copyToClipboard(selectedLog.Log)}
-                     className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-cloudo-accent hover:text-white transition-colors"
-                     title="Copy all logs"
-                   >
-                     {copied ? (
-                       <>
-                         <HiOutlineClipboardCheck className="w-3.5 h-3.5 text-cloudo-ok" />
-                         <span className="text-cloudo-ok">Copied</span>
-                       </>
-                     ) : (
-                       <>
-                         <HiOutlineClipboard className="w-3.5 h-3.5" />
-                         <span>Copy Logs</span>
-                       </>
-                     )}
-                   </button>
-                </div>
-                <div className="bg-cloudo-dark p-6 border border-cloudo-border font-mono text-xs min-h-[400px]">
-                   {formatLogContent(selectedLog.Log)}
-                </div>
-             </div>
+                <button
+                  onClick={() => copyToClipboard(selectedLog.Log)}
+                  className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-cloudo-accent hover:text-white transition-colors"
+                  title="Copy all logs"
+                >
+                  {copied ? (
+                    <>
+                      <HiOutlineClipboardCheck className="w-3.5 h-3.5 text-cloudo-ok" />
+                      <span className="text-cloudo-ok">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <HiOutlineClipboard className="w-3.5 h-3.5" />
+                      <span>Copy Logs</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="bg-cloudo-dark p-6 border border-cloudo-border font-mono text-xs min-h-[400px]">
+                {formatLogContent(selectedLog.Log)}
+              </div>
+            </div>
           </div>
         </div>
       )}

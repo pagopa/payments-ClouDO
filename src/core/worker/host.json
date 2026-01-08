@@ -31,7 +31,6 @@
     "queues": {
       "maxDequeueCount": 1
     }
-
   },
   "aggregator": {
     "batchSize": 100,

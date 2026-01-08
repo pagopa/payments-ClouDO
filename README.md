@@ -5,10 +5,13 @@
 </p>
 
 ## Overview
+
 ClouDO centralizes the definition, execution, and governance of operational runbooks. It supports both manual invocation and event-driven triggers, enabling consistent, repeatable responses to incidents, maintenance tasks, and routine operations.
 
 ## Architecture Overview
+
 At a high level, the system comprises:
+
 - API/Controller: Validates requests, authorizes actors, and dispatches runs.
 - Orchestrator: Resolves dependencies and manages run lifecycle.
 - Executors: Perform steps (scripts, HTTP calls, cloud operations, etc.).
@@ -21,6 +24,7 @@ Centralized runbook automation for manual or event-driven execution.
 ## Getting Started
 
 ### Installation
+
 - Clone the repository.
 - Install Python dependencies as documented in the project (e.g., using pip).
 - Configure environment variables and credentials as needed.

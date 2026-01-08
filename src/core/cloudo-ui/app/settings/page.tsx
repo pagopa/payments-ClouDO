@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { cloudoFetch } from '@/lib/api';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from "react";
+import { cloudoFetch } from "@/lib/api";
+import { useRouter } from "next/navigation";
 import {
   HiOutlineCog,
   HiOutlineShieldCheck,
@@ -11,7 +11,7 @@ import {
   HiOutlineCheckCircle,
   HiOutlineExclamationCircle,
   HiOutlineInformationCircle,
-  HiOutlineDatabase
+  HiOutlineDatabase,
 } from "react-icons/hi";
 
 interface Settings {
@@ -20,47 +20,47 @@ interface Settings {
 
 interface Notification {
   id: string;
-  type: 'success' | 'error';
+  type: "success" | "error";
   message: string;
 }
 
 export default function SettingsPage() {
   const router = useRouter();
   const [settings, setSettings] = useState<Settings>({
-    RUNBOOK_TIMEOUT_MIN: '30',
-    LOG_RETENTION_DAYS: '90',
-    NOTIFICATION_SLACK_WEBHOOK: '',
-    NOTIFICATION_TEAMS_WEBHOOK: '',
-    SYSTEM_MAINTENANCE_MODE: 'false',
-    AUDIT_ENABLED: 'true'
+    RUNBOOK_TIMEOUT_MIN: "30",
+    LOG_RETENTION_DAYS: "90",
+    NOTIFICATION_SLACK_WEBHOOK: "",
+    NOTIFICATION_TEAMS_WEBHOOK: "",
+    SYSTEM_MAINTENANCE_MODE: "false",
+    AUDIT_ENABLED: "true",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  const addNotification = (type: 'success' | 'error', message: string) => {
+  const addNotification = (type: "success" | "error", message: string) => {
     const id = Date.now().toString();
-    setNotifications(prev => [...prev, { id, type, message }]);
+    setNotifications((prev) => [...prev, { id, type, message }]);
     setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 4000);
   };
 
   useEffect(() => {
-    const userData = localStorage.getItem('cloudo_user');
+    const userData = localStorage.getItem("cloudo_user");
     if (userData) {
       try {
         const user = JSON.parse(userData);
-        if (user.role !== 'ADMIN') {
-          router.push('/');
+        if (user.role !== "ADMIN") {
+          router.push("/");
           return;
         }
       } catch {
-        router.push('/login');
+        router.push("/login");
         return;
       }
     } else {
-      router.push('/login');
+      router.push("/login");
       return;
     }
     fetchSettings();
@@ -74,11 +74,11 @@ export default function SettingsPage() {
       if (res.ok) {
         const data = await res.json();
         if (Object.keys(data).length > 0) {
-          setSettings(prev => ({ ...prev, ...data }));
+          setSettings((prev) => ({ ...prev, ...data }));
         }
       }
     } catch {
-      console.error('Failed to fetch settings');
+      console.error("Failed to fetch settings");
     } finally {
       setLoading(false);
     }
@@ -88,20 +88,20 @@ export default function SettingsPage() {
     setSaving(true);
     try {
       const res = await cloudoFetch(`/settings`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(settings)
+        body: JSON.stringify(settings),
       });
 
       if (res.ok) {
-        addNotification('success', 'Global configuration updated successfully');
+        addNotification("success", "Global configuration updated successfully");
       } else {
-        addNotification('error', 'Failed to update settings');
+        addNotification("error", "Failed to update settings");
       }
     } catch {
-      addNotification('error', 'Uplink failed');
+      addNotification("error", "Uplink failed");
     } finally {
       setSaving(false);
     }
@@ -115,18 +115,20 @@ export default function SettingsPage() {
           <div
             key={notif.id}
             className={`pointer-events-auto min-w-[320px] p-4 border shadow-2xl animate-in slide-in-from-right-5 duration-300 ${
-              notif.type === 'success'
-                ? 'bg-cloudo-panel border-cloudo-ok/30 text-cloudo-ok'
-                : 'bg-cloudo-panel border-cloudo-err/30 text-cloudo-err'
+              notif.type === "success"
+                ? "bg-cloudo-panel border-cloudo-ok/30 text-cloudo-ok"
+                : "bg-cloudo-panel border-cloudo-err/30 text-cloudo-err"
             }`}
           >
             <div className="flex items-center gap-3">
-              {notif.type === 'success' ? (
+              {notif.type === "success" ? (
                 <HiOutlineCheckCircle className="w-5 h-5 flex-shrink-0" />
               ) : (
                 <HiOutlineExclamationCircle className="w-5 h-5 flex-shrink-0" />
               )}
-              <p className="text-[10px] font-black uppercase tracking-widest">{notif.message}</p>
+              <p className="text-[10px] font-black uppercase tracking-widest">
+                {notif.message}
+              </p>
             </div>
           </div>
         ))}
@@ -139,8 +141,12 @@ export default function SettingsPage() {
             <HiOutlineCog className="text-cloudo-accent w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">System Settings</h1>
-            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">Global Config // SYSTEM_GATE</p>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">
+              System Settings
+            </h1>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">
+              Global Config // SYSTEM_GATE
+            </p>
           </div>
         </div>
 
@@ -149,7 +155,9 @@ export default function SettingsPage() {
             onClick={fetchSettings}
             className="btn btn-ghost h-10 px-4 flex items-center gap-2"
           >
-            <HiOutlineRefresh className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <HiOutlineRefresh
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            />
             Sync
           </button>
           <button
@@ -158,52 +166,94 @@ export default function SettingsPage() {
             className="btn btn-primary h-10 px-6 flex items-center gap-2"
           >
             <HiOutlineSave className="w-4 h-4" />
-            {saving ? 'Saving...' : 'Commit Changes'}
+            {saving ? "Saving..." : "Commit Changes"}
           </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-4xl mx-auto space-y-8">
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Execution Policy Section */}
             <div className="space-y-6">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-4 bg-cloudo-accent" />
-                <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">Execution Policy</h2>
+                <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">
+                  Execution Policy
+                </h2>
               </div>
 
               <div className="bg-cloudo-panel border border-cloudo-border p-6 space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Runbook Timeout (Minutes)</label>
+                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+                    Runbook Timeout (Minutes)
+                  </label>
                   <input
                     type="number"
                     className="input h-11 w-full"
                     value={settings.RUNBOOK_TIMEOUT_MIN}
-                    onChange={e => setSettings({...settings, RUNBOOK_TIMEOUT_MIN: e.target.value})}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        RUNBOOK_TIMEOUT_MIN: e.target.value,
+                      })
+                    }
                   />
-                  <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1">Kills processes exceeding this threshold</p>
+                  <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1">
+                    Kills processes exceeding this threshold
+                  </p>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">Log Retention (Days)</label>
+                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+                    Log Retention (Days)
+                  </label>
                   <input
                     type="number"
                     className="input h-11 w-full"
                     value={settings.LOG_RETENTION_DAYS}
-                    onChange={e => setSettings({...settings, LOG_RETENTION_DAYS: e.target.value})}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        LOG_RETENTION_DAYS: e.target.value,
+                      })
+                    }
                   />
-                  <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1">Automatic pruning of old telemetry data</p>
+                  <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1">
+                    Automatic pruning of old telemetry data
+                  </p>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setSettings({...settings, SYSTEM_MAINTENANCE_MODE: settings.SYSTEM_MAINTENANCE_MODE === 'true' ? 'false' : 'true'})}>
+                <div
+                  className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer"
+                  onClick={() =>
+                    setSettings({
+                      ...settings,
+                      SYSTEM_MAINTENANCE_MODE:
+                        settings.SYSTEM_MAINTENANCE_MODE === "true"
+                          ? "false"
+                          : "true",
+                    })
+                  }
+                >
                   <div className="space-y-1">
-                    <p className="text-sm font-black text-cloudo-text uppercase tracking-widest">Maintenance Mode</p>
-                    <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">Lock all executions</p>
+                    <p className="text-sm font-black text-cloudo-text uppercase tracking-widest">
+                      Maintenance Mode
+                    </p>
+                    <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">
+                      Lock all executions
+                    </p>
                   </div>
-                  <div className={`w-5 h-5 border flex items-center justify-center transition-all ${settings.SYSTEM_MAINTENANCE_MODE === 'true' ? 'bg-cloudo-err border-cloudo-err text-cloudo-text' : 'border-cloudo-border'}`}>
-                    {settings.SYSTEM_MAINTENANCE_MODE === 'true' && <HiOutlineShieldCheck className="w-4 h-4" />}
+                  <div
+                    className={`w-5 h-5 border flex items-center justify-center transition-all ${
+                      settings.SYSTEM_MAINTENANCE_MODE === "true"
+                        ? "bg-cloudo-err border-cloudo-err text-cloudo-text"
+                        : "border-cloudo-border"
+                    }`}
+                  >
+                    {settings.SYSTEM_MAINTENANCE_MODE === "true" && (
+                      <HiOutlineShieldCheck className="w-4 h-4" />
+                    )}
                   </div>
                 </div>
               </div>
@@ -213,12 +263,13 @@ export default function SettingsPage() {
             <div className="space-y-6">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-4 bg-cloudo-warn" />
-                <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">Security & Alerts</h2>
+                <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">
+                  Security & Alerts
+                </h2>
               </div>
 
-
               <div className="bg-cloudo-panel border border-cloudo-border p-6 space-y-6">
-              {/*
+                {/*
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 mb-1">
                     <HiOutlineBell className="text-cloudo-warn w-4 h-4" />
@@ -251,13 +302,34 @@ export default function SettingsPage() {
 
                   */}
 
-                <div className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer" onClick={() => setSettings({...settings, AUDIT_ENABLED: settings.AUDIT_ENABLED === 'true' ? 'false' : 'true'})}>
+                <div
+                  className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer"
+                  onClick={() =>
+                    setSettings({
+                      ...settings,
+                      AUDIT_ENABLED:
+                        settings.AUDIT_ENABLED === "true" ? "false" : "true",
+                    })
+                  }
+                >
                   <div className="space-y-1">
-                    <p className="text-sm font-black text-cloudo-text uppercase tracking-widest">Audit Engine</p>
-                    <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">Log all operator actions</p>
+                    <p className="text-sm font-black text-cloudo-text uppercase tracking-widest">
+                      Audit Engine
+                    </p>
+                    <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">
+                      Log all operator actions
+                    </p>
                   </div>
-                  <div className={`w-5 h-5 border flex items-center justify-center transition-all ${settings.AUDIT_ENABLED === 'true' ? 'bg-cloudo-accent border-cloudo-accent text-cloudo-dark' : 'border-cloudo-border'}`}>
-                    {settings.AUDIT_ENABLED === 'true' && <HiOutlineCheckCircle className="w-4 h-4" />}
+                  <div
+                    className={`w-5 h-5 border flex items-center justify-center transition-all ${
+                      settings.AUDIT_ENABLED === "true"
+                        ? "bg-cloudo-accent border-cloudo-accent text-cloudo-dark"
+                        : "border-cloudo-border"
+                    }`}
+                  >
+                    {settings.AUDIT_ENABLED === "true" && (
+                      <HiOutlineCheckCircle className="w-4 h-4" />
+                    )}
                   </div>
                 </div>
               </div>
@@ -272,14 +344,18 @@ export default function SettingsPage() {
             <div className="relative z-10 flex gap-6 items-start">
               <HiOutlineInformationCircle className="text-cloudo-accent w-6 h-6 shrink-0 mt-1" />
               <div className="space-y-4">
-                <h3 className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">Operator Note</h3>
+                <h3 className="text-[11px] font-black text-cloudo-text uppercase tracking-widest">
+                  Operator Note
+                </h3>
                 <p className="text-[10px] text-cloudo-muted uppercase font-bold leading-relaxed max-w-2xl">
-                  These parameters affect the global behavior of the ClouDO engine. Changes are applied in real-time to all future runbook executions and audit streams. Verify security hooks before committing.
+                  These parameters affect the global behavior of the ClouDO
+                  engine. Changes are applied in real-time to all future runbook
+                  executions and audit streams. Verify security hooks before
+                  committing.
                 </p>
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </div>

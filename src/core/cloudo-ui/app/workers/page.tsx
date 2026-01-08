@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { WorkersPanel } from '../components/WorkersPanel';
+import { WorkersPanel } from "../components/WorkersPanel";
 
 export default function WorkersPage() {
   return (
