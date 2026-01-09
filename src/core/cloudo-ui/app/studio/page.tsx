@@ -301,7 +301,9 @@ export default function StudioPage() {
       if (alertRule)
         schemaCandidates.push(String(alertRule).split("/").pop() || "");
       if (schemaCandidates.length > 0)
-        env["SCHEMA_ID"] = Array.from(new Set(schemaCandidates)).join(",");
+        env["SCHEMA_ID // ALERT_ID"] = Array.from(
+          new Set(schemaCandidates),
+        ).join(",");
 
       env["CLOUDO_PAYLOAD"] = JSON.stringify(parsed);
       if (JSON.stringify(parsedEnv) !== JSON.stringify(env)) {
@@ -502,7 +504,7 @@ export default function StudioPage() {
                             {key}
                           </span>
                           <span
-                            className="text-xs text-cloudo-muted font-mono truncate"
+                            className="text-xs text-cloudo-muted font-mono"
                             title={value}
                           >
                             {value}
@@ -584,7 +586,7 @@ export default function StudioPage() {
                 />
                 <VarItem name="SEVERITY" desc="Livello di gravità (Sev0-4)." />
                 <VarItem
-                  name="SCHEMA_ID"
+                  name="SCHEMA_ID // ALERT_ID"
                   desc="Identificativo dello schema di allarme."
                 />
                 <VarItem

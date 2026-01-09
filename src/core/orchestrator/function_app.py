@@ -2526,6 +2526,88 @@ def get_worker_processes(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.route(
+    route="auth/register",
+    methods=[func.HttpMethod.POST, func.HttpMethod.OPTIONS],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def auth_register(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    body = req.get_json()
+    try:
+        from azure.data.tables import TableClient
+
+        username = body.get("username").lower()
+        password = body.get("password")
+        email = body.get("email")
+
+        if not username or not password or not email:
+            return func.HttpResponse(
+                json.dumps({"error": "Username, password and email required"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        conn_str = os.environ.get(STORAGE_CONN)
+        table_client = TableClient.from_connection_string(
+            conn_str, table_name=TABLE_USERS
+        )
+
+        try:
+            table_client.get_entity(partition_key="Operator", row_key=username)
+            return func.HttpResponse(
+                json.dumps({"error": "Username already exists"}),
+                status_code=409,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception:
+            # User doesn't exist, proceed
+            pass
+
+        import bcrypt
+
+        hashed_password = bcrypt.hashpw(
+            password.encode("utf-8"), bcrypt.gensalt()
+        ).decode("utf-8")
+
+        entity = {
+            "PartitionKey": "Operator",
+            "RowKey": username,
+            "password": hashed_password,
+            "email": email,
+            "role": "PENDING",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        table_client.create_entity(entity=entity)
+
+        log_audit(
+            user=username,
+            action="USER_REGISTER_REQUEST",
+            target=username,
+            details=f"user: {username}, email: {email}",
+        )
+
+        return func.HttpResponse(
+            json.dumps({"success": True}),
+            status_code=201,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    except Exception as e:
+        logging.error(f"Registration error: {e}")
+        return func.HttpResponse(
+            json.dumps({"error": "Registration failed"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+
+@app.route(
     route="auth/login",
     methods=[func.HttpMethod.POST, func.HttpMethod.OPTIONS],
     auth_level=func.AuthLevel.ANONYMOUS,
@@ -2589,6 +2671,16 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
                         logging.error(f"Failed to migrate password for {username}: {e}")
 
         if is_valid:
+            if user_entity.get("role") == "PENDING":
+                return func.HttpResponse(
+                    json.dumps(
+                        {"error": "Account pending approval. Contact administrator."}
+                    ),
+                    status_code=403,
+                    mimetype="application/json",
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
+
             log_audit(
                 user=user_entity.get("RowKey"),
                 action="USER_LOGIN_SUCCESS",
@@ -2644,6 +2736,94 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"},
         )
+
+
+@app.route(
+    route="auth/profile",
+    methods=[func.HttpMethod.GET, func.HttpMethod.POST, func.HttpMethod.OPTIONS],
+    auth_level=AUTH,
+)
+def auth_profile(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
+
+    username = session.get("username")
+    from azure.data.tables import TableClient, UpdateMode
+
+    conn_str = os.environ.get(STORAGE_CONN)
+    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_USERS)
+
+    try:
+        user_entity = table_client.get_entity(
+            partition_key="Operator", row_key=username
+        )
+    except Exception:
+        return func.HttpResponse(
+            json.dumps({"error": "User profile not found"}),
+            status_code=404,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    if req.method == "GET":
+        return func.HttpResponse(
+            json.dumps(
+                {
+                    "username": user_entity.get("RowKey"),
+                    "email": user_entity.get("email"),
+                    "role": user_entity.get("role"),
+                    "created_at": user_entity.get("created_at"),
+                }
+            ),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    if req.method == "POST":
+        try:
+            body = req.get_json()
+            new_email = body.get("email")
+            new_password = body.get("password")
+
+            if new_email:
+                user_entity["email"] = new_email
+
+            if new_password:
+                import bcrypt
+
+                hashed_password = bcrypt.hashpw(
+                    new_password.encode("utf-8"), bcrypt.gensalt()
+                ).decode("utf-8")
+                user_entity["password"] = hashed_password
+
+            table_client.update_entity(entity=user_entity, mode=UpdateMode.REPLACE)
+
+            log_audit(
+                user=username,
+                action="USER_PROFILE_UPDATE",
+                target=username,
+                details=f"Updated profile for {username}",
+            )
+
+            return func.HttpResponse(
+                json.dumps({"success": True}),
+                status_code=200,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        except Exception as e:
+            logging.error(f"Profile update error: {e}")
+            return func.HttpResponse(
+                json.dumps({"error": "Failed to update profile"}),
+                status_code=500,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
 
 
 @app.route(

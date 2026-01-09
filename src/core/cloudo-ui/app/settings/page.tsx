@@ -26,6 +26,7 @@ interface Notification {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const [user, setUser] = useState<any>(null);
   const [settings, setSettings] = useState<Settings>({
     RUNBOOK_TIMEOUT_MIN: "30",
     LOG_RETENTION_DAYS: "90",
@@ -50,20 +51,19 @@ export default function SettingsPage() {
     const userData = localStorage.getItem("cloudo_user");
     if (userData) {
       try {
-        const user = JSON.parse(userData);
-        if (user.role !== "ADMIN") {
-          router.push("/");
+        const parsedUser = JSON.parse(userData);
+        if (parsedUser.role !== "ADMIN") {
+          router.push("/profile");
           return;
         }
+        setUser(parsedUser);
+        fetchSettings();
       } catch {
         router.push("/login");
-        return;
       }
     } else {
       router.push("/login");
-      return;
     }
-    fetchSettings();
   }, [router]);
 
   const fetchSettings = async () => {
@@ -142,17 +142,19 @@ export default function SettingsPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">
-              System Settings
+              Account & System Settings
             </h1>
             <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">
-              Global Config // SYSTEM_GATE
+              User Profile & Global Config // SETTINGS_GATE
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
           <button
-            onClick={fetchSettings}
+            onClick={() => {
+              if (user?.role === "ADMIN") fetchSettings();
+            }}
             className="btn btn-ghost h-10 px-4 flex items-center gap-2"
           >
             <HiOutlineRefresh
@@ -166,14 +168,14 @@ export default function SettingsPage() {
             className="btn btn-primary h-10 px-6 flex items-center gap-2"
           >
             <HiOutlineSave className="w-4 h-4" />
-            {saving ? "Saving..." : "Commit Changes"}
+            {saving ? "Saving..." : "Commit Global Changes"}
           </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-8">
-        <div className="max-w-4xl mx-auto space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="max-w-4xl mx-auto space-y-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
             {/* Execution Policy Section */}
             <div className="space-y-6">
               <div className="flex items-center gap-3">

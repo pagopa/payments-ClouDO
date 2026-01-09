@@ -110,6 +110,26 @@ export default function UsersPage() {
     }
   };
 
+  const approveUser = async (username: string, email) => {
+    try {
+      const res = await cloudoFetch(`/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, role: "OPERATOR", email }),
+      });
+
+      if (res.ok) {
+        addNotification("success", `User ${username} approved`);
+        fetchUsers();
+      } else {
+        const data = await res.json();
+        addNotification("error", data.error || "Failed to approve user");
+      }
+    } catch {
+      addNotification("error", "Uplink failed");
+    }
+  };
+
   const filteredUsers = useMemo(() => {
     return users.filter(
       (u) =>
@@ -264,7 +284,9 @@ export default function UsersPage() {
                           className={`px-2 py-0.5 border text-[11px] font-black uppercase tracking-widest ${
                             user.role === "ADMIN"
                               ? "border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5"
-                              : "border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5"
+                              : user.role === "PENDING"
+                                ? "border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5"
+                                : "border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5"
                           }`}
                         >
                           {user.role}
@@ -275,6 +297,17 @@ export default function UsersPage() {
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {user.role === "PENDING" && (
+                            <button
+                              onClick={() =>
+                                approveUser(user.username, user.email)
+                              }
+                              className="p-2.5 bg-cloudo-ok/10 border border-cloudo-ok/30 text-cloudo-ok hover:bg-cloudo-ok hover:text-cloudo-dark transition-all group/btn"
+                              title="Approve User"
+                            >
+                              <HiOutlineCheckCircle className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setSelectedUser(user);

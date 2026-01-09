@@ -50,12 +50,14 @@ export default function RootLayout({
       setIsAuthenticated(authed);
     }
 
-    if (!authed && pathname !== "/login") {
+    const isPublicPage = pathname === "/login" || pathname === "/register";
+
+    if (!authed && !isPublicPage) {
       router.push("/login");
     }
   }, [pathname, router, isAuthenticated]);
 
-  const isLoginPage = pathname === "/login";
+  const isPublicPage = pathname === "/login" || pathname === "/register";
 
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
@@ -94,7 +96,7 @@ export default function RootLayout({
   };
 
   // Prevent flash of content or sidebar
-  if (isAuthenticated === null && !isLoginPage) {
+  if (isAuthenticated === null && !isPublicPage) {
     return (
       <html lang="en">
         <body className={`${inter.variable} antialiased bg-cloudo-dark`} />
@@ -106,7 +108,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} antialiased ${theme}`}>
         <div className="flex h-screen overflow-hidden">
-          {!isLoginPage && isAuthenticated && (
+          {!isPublicPage && isAuthenticated && (
             <Sidebar theme={theme} toggleTheme={toggleTheme} />
           )}
           <main

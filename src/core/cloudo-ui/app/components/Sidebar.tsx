@@ -20,6 +20,7 @@ import {
   HiOutlineClock,
   HiOutlineSun,
   HiOutlineMoon,
+  HiOutlineUser,
 } from "react-icons/hi";
 
 interface NavItem {
@@ -56,6 +57,11 @@ const navigation: NavItem[] = [
     href: "/settings",
     icon: <HiOutlineCog />,
     adminOnly: true,
+  },
+  {
+    name: "Profile",
+    href: "/profile",
+    icon: <HiOutlineUser />,
   },
 ];
 

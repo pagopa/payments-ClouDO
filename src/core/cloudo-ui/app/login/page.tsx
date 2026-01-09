@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { cloudoFetch } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   HiOutlineLockClosed,
   HiOutlineUser,
@@ -112,7 +113,7 @@ function LoadingOverlay() {
 
         <div className="mt-8 pt-4 border-t border-cloudo-border/30">
           <div className="flex justify-between items-center text-[8px] text-cloudo-muted/50 tracking-widest uppercase">
-            <span>Kernel: CLOUDO-V2</span>
+            <span>Kernel: CLOUDO-V1</span>
             <span className="animate-pulse">Active Session</span>
           </div>
         </div>
@@ -371,6 +372,14 @@ function LoginForm() {
                 />
               )}
             </button>
+            <div className="flex justify-center mt-4">
+              <Link
+                href="/register"
+                className="text-[10px] text-cloudo-muted hover:text-cloudo-accent transition-colors uppercase tracking-widest font-bold border-b border-transparent hover:border-cloudo-accent/30 pb-1"
+              >
+                Request Access Credentials
+              </Link>
+            </div>
           </form>
 
           <div className="border-t border-cloudo-border p-4 bg-cloudo-accent/5 flex justify-center">

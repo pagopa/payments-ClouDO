@@ -720,7 +720,11 @@ def list_processes(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-@app.route(route="processes/stop", methods=[func.HttpMethod.DELETE], auth_level=AUTH)
+@app.route(
+    route="processes/stop",
+    methods=[func.HttpMethod.DELETE],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
 @app.queue_output(
     arg_name="cloudo_notification_q",
     queue_name=NOTIFICATION_QUEUE_NAME,
@@ -733,6 +737,17 @@ def stop_process(
     Stop a job by exec_id.
     example: POST /api/processes/stop?exec_id=123
     """
+
+    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
+    request_key = req.headers.get("x-cloudo-key")
+
+    if not expected_key or request_key != expected_key:
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
+            status_code=401,
+            mimetype="application/json",
+        )
+
     exec_id = (req.params.get("exec_id") or req.headers.get("ExecId") or "").strip()
     if not exec_id:
         return func.HttpResponse(
