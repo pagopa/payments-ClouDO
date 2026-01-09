@@ -592,7 +592,7 @@ export default function SchemasPage() {
                                 onClick={() => {
                                   setSelectedSchema(schema);
                                   setModalMode(
-                                    isTerraform(schemas.tags) ? "view" : "edit",
+                                    isTerraform(schema.tags) ? "view" : "edit",
                                   );
                                   fetchAvailableRunbooks();
                                   fetchWorkers();
@@ -930,7 +930,7 @@ function SchemaForm({
   onError,
 }: {
   initialData?: Schema | null;
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "view";
   availableRunbooks: string[];
   availableWorkers: string[];
   onSuccess: (message: string) => void;
@@ -965,7 +965,7 @@ function SchemaForm({
       .split(",")
       .map((t) => t.trim().toLowerCase())
       .includes("terraform");
-    if (mode === "edit" && isTf) {
+    if (mode === "view" && isTf) {
       onError("Cannot modify Terraform-managed schema");
       return;
     }
@@ -1013,12 +1013,12 @@ function SchemaForm({
     <form onSubmit={submit} className="p-8 grid grid-cols-2 gap-x-8 gap-y-6">
       <div className="space-y-2">
         <LabelWithTooltip tooltip="Unique identifier for the schema. Cannot be changed after creation.">
-          SCHEMAS ID *
+          SCHEMA_ID // ALERT_ID *
         </LabelWithTooltip>
         <input
           type="text"
           required
-          disabled={mode === "edit"}
+          disabled={mode != "create"}
           className="input font-mono text-cloudo-accent w-full"
           value={formData.id}
           onChange={(e) => setFormData({ ...formData, id: e.target.value })}
