@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { cloudoFetch } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import {
@@ -10,10 +10,9 @@ import {
   HiOutlineMail,
   HiOutlineSun,
   HiOutlineMoon,
-  HiOutlineShieldCheck,
   HiOutlineArrowLeft,
 } from "react-icons/hi";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import Link from "next/link";
 
 export default function RegisterPage() {
@@ -25,13 +24,6 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const router = useRouter();
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("cloudo_theme") as "dark" | "light";
-    if (savedTheme) {
-      setTheme(savedTheme);
-    }
-  }, []);
 
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";

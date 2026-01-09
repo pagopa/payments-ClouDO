@@ -65,6 +65,7 @@ export default function AuditPage() {
       return;
     }
     fetchLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, fetchLimit]);
 
   const fetchLogs = async () => {

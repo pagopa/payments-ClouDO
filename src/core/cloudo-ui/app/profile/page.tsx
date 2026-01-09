@@ -18,9 +18,16 @@ interface Notification {
   message: string;
 }
 
+interface User {
+  username: string;
+  email: string;
+  password: string;
+  role: string;
+}
+
 export default function ProfilePage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User>(null);
   const [profile, setProfile] = useState({
     username: "",
     email: "",

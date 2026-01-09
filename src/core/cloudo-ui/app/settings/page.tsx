@@ -26,7 +26,7 @@ interface Notification {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User>(null);
   const [settings, setSettings] = useState<Settings>({
     RUNBOOK_TIMEOUT_MIN: "30",
     LOG_RETENTION_DAYS: "90",
