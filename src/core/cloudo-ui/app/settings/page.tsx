@@ -18,6 +18,13 @@ interface Settings {
   [key: string]: string;
 }
 
+interface User {
+  username: string | null;
+  email: string | null;
+  password: string | null;
+  role: string | null;
+}
+
 interface Notification {
   id: string;
   type: "success" | "error";
@@ -26,7 +33,7 @@ interface Notification {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User>(null);
+  const [user, setUser] = useState<User>();
   const [settings, setSettings] = useState<Settings>({
     RUNBOOK_TIMEOUT_MIN: "30",
     LOG_RETENTION_DAYS: "90",
