@@ -79,7 +79,7 @@ resource "azurerm_linux_function_app" "orchestrator" {
     local.orchestrator_smart_routing_app_settings
   )
 
-  virtual_network_subnet_id = try(module.cloudo_flexible_snet.id, null)
+  virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
 
   lifecycle {
     ignore_changes = [tags]
@@ -125,7 +125,7 @@ resource "azurerm_linux_web_app" "ui" {
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
   }
 
-  virtual_network_subnet_id = try(module.cloudo_flexible_snet.id, null)
+  virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
 
   lifecycle {
     ignore_changes = [tags]
@@ -196,7 +196,7 @@ resource "azurerm_linux_function_app" "worker" {
     "WORKER_CAPABILITY"                   = each.value
   }
 
-  virtual_network_subnet_id = try(module.cloudo_flexible_snet.id, null)
+  virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
 
   lifecycle {
     ignore_changes = [tags]
