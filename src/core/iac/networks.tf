@@ -6,7 +6,7 @@ module "cloudo_flexible_snet" {
   name                 = "${var.prefix}-cloudo-snet"
   resource_group_name  = var.vnet_rg
   virtual_network_name = var.vnet_name
-  service_endpoints    = ["Microsoft.Web,"]
+  service_endpoints    = ["Microsoft.Web"]
 
   idh_resource_tier = "app_service"
   product_name      = var.product_name
