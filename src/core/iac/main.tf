@@ -258,6 +258,33 @@ resource "azurerm_storage_table" "workers_registry" {
   storage_account_name = module.storage_account.name
 }
 
+resource "azurerm_storage_table" "audit_logs" {
+  name                 = "CloudoAuditLogs"
+  storage_account_name = module.storage_account.name
+}
+
+resource "azurerm_storage_table" "cloudo_schedules" {
+  name                 = "CloudoSchedules"
+  storage_account_name = module.storage_account.name
+}
+
+resource "azurerm_storage_table" "cloudo_settings" {
+  name                 = "CloudoSettings"
+  storage_account_name = module.storage_account.name
+}
+
+resource "azurerm_storage_table" "cloudo_users" {
+  name                 = "CloudoUsers"
+  storage_account_name = module.storage_account.name
+}
+
+resource "azurerm_storage_table_entity" "admin_user" {
+  storage_table_id = azurerm_storage_table.cloudo_users.id
+  partition_key    = "Operator"
+  row_key          = "admin"
+  entity           = { password = random_password.admin_password.result }
+}
+
 resource "azurerm_storage_table_entity" "schemas" {
   for_each = {
     for i in local.entity_executor : i.entity.id => i

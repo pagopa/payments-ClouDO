@@ -21,6 +21,7 @@ import {
   HiOutlineCloud,
   HiOutlineChevronLeft,
   HiOutlineChevronRight,
+  HiOutlineEye,
 } from "react-icons/hi";
 import { MdOutlineSchema } from "react-icons/md";
 import { SiTerraform } from "react-icons/si";
@@ -56,7 +57,9 @@ export default function SchemasPage() {
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
+  const [modalMode, setModalMode] = useState<"create" | "edit" | "view" | null>(
+    null,
+  );
   const [selectedSchema, setSelectedSchema] = useState<Schema | null>(null);
   const [schemaToDelete, setSchemaToDelete] = useState<Schema | null>(null);
   const [confirmRunId, setConfirmRunId] = useState<string | null>(null);
@@ -588,28 +591,34 @@ export default function SchemasPage() {
                               <button
                                 onClick={() => {
                                   setSelectedSchema(schema);
-                                  setModalMode("edit");
+                                  setModalMode(
+                                    isTerraform(schemas.tags) ? "view" : "edit",
+                                  );
                                   fetchAvailableRunbooks();
                                   fetchWorkers();
                                 }}
-                                disabled={isTerraform(schema.tags)}
-                                className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
-                                  isTerraform(schema.tags)
-                                    ? "opacity-20 cursor-not-allowed grayscale"
-                                    : "hover:border-white/20 text-cloudo-muted hover:text-cloudo-text"
-                                }`}
+                                className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn hover:border-white/20 text-cloudo-muted hover:text-cloudo-text`}
                                 title={
                                   isTerraform(schema.tags)
                                     ? "Managed by Terraform - Read Only"
                                     : "Edit Configuration"
                                 }
                               >
-                                <HiOutlinePencil
-                                  className={`w-4 h-4 ${
-                                    !isTerraform(schema.tags) &&
-                                    "group-hover/btn:scale-110"
-                                  } transition-transform`}
-                                />
+                                {isTerraform(schema.tags) ? (
+                                  <HiOutlineEye
+                                    className={`w-4 h-4 ${
+                                      !isTerraform(schema.tags) &&
+                                      "group-hover/btn:scale-110"
+                                    } transition-transform`}
+                                  />
+                                ) : (
+                                  <HiOutlinePencil
+                                    className={`w-4 h-4 ${
+                                      !isTerraform(schema.tags) &&
+                                      "group-hover/btn:scale-110"
+                                    } transition-transform`}
+                                  />
+                                )}
                               </button>
                               <button
                                 onClick={() => setSchemaToDelete(schema)}

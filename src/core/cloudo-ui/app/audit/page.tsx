@@ -181,7 +181,7 @@ export default function AuditPage() {
       return "text-cloudo-ok border-cloudo-ok/30 bg-cloudo-ok/5";
     if (action.includes("UPDATE"))
       return "text-cloudo-warn border-cloudo-warn/30 bg-cloudo-warn/5";
-    if (action.includes("MANUAL"))
+    if (action.includes("RUNBOOK"))
       return "text-pink-400 border-pink-400/30 bg-pink-400/5";
     return "text-cloudo-muted border-cloudo-muted/60 bg-cloudo-muted/5";
   };

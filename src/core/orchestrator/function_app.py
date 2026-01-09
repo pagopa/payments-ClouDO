@@ -556,7 +556,6 @@ def Trigger(
     if error_res:
         return error_res
     requester_username = session.get("username")
-    logging.warning(requester_username)
 
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
@@ -768,7 +767,7 @@ def Trigger(
             if requester_username:
                 log_audit(
                     user=requester_username,
-                    action="RUNBOOK_MANUAL_GATE_SCHEDULE",
+                    action="RUNBOOK_GATE_SCHEDULE",
                     target=exec_id,
                     details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
                 )
@@ -900,7 +899,14 @@ def Trigger(
                 if resource_info == {}:
                     log_audit(
                         user=requester_username,
-                        action="RUNBOOK_MANUAL_SCHEDULE",
+                        action="RUNBOOK_SCHEDULE",
+                        target=exec_id,
+                        details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
+                    )
+                else:
+                    log_audit(
+                        user=requester_username,
+                        action="RUNBOOK_SCHEDULE",
                         target=exec_id,
                         details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
                     )
