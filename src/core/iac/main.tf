@@ -263,7 +263,7 @@ resource "azurerm_storage_table_entity" "admin_user" {
   storage_table_id = azurerm_storage_table.cloudo_users.id
   partition_key    = "Operator"
   row_key          = "admin"
-  entity           = { password = random_password.admin_password.result, role = "ADMIN" }
+  entity           = { password = random_password.admin_password.result, role = "ADMIN", email = "admin@cloudo.local" }
 }
 
 resource "azurerm_storage_table_entity" "schemas" {
