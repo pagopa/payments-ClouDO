@@ -18,6 +18,12 @@ variable "resource_group_name" {
   description = "(Required) The name of the Resource Group in which the resources should be exist."
 }
 
+variable "product_name" {
+  type        = string
+  default     = null
+  description = "(Optional) The name of the product for IDH deployment."
+}
+
 variable "application_insights_name" {
   description = "The ID of the Application Insights to be linked to the Function App."
   type        = string
@@ -80,12 +86,6 @@ variable "github_repo_info" {
 
 variable "vnet_name" {
   description = "The name of the VNet in which the Subnet exists."
-  type        = string
-  default     = null
-}
-
-variable "vnet_rg" {
-  description = "The name of the Resource Group in which the VNet exists."
   type        = string
   default     = null
 }

@@ -1,25 +1,6 @@
 # Azure Subscription
 data "azurerm_subscription" "current" {}
 
-# Subnet
-module "function_snet" {
-  source = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/subnet?ref=1b507dcbfc89880e17ff6722fb69b10dfda9368d"
-
-  count = var.vnet_name != null ? 1 : 0
-
-  # General
-  product_name        = var.prefix
-  env                 = var.env
-  resource_group_name = var.vnet_rg
-
-  # Network
-  name                 = "${var.prefix}-cloudo-snet"
-  virtual_network_name = var.vnet_name
-
-  # IDH Resources
-  idh_resource_tier = "app_service"
-}
-
 resource "random_password" "internal_auth_token" {
   length  = 32
   special = false
@@ -98,7 +79,7 @@ resource "azurerm_linux_function_app" "orchestrator" {
     local.orchestrator_smart_routing_app_settings
   )
 
-  virtual_network_subnet_id = try(module.function_snet.id, null)
+  virtual_network_subnet_id = try(module.cloudo_flexible_snet.id, null)
 
   lifecycle {
     ignore_changes = [tags]
@@ -144,7 +125,7 @@ resource "azurerm_linux_web_app" "ui" {
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
   }
 
-  virtual_network_subnet_id = try(module.function_snet.id, null)
+  virtual_network_subnet_id = try(module.cloudo_flexible_snet.id, null)
 
   lifecycle {
     ignore_changes = [tags]
@@ -215,7 +196,7 @@ resource "azurerm_linux_function_app" "worker" {
     "WORKER_CAPABILITY"                   = each.value
   }
 
-  virtual_network_subnet_id = try(module.function_snet.id, null)
+  virtual_network_subnet_id = try(module.cloudo_flexible_snet.id, null)
 
   lifecycle {
     ignore_changes = [tags]
