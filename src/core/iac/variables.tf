@@ -90,6 +90,12 @@ variable "vnet_name" {
   default     = null
 }
 
+variable "vnet_rg" {
+  description = "The name of the Resource Group in which the VNet exists."
+  type        = string
+  default     = null
+}
+
 variable "aks_integration" {
   type = map(object({
     cluster_id = string
