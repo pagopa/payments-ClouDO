@@ -110,7 +110,7 @@ export default function UsersPage() {
     }
   };
 
-  const approveUser = async (username: string, email) => {
+  const approveUser = async (username: string, email: string) => {
     try {
       const res = await cloudoFetch(`/users`, {
         method: "POST",
