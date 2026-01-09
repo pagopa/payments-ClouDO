@@ -8,14 +8,17 @@ PLATFORM ?= linux/amd64
 # App paths
 ORCH_PATH := src/core/orchestrator
 WORKER_PATH := src/core/worker
+FE_PATH := src/core/cloudo-ui
 
 # Dockerfile paths
 ORCH_DOCKERFILE := $(ORCH_PATH)/Dockerfile
 WORKER_DOCKERFILE := $(WORKER_PATH)/Dockerfile
+FE_DOCKERFILE := $(FE_PATH)/Dockerfile
 
 # Image tags (can be overridden if needed)
 ORCH_IMAGE ?= $(strip $(REGISTRY))$(if $(strip $(REGISTRY)),/,)$(strip $(IMAGE_PREFIX))-orchestrator:$(VERSION)
 WORKER_IMAGE ?= $(strip $(REGISTRY))$(if $(strip $(REGISTRY)),/,)$(strip $(IMAGE_PREFIX))-worker:$(VERSION)
+FE_IMAGE ?= $(strip $(REGISTRY))$(if $(strip $(REGISTRY)),/,)$(strip $(IMAGE_PREFIX))-ui:$(VERSION)
 
 # Common build args
 COMMON_BUILD_ARGS := --build-arg APP_PATH
@@ -45,7 +48,7 @@ help:
 	@echo "  make push REGISTRY=ghcr.io/your-org IMAGE_PREFIX=payments VERSION=1.0.0"
 
 .PHONY: build
-build: build-orchestrator build-worker
+build: build-orchestrator build-worker build-fe
 
 .PHONY: build-orchestrator
 build-orchestrator:
@@ -65,9 +68,18 @@ build-worker:
 		-t $(WORKER_IMAGE) \
 		$(WORKER_PATH)
 
+.PHONY: build-fe
+build-fe:
+	$(DOCKER) buildx build \
+    --platform=$(PLATFORM) \
+		-f $(FE_DOCKERFILE) \
+		$(COMMON_BUILD_ARGS)=. \
+		-t $(FE_IMAGE) \
+		$(FE_PATH)
+
 
 .PHONY: push
-push: push-orchestrator push-worker
+push: push-orchestrator push-worker push-fe
 
 .PHONY: push-orchestrator
 push-orchestrator:
@@ -83,10 +95,18 @@ push-worker:
 	fi
 	$(DOCKER) push $(WORKER_IMAGE)
 
+.PHONY: push-fe
+push-fe:
+	@if [ -z "$(REGISTRY)" ] && echo "$(FE_IMAGE)" | grep -q '^[^/]\+:'; then \
+		echo "WARNING: no REGISTRY set. Push may fail."; \
+	fi
+	$(DOCKER) push $(FE_IMAGE)
+
 .PHONY: clean
 clean:
 	$(DOCKER) rmi $(ORCH_IMAGE) || true
 	$(DOCKER) rmi $(WORKER_IMAGE) || true
+	$(DOCKER) rmi $(FE_IMAGE) || true
 
 .PHONY: dev
 dev:
@@ -97,13 +117,18 @@ dev:
 	trap 'echo "Stopping dev processes..."; kill -9 -P $$; exit 0' INT TERM; \
 	( cd $(ORCH_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ exec func start ) & \
 	( cd $(WORKER_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ exec func start -p 7072 ) & \
+	( cd $(FE_PATH) && API_URL=http://localhost:7071/api exec npm run dev ) & \
 	wait
 
+.PHONY: test-env-build
+test-env-build:
+	docker-compose build
 
 .PHONY: test-env-start
 test-env-start:
-	docker-compose build && docker-compose up -d && sleep 2 && bash src/tests/ingest_test_schema.sh
-	@echo "Test with -> http://localhost:7071/api/Trigger?id=test"
+	docker-compose up -d && sleep 2 && bash src/tests/ingest_test_schema.sh
+	@echo "Test with -> curl --location 'http://localhost:7071/api/Trigger?id=test-2' --header 'Content-Type: application/json'"
+	@echo "ClouDO UI -> http://localhost:3000"
 
 .PHONY: test-env-stop
 test-env-stop:

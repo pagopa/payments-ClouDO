@@ -327,8 +327,24 @@ def _run_script(
 
     from utils import get_sanitized_env
 
+    def to_str(x) -> str:
+        return "" if x is None else str(x)
+
     # Setting MONITOR_CONDITION env VAR
-    os.environ["MONITOR_CONDITION"] = monitor_condition
+    os.environ["MONITOR_CONDITION"] = to_str(monitor_condition)
+
+    # ClouDO Execution Standard Variables
+    if payload:
+        os.environ["CLOUDO_PAYLOAD"] = json.dumps(payload)
+        os.environ["CLOUDO_EXEC_ID"] = to_str(payload.get("exec_id"))
+        os.environ["CLOUDO_REQUESTED_AT"] = to_str(
+            payload.get("requestedAt") or payload.get("requested_at")
+        )
+        os.environ["CLOUDO_NAME"] = to_str(payload.get("name"))
+        os.environ["CLOUDO_RUNBOOK"] = to_str(payload.get("runbook"))
+        os.environ["CLOUDO_WORKER"] = to_str(payload.get("worker"))
+        os.environ["CLOUDO_ONCALL"] = to_str(payload.get("oncall")).lower()
+
     TERMINATED_CODES = {-signal.SIGTERM} if hasattr(signal, "SIGTERM") else set()
 
     try:
@@ -344,9 +360,6 @@ def _run_script(
                 except json.JSONDecodeError:
                     logging.warning("AKS info string non JSON: %r", val)
             return {}
-
-        def to_str(x) -> str:
-            return "" if x is None else str(x)
 
         info = normalize_aks_info(resource_info)
         logging.debug(f"AKS info: {info}")
@@ -580,7 +593,7 @@ def process_runbook(
             logging.error(e)
 
         if not stopped:
-            log_msg = f"Script succeeded.\nstdout:\n{result.stdout.strip()}"
+            log_msg = f"{result.stdout.strip()}"
             logging.info(f"[{payload.get('exec_id')}] {log_msg}")
             cloudo_notification_q.set(
                 _post_status(payload, status="completed", log_message=log_msg)
@@ -707,7 +720,11 @@ def list_processes(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-@app.route(route="processes/stop", methods=[func.HttpMethod.DELETE], auth_level=AUTH)
+@app.route(
+    route="processes/stop",
+    methods=[func.HttpMethod.DELETE],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
 @app.queue_output(
     arg_name="cloudo_notification_q",
     queue_name=NOTIFICATION_QUEUE_NAME,
@@ -720,6 +737,17 @@ def stop_process(
     Stop a job by exec_id.
     example: POST /api/processes/stop?exec_id=123
     """
+
+    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
+    request_key = req.headers.get("x-cloudo-key")
+
+    if not expected_key or request_key != expected_key:
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
+            status_code=401,
+            mimetype="application/json",
+        )
+
     exec_id = (req.params.get("exec_id") or req.headers.get("ExecId") or "").strip()
     if not exec_id:
         return func.HttpResponse(

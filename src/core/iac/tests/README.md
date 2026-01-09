@@ -7,6 +7,7 @@ You need the access to DevOpsLab Subscription or change backend.ini value.
 `resources.tf` file contains all resources to test.
 
 ## How to use it
+
 1. `terraform init`
 2. `terraform plan`
 3. `terraform apply`

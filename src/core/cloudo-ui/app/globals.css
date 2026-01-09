@@ -1,0 +1,115 @@
+@import "tailwindcss";
+@source "../node_modules/flowbite-datepicker";
+
+:root {
+  --radius: 14px;
+  /* Dark Theme (Default) */
+  --color-cloudo-dark: #05080a;
+  --color-cloudo-panel: #0d1217;
+  --color-cloudo-panel-2: #161d24;
+  --color-cloudo-text: #ffffff;
+  --color-cloudo-muted: #d1d9e0;
+  --color-cloudo-border: #1e293b;
+  --color-cloudo-accent: #00b4ff;
+  --color-cloudo-ok: #00e676;
+  --color-cloudo-warn: #ffb300;
+  --color-cloudo-err: #ff5252;
+}
+
+.light {
+  --color-cloudo-dark: #fcfbf9;
+  --color-cloudo-panel: #ffffff;
+  --color-cloudo-panel-2: #f2f5f8;
+  --color-cloudo-text: #111a24;
+  --color-cloudo-muted: #475569;
+  --color-cloudo-border: #94a3b8;
+  --color-cloudo-accent: #0284c7;
+  --color-cloudo-ok: #166534;
+  --color-cloudo-warn: #9a3412;
+  --color-cloudo-err: #991b1b;
+}
+
+@theme inline {
+  /* ClouDO Colors */
+  --color-cloudo-dark: var(--color-cloudo-dark);
+  --color-cloudo-panel: var(--color-cloudo-panel);
+  --color-cloudo-panel-2: var(--color-cloudo-panel-2);
+  --color-cloudo-text: var(--color-cloudo-text);
+  --color-cloudo-muted: var(--color-cloudo-muted);
+  --color-cloudo-border: var(--color-cloudo-border);
+  --color-cloudo-accent: var(--color-cloudo-accent);
+  --color-cloudo-ok: var(--color-cloudo-ok);
+  --color-cloudo-warn: var(--color-cloudo-warn);
+  --color-cloudo-err: var(--color-cloudo-err);
+}
+
+body {
+  @apply bg-cloudo-dark text-cloudo-text font-mono;
+}
+
+/* Custom Components - Solid Technical Style */
+.card {
+  @apply bg-cloudo-panel border border-cloudo-border rounded-none shadow-none overflow-hidden;
+}
+
+.card-header {
+  @apply p-4 border-b border-cloudo-border bg-cloudo-accent/5;
+}
+
+.btn {
+  @apply inline-flex items-center gap-2 rounded-none px-4 py-2 font-bold border border-cloudo-border bg-transparent text-cloudo-text cursor-pointer transition-all active:translate-y-0.5 uppercase tracking-widest text-sm hover:border-cloudo-accent hover:bg-cloudo-accent/5;
+}
+
+.btn-primary {
+  @apply bg-cloudo-accent text-white border-cloudo-accent hover:bg-cloudo-accent/90;
+}
+
+.btn-ghost {
+  @apply bg-transparent border-cloudo-border hover:bg-cloudo-accent/5 hover:border-cloudo-muted;
+}
+
+.input {
+  @apply border px-4 py-3 w-full border-cloudo-border focus:border-cloudo-accent bg-cloudo-dark text-cloudo-text outline-none transition-all placeholder:text-cloudo-muted/50 font-mono text-sm;
+}
+
+.input-icon {
+  @apply pl-14;
+}
+
+.input-executions {
+  @apply w-full border pl-16 pr-4 py-4 border-cloudo-border focus:border-cloudo-accent bg-cloudo-dark text-cloudo-text outline-none transition-all font-mono text-sm;
+}
+
+.status-badge {
+  @apply inline-block px-3 py-1 text-[11px] font-bold uppercase tracking-widest border;
+}
+
+.status-running {
+  @apply bg-cloudo-accent/10 text-cloudo-accent border-cloudo-accent/50;
+}
+
+.status-succeeded {
+  @apply bg-cloudo-ok/5 text-cloudo-ok border-cloudo-ok/30;
+}
+
+.status-failed {
+  @apply bg-cloudo-err/5 text-cloudo-err border-cloudo-err/30;
+}
+
+.status-pending {
+  @apply bg-cloudo-warn/5 text-cloudo-warn border-cloudo-warn/30;
+}
+
+/* Custom Scrollbar for Solid Technical Style */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-cloudo-border hover:bg-cloudo-accent/50;
+}

@@ -4,7 +4,7 @@
     "logLevel": {
       "Default": "Warning",
       "Function": "Information",
-      "Functions.list_processes": "None",
+      "Function.list_processes": "Warning",
       "Function.heartbeat_trigger": "Warning",
       "Host": "Error",
       "Host.Results": "Error",
@@ -31,7 +31,6 @@
     "queues": {
       "maxDequeueCount": 1
     }
-
   },
   "aggregator": {
     "batchSize": 100,

@@ -24,3 +24,10 @@ resource "random_uuid" "uuid" {
     for i in local.entity_executor : i.entity.id => i
   }
 }
+
+# Random admin password
+resource "random_password" "admin_password" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}

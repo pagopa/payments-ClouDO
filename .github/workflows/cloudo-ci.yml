@@ -12,6 +12,7 @@ jobs:
     strategy:
       matrix:
         python-version: [ "3.11", "3.12" ]
+        node-version: [ "20.x" ]
 
     steps:
       - uses: actions/checkout@v5
@@ -29,7 +30,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install flake8 black isort pytest
@@ -40,6 +41,25 @@ jobs:
 
       - name: Lint with flake8
         run: flake8 . --max-line-length=200
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: src/core/cloudo-ui/package-lock.json
+
+      - name: Install Frontend dependencies
+        run: npm ci
+        working-directory: src/core/cloudo-ui
+
+      - name: Lint Frontend
+        run: npm run lint
+        working-directory: src/core/cloudo-ui
+
+      - name: Build Frontend
+        run: npm run build
+        working-directory: src/core/cloudo-ui
   versioning:
     name: Versioning
     needs: [check]
@@ -49,6 +69,8 @@ jobs:
       orchestrator_changed: ${{ steps.set-outputs.outputs.orchestrator_changed }}
       worker_version: ${{ steps.set-outputs.outputs.worker_version }}
       worker_changed: ${{ steps.set-outputs.outputs.worker_changed }}
+      ui_version: ${{ steps.set-outputs.outputs.ui_version }}
+      ui_changed: ${{ steps.set-outputs.outputs.ui_changed }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -75,6 +97,16 @@ jobs:
           minor_pattern: "feat"
           tag_prefix: "v"
 
+      - name: UI Version
+        id: ui-ver
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          change_path: "src/core/cloudo-ui"
+          namespace: ui
+          major_pattern: "BREAKING CHANGE"
+          minor_pattern: "feat"
+          tag_prefix: "v"
+
       - name: Set composite outputs
         id: set-outputs
         run: |
@@ -83,6 +115,8 @@ jobs:
           echo "orchestrator_changed=${{ steps.orchestrator-ver.outputs.changed }}" >> "$GITHUB_OUTPUT"
           echo "worker_version=${{ steps.worker-ver.outputs.version }}" >> "$GITHUB_OUTPUT"
           echo "worker_changed=${{ steps.worker-ver.outputs.changed }}" >> "$GITHUB_OUTPUT"
+          echo "ui_version=${{ steps.ui-ver.outputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "ui_changed=${{ steps.ui-ver.outputs.changed }}" >> "$GITHUB_OUTPUT"
 
       - name: Create and push orchestrator tag (main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.orchestrator-ver.outputs.changed == 'true'
@@ -106,6 +140,21 @@ jobs:
         run: |
           # Create and push vX.Y.Z-worker tag if it doesn't already exist
           TAG="v${VERSION}-worker"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Create and push UI tag (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ui-ver.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.ui-ver.outputs.version }}
+        run: |
+          # Create and push vX.Y.Z-ui tag if it doesn't already exist
+          TAG="v${VERSION}-ui"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag already exists: $TAG"; exit 0
           fi
@@ -145,6 +194,17 @@ jobs:
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release for UI
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ui-ver.outputs.changed == 'true'
+        uses: softprops/action-gh-release@97d42c1b50f585f357413698aa1b779307aa0d52
+        with:
+          tag_name: v${{ steps.ui-ver.outputs.version }}-ui
+          name: UI v${{ steps.ui-ver.outputs.version }}
+          body: ${{ steps.relnotes.outputs.body || 'Automated semantic release for UI.' }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   docker:
     name: Build & Push via Makefile
     needs: [versioning]
@@ -161,6 +221,8 @@ jobs:
       ORCHESTRATOR_CHANGED: ${{ needs.versioning.outputs.orchestrator_changed }}
       WORKER_VER: ${{ needs.versioning.outputs.worker_version }}
       WORKER_CHANGED: ${{ needs.versioning.outputs.worker_changed }}
+      UI_VER: ${{ needs.versioning.outputs.ui_version }}
+      UI_CHANGED: ${{ needs.versioning.outputs.ui_changed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -179,6 +241,8 @@ jobs:
           echo "ORCHESTRATOR_VER='${ORCHESTRATOR_VER}'"
           echo "WORKER_CHANGED=${WORKER_CHANGED}"
           echo "WORKER_VER='${WORKER_VER}'"
+          echo "UI_CHANGED=${UI_CHANGED}"
+          echo "UI_VER='${UI_VER}'"
 
       - name: Build & Push orchestrator (SHA + semver)
         if: env.ORCHESTRATOR_CHANGED == 'true'
@@ -200,4 +264,15 @@ jobs:
             make build-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
             make push-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
             make push-worker DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${WORKER_VER}"
+          fi
+
+      - name: Build & Push UI (SHA + semver)
+        if: env.UI_CHANGED == 'true'
+        run: |
+          make build-fe DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+          if [ "${IS_MAIN_PUSH}" = "true" ]; then
+            [ -n "${UI_VER}" ] || (echo "UI_VER is empty" && exit 1)
+            make build-fe DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${UI_VER}"
+            make push-fe DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${SHA_VERSION}"
+            make push-fe DOCKER=docker REGISTRY="${REGISTRY}" IMAGE_PREFIX="${IMAGE_PREFIX}" PLATFORM="linux/amd64" VERSION="${UI_VER}"
           fi

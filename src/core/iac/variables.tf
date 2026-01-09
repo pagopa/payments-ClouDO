@@ -109,6 +109,23 @@ variable "orchestrator_image" {
   })
 }
 
+variable "ui_image" {
+  description = ""
+  type = object({
+    image_name        = string
+    image_tag         = string
+    registry_url      = string
+    registry_username = optional(string)
+    registry_password = optional(string)
+  })
+}
+
+variable "enable_ui" {
+  type        = bool
+  description = "Enable UI App Service"
+  default     = true
+}
+
 variable "workers_config" {
   description = ""
   type = object({

@@ -1,0 +1,726 @@
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { cloudoFetch } from "@/lib/api";
+import {
+  HiOutlinePlus,
+  HiOutlineSearch,
+  HiOutlineClock,
+  HiOutlineTerminal,
+  HiOutlineTrash,
+  HiOutlinePencil,
+  HiOutlineX,
+  HiOutlineCheck,
+  HiOutlineCheckCircle,
+  HiOutlineExclamationCircle,
+  HiOutlineRefresh,
+  HiOutlineSwitchHorizontal,
+  HiOutlineBan,
+  HiOutlineClipboardCopy,
+} from "react-icons/hi";
+
+interface Schedule {
+  id: string;
+  name: string;
+  cron: string;
+  runbook: string;
+  run_args: string;
+  queue?: string;
+  worker_pool?: string;
+  enabled: boolean;
+  last_run?: string;
+}
+
+interface Notification {
+  id: string;
+  type: "success" | "error";
+  message: string;
+}
+
+export default function SchedulesPage() {
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
+  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
+    null,
+  );
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [user, setUser] = useState<{ role: string } | null>(null);
+
+  const [runbookContent, setRunbookContent] = useState<string | null>(null);
+  const [isRunbookModalOpen, setIsRunbookModalOpen] = useState(false);
+  const [fetchingRunbook, setFetchingRunbook] = useState(false);
+  const [availableRunbooks, setAvailableRunbooks] = useState<string[]>([]);
+
+  const addNotification = (type: "success" | "error", message: string) => {
+    const id = Date.now().toString();
+    setNotifications((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }, 4000);
+  };
+
+  useEffect(() => {
+    fetchSchedules();
+    const userData = localStorage.getItem("cloudo_user");
+    if (userData) {
+      try {
+        setUser(JSON.parse(userData));
+      } catch (e) {
+        console.error("Failed to parse user data", e);
+      }
+    }
+  }, []);
+
+  const fetchSchedules = async () => {
+    setLoading(true);
+    try {
+      const res = await cloudoFetch(`/schedules`);
+      const data = await res.json();
+      setSchedules(Array.isArray(data) ? data : []);
+    } catch {
+      setSchedules([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAvailableRunbooks = async () => {
+    try {
+      const res = await cloudoFetch(`/runbooks/list`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.runbooks)) {
+        setAvailableRunbooks(data.runbooks);
+      }
+    } catch {
+      console.error("Failed to fetch available runbooks");
+    }
+  };
+
+  const fetchRunbookContent = async (runbook: string) => {
+    setFetchingRunbook(true);
+    setRunbookContent(null);
+    setIsRunbookModalOpen(true);
+    try {
+      const res = await cloudoFetch(
+        `/runbooks/content?name=${encodeURIComponent(runbook)}`,
+      );
+      const data = await res.json();
+      if (res.ok) {
+        setRunbookContent(data.content);
+      } else {
+        setRunbookContent(`Error: ${data.error || "Failed to fetch content"}`);
+      }
+    } catch {
+      setRunbookContent(
+        "Error: Network failure while fetching runbook content",
+      );
+    } finally {
+      setFetchingRunbook(false);
+    }
+  };
+
+  const deleteSchedule = async (id: string) => {
+    if (!confirm(`Are you sure you want to delete schedule ${id}?`)) return;
+    try {
+      const res = await cloudoFetch(`/schedules?id=${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        addNotification("success", `Schedule ${id} destroyed`);
+        fetchSchedules();
+      }
+    } catch {
+      addNotification("error", "Destruction failed");
+    }
+  };
+
+  const toggleSchedule = async (schedule: Schedule) => {
+    setTogglingId(schedule.id);
+    try {
+      const updatedSchedule = { ...schedule, enabled: !schedule.enabled };
+
+      const res = await cloudoFetch(`/schedules`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updatedSchedule),
+      });
+
+      if (res.ok) {
+        addNotification(
+          "success",
+          `Schedule ${schedule.id} ${
+            updatedSchedule.enabled ? "enabled" : "disabled"
+          }`,
+        );
+        fetchSchedules();
+      } else {
+        const d = await res.json();
+        addNotification("error", d.error || "Operation failed");
+      }
+    } catch {
+      addNotification("error", "Network error");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const filteredSchedules = useMemo(() => {
+    return schedules.filter(
+      (s) =>
+        s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.id?.toLowerCase().includes(searchQuery.toLowerCase()),
+    );
+  }, [schedules, searchQuery]);
+
+  if (user && user.role !== "ADMIN" && user.role !== "OPERATOR") {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-cloudo-dark text-cloudo-text font-mono">
+        <HiOutlineBan className="w-16 h-16 text-cloudo-err mb-4" />
+        <h1 className="text-xl font-black uppercase tracking-[0.3em]">
+          Access Denied
+        </h1>
+        <p className="text-cloudo-muted mt-2 uppercase tracking-widest text-sm">
+          Authorized role required to view schedules
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-cloudo-dark text-cloudo-text font-mono selection:bg-cloudo-accent/30">
+      {/* Notifications */}
+      <div className="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none">
+        {notifications.map((notif) => (
+          <div
+            key={notif.id}
+            className={`pointer-events-auto min-w-[320px] p-4 border shadow-2xl animate-in slide-in-from-right-5 duration-300 ${
+              notif.type === "success"
+                ? "bg-cloudo-panel border-cloudo-ok/30 text-cloudo-ok"
+                : "bg-cloudo-panel border-cloudo-err/30 text-cloudo-err"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              {notif.type === "success" ? (
+                <HiOutlineCheckCircle className="w-5 h-5" />
+              ) : (
+                <HiOutlineExclamationCircle className="w-5 h-5" />
+              )}
+              <p className="text-[10px] font-black uppercase tracking-widest">
+                {notif.message}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Top Bar */}
+      <div className="flex items-center justify-between px-8 py-4 border-b border-cloudo-border bg-cloudo-panel sticky top-0 z-20">
+        <div className="flex items-center gap-4 shrink-0">
+          <div className="p-2 bg-cloudo-accent/5 border border-cloudo-accent/20 shrink-0">
+            <HiOutlineClock className="text-cloudo-accent w-4 h-4" />
+          </div>
+          <div>
+            <h1 className="text-sm font-black tracking-[0.2em] text-cloudo-text uppercase">
+              Automated Schedules
+            </h1>
+            <p className="text-[11px] text-cloudo-muted font-bold uppercase tracking-[0.3em] opacity-70">
+              Cron Engine // CRON_DB
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-6">
+          <div className="relative group">
+            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
+            <input
+              type="text"
+              placeholder="Search schedules..."
+              className="input input-icon"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={() => {
+              setSelectedSchedule(null);
+              setModalMode("create");
+              fetchAvailableRunbooks();
+            }}
+            className={`btn btn-primary h-10 px-4 flex items-center gap-2 group ${
+              user?.role !== "ADMIN" && user?.role !== "OPERATOR"
+                ? "hidden"
+                : ""
+            }`}
+          >
+            <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" />{" "}
+            New Schedule
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto p-8">
+        <div className="max-w-[1400px] mx-auto">
+          <div className="border border-cloudo-border bg-cloudo-panel overflow-hidden relative">
+            <div className="absolute top-0 left-0 w-8 h-8 border-t border-l border-cloudo-accent/20 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-8 h-8 border-b border-r border-cloudo-accent/20 pointer-events-none" />
+
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-cloudo-border bg-cloudo-accent/10">
+                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">
+                    Task Name
+                  </th>
+                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">
+                    Cron Expression
+                  </th>
+                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">
+                    Runbook Path
+                  </th>
+                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">
+                    Last Execution
+                  </th>
+                  <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-right text-[11px]">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-cloudo-border/30">
+                {loading ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="py-32 text-center text-cloudo-muted italic animate-pulse uppercase tracking-[0.5em] font-black opacity-50"
+                    >
+                      Syncing Cron Registry...
+                    </td>
+                  </tr>
+                ) : filteredSchedules.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="py-32 text-center text-sm font-black uppercase tracking-[0.5em] opacity-40 italic"
+                    >
+                      NO_SCHEDULES_FOUND
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSchedules.map((s) => (
+                    <tr
+                      key={s.id}
+                      className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40"
+                    >
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-2 h-2 rounded-full ${
+                              s.enabled
+                                ? "bg-cloudo-ok animate-pulse"
+                                : "bg-cloudo-muted opacity-60"
+                            }`}
+                          />
+                          <div className="flex flex-col">
+                            <span className="text-sm font-black text-cloudo-text tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">
+                              {s.name}
+                            </span>
+                            <span className="text-[11px] text-cloudo-muted/70 font-mono mt-0.5">
+                              ID: {s.id}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="bg-cloudo-accent/10 border border-cloudo-border px-3 py-1.5 font-mono text-cloudo-accent/80 text-xs w-fit">
+                          {s.cron}
+                        </div>
+                      </td>
+                      <td className="px-8 py-6 text-cloudo-text/70 font-mono">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => fetchRunbookContent(s.runbook)}
+                            className="p-1.5 bg-cloudo-accent/10 border border-cloudo-border hover:bg-cloudo-accent/20 transition-all cursor-pointer"
+                            title="View Source Code"
+                          >
+                            <HiOutlineTerminal className="opacity-150 w-4 h-4" />
+                          </button>
+                          <span
+                            className="truncate cursor-pointer hover:text-cloudo-accent transition-colors"
+                            onClick={() => fetchRunbookContent(s.runbook)}
+                          >
+                            {s.runbook}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6 text-cloudo-muted opacity-70 font-mono">
+                        {s.last_run
+                          ? new Date(s.last_run).toLocaleString()
+                          : "NEVER_EXECUTED"}
+                      </td>
+                      <td className="px-8 py-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => toggleSchedule(s)}
+                            disabled={togglingId === s.id}
+                            className={`p-2.5 border transition-all ${
+                              s.enabled
+                                ? "bg-cloudo-accent/10 border-cloudo-border text-cloudo-ok hover:border-cloudo-ok/40"
+                                : "bg-cloudo-accent/10 border-cloudo-border text-cloudo-muted hover:border-white/20"
+                            } ${
+                              togglingId === s.id
+                                ? "opacity-50 cursor-wait"
+                                : ""
+                            } ${
+                              user?.role !== "ADMIN" &&
+                              user?.role !== "OPERATOR"
+                                ? "hidden"
+                                : ""
+                            }`}
+                            title={
+                              s.enabled ? "Disable Schedule" : "Enable Schedule"
+                            }
+                          >
+                            {togglingId === s.id ? (
+                              <HiOutlineRefresh className="w-4 h-4 animate-spin" />
+                            ) : s.enabled ? (
+                              <HiOutlineBan className="w-4 h-4" />
+                            ) : (
+                              <HiOutlineCheck className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedSchedule(s);
+                              setModalMode("edit");
+                              fetchAvailableRunbooks();
+                            }}
+                            className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn ${
+                              user?.role !== "ADMIN" &&
+                              user?.role !== "OPERATOR"
+                                ? "hidden"
+                                : ""
+                            }`}
+                            title="Edit Schedule"
+                          >
+                            <HiOutlinePencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteSchedule(s.id)}
+                            className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn ${
+                              user?.role !== "ADMIN" &&
+                              user?.role !== "OPERATOR"
+                                ? "hidden"
+                                : ""
+                            }`}
+                            title="Delete Schedule"
+                          >
+                            <HiOutlineTrash className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal */}
+      {modalMode && (
+        <div
+          className="fixed inset-0 bg-cloudo-dark/90 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setModalMode(null)}
+        >
+          <div
+            className="bg-cloudo-panel border border-cloudo-border shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-8 py-5 border-b border-cloudo-border flex justify-between items-center bg-cloudo-accent/5">
+              <div className="flex items-center gap-3">
+                <HiOutlineClock className="text-cloudo-accent w-5 h-5" />
+                <h3 className="text-sm font-black uppercase tracking-[0.3em] text-cloudo-text">
+                  {modalMode === "create"
+                    ? "Provision Schedule"
+                    : "Update Cron Schedule"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setModalMode(null)}
+                className="p-1.5 hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-border text-cloudo-muted transition-colors"
+              >
+                <HiOutlineX className="w-5 h-5" />
+              </button>
+            </div>
+
+            <ScheduleForm
+              initialData={selectedSchedule}
+              mode={modalMode}
+              availableRunbooks={availableRunbooks}
+              onSuccess={(msg: string) => {
+                fetchSchedules();
+                setModalMode(null);
+                addNotification("success", msg);
+              }}
+              onCancel={() => setModalMode(null)}
+              onError={(msg: string) => addNotification("error", msg)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Runbook Source Modal */}
+      {isRunbookModalOpen && (
+        <div
+          className="fixed inset-0 bg-cloudo-dark/95 backdrop-blur-md flex items-center justify-center z-[70] p-4"
+          onClick={() => setIsRunbookModalOpen(false)}
+        >
+          <div
+            className="bg-cloudo-panel border border-cloudo-border shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col animate-in zoom-in-95 duration-200 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-8 py-4 border-b border-cloudo-border flex justify-between items-center bg-cloudo-accent/5">
+              <div className="flex items-center gap-3">
+                <HiOutlineTerminal className="text-cloudo-accent w-4 h-4" />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-cloudo-text">
+                  Runbook Source Viewer
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsRunbookModalOpen(false)}
+                className="p-1.5 hover:bg-cloudo-err hover:text-cloudo-text border border-cloudo-border text-cloudo-muted transition-colors"
+              >
+                <HiOutlineX className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6 font-mono text-xs bg-black/40">
+              {fetchingRunbook ? (
+                <div className="flex items-center justify-center h-64 text-cloudo-accent animate-pulse uppercase tracking-widest font-black">
+                  Retrieving Source from Git...
+                </div>
+              ) : (
+                <pre className="text-cloudo-text/90 whitespace-pre-wrap break-all leading-relaxed">
+                  {runbookContent || "No content available."}
+                </pre>
+              )}
+            </div>
+
+            <div className="px-8 py-3 border-t border-cloudo-border bg-cloudo-panel flex justify-between items-center">
+              <span className="text-[9px] text-cloudo-muted uppercase font-bold tracking-widest opacity-60">
+                System Isolated Viewer // READ_ONLY
+              </span>
+              <button
+                onClick={() => {
+                  if (runbookContent) {
+                    navigator.clipboard.writeText(runbookContent);
+                    addNotification("success", "Source copied to clipboard");
+                  }
+                }}
+                disabled={!runbookContent || fetchingRunbook}
+                className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-cloudo-accent hover:text-white transition-colors disabled:opacity-30"
+              >
+                <HiOutlineClipboardCopy className="w-3.5 h-3.5" /> Copy Code
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScheduleForm({
+  initialData,
+  mode,
+  availableRunbooks,
+  onSuccess,
+  onCancel,
+  onError,
+}: {
+  initialData: Schedule | null;
+  mode: "create" | "edit";
+  availableRunbooks: string[];
+  onSuccess: (msg: string) => void;
+  onCancel: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [formData, setFormData] = useState({
+    id: initialData?.id || "",
+    name: initialData?.name || "",
+    cron: initialData?.cron || "0 */1 * * * *",
+    runbook: initialData?.runbook || "",
+    run_args: initialData?.run_args || "",
+    worker_pool: initialData?.worker_pool || "",
+    enabled: initialData?.enabled ?? true,
+  });
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const res = await cloudoFetch(`/schedules`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+      if (res.ok) {
+        onSuccess(
+          mode === "create" ? "Schedule provisioned" : "Schedule updated",
+        );
+      } else {
+        const d = await res.json();
+        onError(d.error || "Operation failed");
+      }
+    } catch {
+      onError("Uplink failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="p-8 space-y-6">
+      <div className="grid grid-cols-2 gap-6">
+        <div className="space-y-2">
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+            Task Name
+          </label>
+          <input
+            type="text"
+            required
+            className="input h-11 w-full"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            placeholder="NIGHTLY_CLEANUP"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+            Cron Expression (Azure Format)
+          </label>
+          <input
+            type="text"
+            required
+            className="input h-11 font-mono text-cloudo-accent w-full"
+            value={formData.cron}
+            onChange={(e) => setFormData({ ...formData, cron: e.target.value })}
+            placeholder="0 */5 * * * *"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        <div className="space-y-2">
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+            Runbook Path
+          </label>
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
+              <HiOutlineTerminal className="text-cloudo-muted/70 w-4 h-4" />
+            </div>
+            <input
+              type="text"
+              required
+              className="input input-icon h-11 font-mono w-full"
+              value={formData.runbook}
+              onChange={(e) =>
+                setFormData({ ...formData, runbook: e.target.value })
+              }
+              placeholder="scripts/cleanup.sh"
+              list="runbooks-list-schedules"
+            />
+            <datalist id="runbooks-list-schedules">
+              {availableRunbooks.map((rb: string) => (
+                <option key={rb} value={rb} />
+              ))}
+            </datalist>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+            Runtime Arguments
+          </label>
+          <input
+            type="text"
+            className="input h-11 font-mono w-full"
+            value={formData.run_args}
+            onChange={(e) =>
+              setFormData({ ...formData, run_args: e.target.value })
+            }
+            placeholder="arg1 arg2 --quiet"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        <div className="space-y-2">
+          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+            Worker Pool (Lock)
+          </label>
+          <input
+            type="text"
+            className="input h-11 font-mono w-full"
+            value={formData.worker_pool}
+            onChange={(e) =>
+              setFormData({ ...formData, worker_pool: e.target.value })
+            }
+            placeholder="pool-01"
+          />
+        </div>
+      </div>
+
+      <div
+        className="flex items-center justify-between p-4 bg-cloudo-accent/10 border border-cloudo-border group hover:border-cloudo-accent/40 transition-all cursor-pointer"
+        onClick={() => setFormData({ ...formData, enabled: !formData.enabled })}
+      >
+        <div className="space-y-1">
+          <p className="text-sm font-black text-cloudo-text uppercase tracking-widest">
+            Enabled
+          </p>
+          <p className="text-[11px] text-cloudo-muted uppercase font-bold opacity-70">
+            Set Schedule State
+          </p>
+        </div>
+        <div
+          className={`flex items-center gap-2 px-3 py-1 border font-black text-[11px] uppercase tracking-widest transition-all ${
+            formData.enabled
+              ? "bg-cloudo-ok/10 border-cloudo-ok text-cloudo-ok"
+              : "bg-cloudo-muted/10 border-cloudo-muted text-cloudo-muted opacity-70"
+          }`}
+        >
+          {formData.enabled ? (
+            <HiOutlineSwitchHorizontal className="w-4 h-4 text-cloudo-accent" />
+          ) : (
+            <HiOutlineBan className="w-4 h-4 text-cloudo-muted" />
+          )}
+          {formData.enabled ? "Yes" : "Nope"}
+        </div>
+      </div>
+
+      <div className="flex gap-4 pt-6 border-t border-cloudo-border">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="btn btn-ghost flex-1 h-12"
+        >
+          Abort
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="btn btn-primary flex-1 h-12"
+        >
+          {submitting ? "Saving..." : "Save Schedule"}
+        </button>
+      </div>
+    </form>
+  );
+}

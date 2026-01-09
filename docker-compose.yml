@@ -1,6 +1,7 @@
 services:
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite
+    command: azurite --skipApiVersionCheck --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --location /data
     ports:
       - "10000:10000"  # Blob
       - "10001:10001"  # Queue
@@ -10,32 +11,70 @@ services:
     networks:
       - azure-functions
 
+  # Next.js Frontend Console
+  frontend:
+    platform: linux/amd64
+    build:
+      context: src/core/cloudo-ui
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - API_URL=http://orchestrator:80/api
+    networks:
+      - azure-functions
+    volumes:
+      - ./src/core/cloudo-ui:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - orchestrator
+
   orchestrator:
     platform: linux/amd64
     build:
       context: ./src/core/orchestrator
       dockerfile: Dockerfile
-    ports:
-      - "7071:80"
+    restart: on-failure
     env_file:
       - path: .env.local
         required: false
     environment:
       - AzureWebJobsStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
-      - FEATURE_DEV=true
+      - AzureFunctionsJobHost__logging__logLevel__Default=Warning
+      - AzureFunctionsJobHost__logging__logLevel__Function=Warning
+      - DOTNET_SYSTEM_NET_HTTP_USESOCKETSHTTPHANDLER=0
       - AzureWebJobsFeatureFlags=EnableWorkerIndexing
+      - AzureWebJobs_CORS_AllowedOrigins=http://localhost:3000
+      - AzureWebJobs_CORS_AllowCredentials=true
       - FUNCTIONS_WORKER_PROCESS_COUNT=1
       - FUNCTIONS_WORKER_RUNTIME=python
       - DOTNET_RUNNING_IN_CONTAINER=true
+      - FEATURE_DEV=true
+      - DEV_SCRIPT_PATH=/work/runbooks/
       - CLOUDO_SECRET_KEY=local
+      - NEXTJS_URL=http://frontend:3000
     depends_on:
       - azurite
     networks:
       - azure-functions
     volumes:
       - ./src/core/orchestrator:/home/site/wwwroot/
+      - ./src/runbooks:/work/runbooks:ro
 
-  worker:
+  gateway:
+    image: nginx:alpine
+    ports:
+      - "7071:80"
+    volumes:
+      - ./src/tests/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - orchestrator
+    networks:
+      - azure-functions
+
+  worker-local:
     platform: linux/amd64
     build:
       context: ./src/core/worker
@@ -53,19 +92,17 @@ services:
       - FUNCTIONS_WORKER_RUNTIME=python
       - DOTNET_RUNNING_IN_CONTAINER=true
       - CLOUDO_SECRET_KEY=local
-      - WEBSITE_SITE_NAME=worker
+      - WEBSITE_SITE_NAME=worker-local
     volumes:
       - ./src/runbooks:/work/runbooks:ro
       - ./src/core/worker:/home/site/wwwroot/
-    ports:
-      - "7072:80"
     depends_on:
       - azurite
       - orchestrator
     networks:
       - azure-functions
 
-  worker-2:
+  worker-alert:
     platform: linux/amd64
     build:
       context: ./src/core/worker
@@ -85,17 +122,16 @@ services:
       - CLOUDO_SECRET_KEY=local
       - QUEUE_NAME=alert
       - WORKER_CAPABILITY=alert
-      - WEBSITE_SITE_NAME=worker-2
+      - WEBSITE_SITE_NAME=worker-alert
     volumes:
       - ./src/runbooks:/work/runbooks:ro
       - ./src/core/worker:/home/site/wwwroot/
-    ports:
-      - "7073:80"
     depends_on:
       - azurite
       - orchestrator
     networks:
       - azure-functions
+
 
 networks:
   azure-functions:

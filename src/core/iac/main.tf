@@ -86,7 +86,10 @@ resource "azurerm_linux_function_app" "orchestrator" {
       "SLACK_TOKEN_DEFAULT"                 = var.slack_integration.token
       "SLACK_CHANNEL_DEFAULT"               = var.slack_integration.channel
       "OPSGENIE_API_KEY_DEFAULT"            = var.opsgenie_api_key
+      "GITHUB_REPO"                         = var.github_repo_info.repo_name
+      "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
       "GITHUB_TOKEN"                        = var.orchestrator_image.registry_password
+      "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
       "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
       "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
       "APPROVAL_SECRET"                     = var.approval_runbook.secret
@@ -103,13 +106,60 @@ resource "azurerm_linux_function_app" "orchestrator" {
   tags = var.tags
 }
 
+# UI App Service
+resource "azurerm_linux_web_app" "ui" {
+  count               = var.enable_ui ? 1 : 0
+  name                = "${var.prefix}-cloudo-ui"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  service_plan_id     = azurerm_service_plan.orchestrator.id
+  https_only          = true
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  site_config {
+    # app_service_logs {
+    #   disk_quota_mb         = var.app_service_logs.disk_quota_mb
+    #   retention_period_days = var.app_service_logs.retention_period_days
+    # }
+    application_stack {
+      docker_image_name        = "${var.ui_image.image_name}:${var.ui_image.image_tag}"
+      docker_registry_url      = var.ui_image.registry_url
+      docker_registry_password = var.ui_image.registry_password
+      docker_registry_username = var.ui_image.registry_username
+    }
+    # application_insights_connection_string = data.azurerm_application_insights.this.connection_string
+    # application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
+    always_on     = true
+    http2_enabled = true
+  }
+
+  app_settings = {
+    "ORCHESTRATOR_URL"                    = "https://${azurerm_linux_function_app.orchestrator.default_hostname}"
+    "API_URL"                             = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api"
+    "FUNCTION_KEY"                        = data.azurerm_function_app_host_keys.orchestrator.default_function_key
+    "CLOUDO_KEY"                          = random_password.internal_auth_token.result
+    "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
+  }
+
+  virtual_network_subnet_id = try(module.function_snet.id, null)
+
+  lifecycle {
+    ignore_changes = [tags]
+  }
+
+  tags = var.tags
+}
+
 resource "azurerm_storage_queue" "this" {
   for_each             = var.workers_config.workers
   name                 = "${var.prefix}-${each.key}-queue"
   storage_account_name = module.storage_account.name
 }
 
-#Function Module
+#F Workers unction Module
 resource "azurerm_linux_function_app" "worker" {
   for_each                   = var.workers_config.workers
   name                       = "${var.prefix}-cloudo-${each.key}"
@@ -208,6 +258,33 @@ resource "azurerm_storage_table" "workers_registry" {
   storage_account_name = module.storage_account.name
 }
 
+resource "azurerm_storage_table" "audit_logs" {
+  name                 = "CloudoAuditLogs"
+  storage_account_name = module.storage_account.name
+}
+
+resource "azurerm_storage_table" "cloudo_schedules" {
+  name                 = "CloudoSchedules"
+  storage_account_name = module.storage_account.name
+}
+
+resource "azurerm_storage_table" "cloudo_settings" {
+  name                 = "CloudoSettings"
+  storage_account_name = module.storage_account.name
+}
+
+resource "azurerm_storage_table" "cloudo_users" {
+  name                 = "CloudoUsers"
+  storage_account_name = module.storage_account.name
+}
+
+resource "azurerm_storage_table_entity" "admin_user" {
+  storage_table_id = azurerm_storage_table.cloudo_users.id
+  partition_key    = "Operator"
+  row_key          = "admin"
+  entity           = { password = random_password.admin_password.result, role = "ADMIN" }
+}
+
 resource "azurerm_storage_table_entity" "schemas" {
   for_each = {
     for i in local.entity_executor : i.entity.id => i
@@ -219,6 +296,9 @@ resource "azurerm_storage_table_entity" "schemas" {
   row_key       = random_uuid.uuid[each.key].result
 
   entity = merge(
-    each.value.entity
+    each.value.entity,
+    {
+      tags = lookup(each.value.entity, "tags", null) == null ? "terraform" : contains(split(",", each.value.entity.tags), "terraform") ? each.value.entity.tags : "${each.value.entity.tags},terraform"
+    }
   )
 }
