@@ -646,7 +646,7 @@ def Trigger(
                 "id": "NaN",
                 "name": resource_name or "",
                 "exec_id": exec_id,
-                "runbook": "NaN",
+                "runbook": "alarm routed",
                 "run_args": "NaN",
                 "worker": "NaN",
                 "oncall": "NaN",
@@ -2082,123 +2082,123 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
 # =========================
 
 
-@app.route(route="logs", auth_level=func.AuthLevel.ANONYMOUS)
-@app.table_input(
-    arg_name="workers", table_name="WorkersRegistry", connection=STORAGE_CONNECTION
-)
-# ruff: noqa
-def logs_frontend(req: func.HttpRequest, workers: str) -> func.HttpResponse:
-    from frontend import render_template
-    from requests import request
-
-    # --- 1. Key Extraction ---
-    candidate_key = req.headers.get("x-functions-key") or req.params.get("code")
-
-    if not candidate_key:
-        cookie_header = req.headers.get("Cookie")
-        if cookie_header:
-            parts = cookie_header.split(";")
-            for part in parts:
-                clean_part = part.strip()
-                if clean_part.startswith("x-functions-key="):
-                    candidate_key = clean_part.split("=", 1)[1]
-                    break
-
-    # --- 2. Key Validation ---
-    is_valid = False
-
-    if candidate_key:
-        # Build the test URL
-        # req.url is the full current URL. Remove everything after /api/
-        base_url = str(req.url).split("/api/")[0]
-        if "localhost:7071" in base_url:
-            base_url = base_url.replace(":7071", ":80")
-
-        check_url = f"{base_url}/api/healthz"
-
-        try:
-            res = request(
-                method="GET",
-                url=check_url,
-                headers={"x-functions-key": candidate_key},
-                timeout=5,
-            )
-            if res.status_code == 200:
-                is_valid = True
-            else:
-                logging.warning(f"Key present but invalid. Status: {res.status_code}")
-        except Exception as e:
-            logging.error(f"Key validation error: {e}")
-
-    # --- 3. Response ---
-
-    if is_valid:
-        try:
-            workers = json.loads(workers) if isinstance(workers, str) else workers
-            workers = list({w.get("RowKey") for w in workers if w.get("RowKey")})
-        except Exception as e:
-            logging.warning(f"Error parsing workers: {e}")
-        code_js = json.dumps(candidate_key or "")
-        html = render_template(
-            "logs.html",
-            {
-                "code_js": code_js,
-                "workers": workers,
-            },
-        )
-        return func.HttpResponse(html, status_code=200, mimetype="text/html")
-
-    else:
-        error_msg = ""
-        if candidate_key:
-            error_msg = (
-                "<p style='color: red; font-weight: bold;'>Invalid or expired key.</p>"
-            )
-
-        login_html = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Login Required</title>
-            <style>
-                body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f4f4f4; margin: 0; }}
-                .login-box {{ background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; width: 300px; }}
-                input {{ width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }}
-                button {{ width: 100%; padding: 10px; background-color: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }}
-                button:hover {{ background-color: #0063b1; }}
-            </style>
-        </head>
-        <body>
-            <div class="login-box">
-                <h2>Access Logs</h2>
-                {error_msg}
-                <form onsubmit="doLogin(event)">
-                    <input type="password" id="key" placeholder="Function Key" required>
-                    <button type="submit">Login</button>
-                </form>
-            </div>
-            <script>
-                function doLogin(e) {{
-                    e.preventDefault();
-                    const val = document.getElementById('key').value;
-
-                    const d = new Date();
-                    d.setTime(d.getTime() + (1*24*60*60*100)); // 1 day
-
-                    // Fix for localhost vs Azure
-                    const isSecure = window.location.protocol === 'https:' ? '; Secure' : '';
-
-                    document.cookie = "x-functions-key=" + val + "; expires=" + d.toUTCString() + "; path=/; SameSite=Lax" + isSecure;
-
-                    window.location.reload();
-                }}
-            </script>
-        </body>
-        </html>
-        """
-        return func.HttpResponse(login_html, status_code=200, mimetype="text/html")
+# @app.route(route="logs", auth_level=func.AuthLevel.ANONYMOUS)
+# @app.table_input(
+#     arg_name="workers", table_name="WorkersRegistry", connection=STORAGE_CONNECTION
+# )
+# # ruff: noqa
+# def logs_frontend(req: func.HttpRequest, workers: str) -> func.HttpResponse:
+#     from frontend import render_template
+#     from requests import request
+#
+#     # --- 1. Key Extraction ---
+#     candidate_key = req.headers.get("x-functions-key") or req.params.get("code")
+#
+#     if not candidate_key:
+#         cookie_header = req.headers.get("Cookie")
+#         if cookie_header:
+#             parts = cookie_header.split(";")
+#             for part in parts:
+#                 clean_part = part.strip()
+#                 if clean_part.startswith("x-functions-key="):
+#                     candidate_key = clean_part.split("=", 1)[1]
+#                     break
+#
+#     # --- 2. Key Validation ---
+#     is_valid = False
+#
+#     if candidate_key:
+#         # Build the test URL
+#         # req.url is the full current URL. Remove everything after /api/
+#         base_url = str(req.url).split("/api/")[0]
+#         if "localhost:7071" in base_url:
+#             base_url = base_url.replace(":7071", ":80")
+#
+#         check_url = f"{base_url}/api/healthz"
+#
+#         try:
+#             res = request(
+#                 method="GET",
+#                 url=check_url,
+#                 headers={"x-functions-key": candidate_key},
+#                 timeout=5,
+#             )
+#             if res.status_code == 200:
+#                 is_valid = True
+#             else:
+#                 logging.warning(f"Key present but invalid. Status: {res.status_code}")
+#         except Exception as e:
+#             logging.error(f"Key validation error: {e}")
+#
+#     # --- 3. Response ---
+#
+#     if is_valid:
+#         try:
+#             workers = json.loads(workers) if isinstance(workers, str) else workers
+#             workers = list({w.get("RowKey") for w in workers if w.get("RowKey")})
+#         except Exception as e:
+#             logging.warning(f"Error parsing workers: {e}")
+#         code_js = json.dumps(candidate_key or "")
+#         html = render_template(
+#             "logs.html",
+#             {
+#                 "code_js": code_js,
+#                 "workers": workers,
+#             },
+#         )
+#         return func.HttpResponse(html, status_code=200, mimetype="text/html")
+#
+#     else:
+#         error_msg = ""
+#         if candidate_key:
+#             error_msg = (
+#                 "<p style='color: red; font-weight: bold;'>Invalid or expired key.</p>"
+#             )
+#
+#         login_html = f"""
+#         <!DOCTYPE html>
+#         <html lang="en">
+#         <head>
+#             <meta charset="UTF-8">
+#             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+#             <title>Login Required</title>
+#             <style>
+#                 body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f4f4f4; margin: 0; }}
+#                 .login-box {{ background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; width: 300px; }}
+#                 input {{ width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }}
+#                 button {{ width: 100%; padding: 10px; background-color: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }}
+#                 button:hover {{ background-color: #0063b1; }}
+#             </style>
+#         </head>
+#         <body>
+#             <div class="login-box">
+#                 <h2>Access Logs</h2>
+#                 {error_msg}
+#                 <form onsubmit="doLogin(event)">
+#                     <input type="password" id="key" placeholder="Function Key" required>
+#                     <button type="submit">Login</button>
+#                 </form>
+#             </div>
+#             <script>
+#                 function doLogin(e) {{
+#                     e.preventDefault();
+#                     const val = document.getElementById('key').value;
+#
+#                     const d = new Date();
+#                     d.setTime(d.getTime() + (1*24*60*60*100)); // 1 day
+#
+#                     // Fix for localhost vs Azure
+#                     const isSecure = window.location.protocol === 'https:' ? '; Secure' : '';
+#
+#                     document.cookie = "x-functions-key=" + val + "; expires=" + d.toUTCString() + "; path=/; SameSite=Lax" + isSecure;
+#
+#                     window.location.reload();
+#                 }}
+#             </script>
+#         </body>
+#         </html>
+#         """
+#         return func.HttpResponse(login_html, status_code=200, mimetype="text/html")
 
 
 # TODO Manage empty partitions
@@ -2538,7 +2538,7 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
     try:
         from azure.data.tables import TableClient
 
-        username = body.get("username")
+        username = body.get("username").lower()
         password = body.get("password")
 
         if not username or not password:
