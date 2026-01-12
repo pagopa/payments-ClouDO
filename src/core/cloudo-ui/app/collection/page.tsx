@@ -206,16 +206,6 @@ export default function CollectionPage() {
         </div>
 
         <div className="flex items-center gap-6">
-          <a
-            href="https://github.com/pagopa/payments-ClouDO"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3 py-1.5 bg-cloudo-accent/10 border border-cloudo-accent/30 text-cloudo-accent hover:bg-cloudo-accent hover:text-cloudo-dark transition-all text-[10px] font-black uppercase tracking-widest group"
-            title="View Source on GitHub"
-          >
-            <SiGithub className="w-4 h-4 group-hover:scale-110 transition-transform" />
-            <span>GitHub Source</span>
-          </a>
           <div className="relative group">
             <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors" />
             <input

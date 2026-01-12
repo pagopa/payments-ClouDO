@@ -96,6 +96,18 @@ variable "vnet_rg" {
   default     = null
 }
 
+variable "private_endpoint_dns_zone_id" {
+  type = string
+}
+
+variable "private_endpoint_subnet_id" {
+  type = string
+}
+
+variable "vpn_subnet_id" {
+  type = string
+}
+
 variable "aks_integration" {
   type = map(object({
     cluster_id = string
@@ -124,6 +136,11 @@ variable "ui_image" {
     registry_username = optional(string)
     registry_password = optional(string)
   })
+}
+
+variable "cluodo_ui_tier" {
+  type    = string
+  default = "basic"
 }
 
 variable "enable_ui" {

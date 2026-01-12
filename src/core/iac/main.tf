@@ -88,35 +88,63 @@ resource "azurerm_linux_function_app" "orchestrator" {
 }
 
 # UI App Service
-resource "azurerm_linux_web_app" "ui" {
+# resource "azurerm_linux_web_app" "ui" {
+#   count               = var.enable_ui ? 1 : 0
+#   name                = "${var.prefix}-cloudo-ui"
+#   location            = var.location
+#   resource_group_name = var.resource_group_name
+#   service_plan_id     = azurerm_service_plan.orchestrator.id
+#   https_only          = true
+#
+#   identity {
+#     type = "SystemAssigned"
+#   }
+#
+#   site_config {
+#     # app_service_logs {
+#     #   disk_quota_mb         = var.app_service_logs.disk_quota_mb
+#     #   retention_period_days = var.app_service_logs.retention_period_days
+#     # }
+#     application_stack {
+#       docker_image_name        = "${var.ui_image.image_name}:${var.ui_image.image_tag}"
+#       docker_registry_url      = var.ui_image.registry_url
+#       docker_registry_password = var.ui_image.registry_password
+#       docker_registry_username = var.ui_image.registry_username
+#     }
+#     # application_insights_connection_string = data.azurerm_application_insights.this.connection_string
+#     # application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
+#     always_on     = true
+#     http2_enabled = true
+#   }
+#
+#   app_settings = {
+#     "ORCHESTRATOR_URL"                    = "https://${azurerm_linux_function_app.orchestrator.default_hostname}"
+#     "API_URL"                             = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api"
+#     "FUNCTION_KEY"                        = data.azurerm_function_app_host_keys.orchestrator.default_function_key
+#     "CLOUDO_KEY"                          = random_password.internal_auth_token.result
+#     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
+#   }
+#
+#   virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
+#
+#   lifecycle {
+#     ignore_changes = [tags]
+#   }
+#
+#   tags = var.tags
+# }
+
+module "cloudo_ui" {
   count               = var.enable_ui ? 1 : 0
-  name                = "${var.prefix}-cloudo-ui"
+  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=add-app-service-module-github-credential"
+  env                 = var.env
+  idh_resource_tier   = var.cluodo_ui_tier
   location            = var.location
+  name                = "${var.prefix}-cloudo-ui"
+  product_name        = var.prefix
   resource_group_name = var.resource_group_name
-  service_plan_id     = azurerm_service_plan.orchestrator.id
-  https_only          = true
 
-  identity {
-    type = "SystemAssigned"
-  }
-
-  site_config {
-    # app_service_logs {
-    #   disk_quota_mb         = var.app_service_logs.disk_quota_mb
-    #   retention_period_days = var.app_service_logs.retention_period_days
-    # }
-    application_stack {
-      docker_image_name        = "${var.ui_image.image_name}:${var.ui_image.image_tag}"
-      docker_registry_url      = var.ui_image.registry_url
-      docker_registry_password = var.ui_image.registry_password
-      docker_registry_username = var.ui_image.registry_username
-    }
-    # application_insights_connection_string = data.azurerm_application_insights.this.connection_string
-    # application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
-    always_on     = true
-    http2_enabled = true
-  }
-
+  app_service_plan_name = azurerm_service_plan.orchestrator.id
   app_settings = {
     "ORCHESTRATOR_URL"                    = "https://${azurerm_linux_function_app.orchestrator.default_hostname}"
     "API_URL"                             = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api"
@@ -125,13 +153,27 @@ resource "azurerm_linux_web_app" "ui" {
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
   }
 
-  virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
+  docker_image             = var.ui_image.image_name
+  docker_image_tag         = var.ui_image.image_tag
+  docker_registry_url      = var.ui_image.registry_url
+  docker_registry_password = var.ui_image.registry_password
+  docker_registry_username = var.ui_image.registry_username
+  subnet_id                = module.cloudo_flexible_snet[0].subnet_id
+  tags                     = var.tags
 
-  lifecycle {
-    ignore_changes = [tags]
+  # which subnet is allowed to reach this app service
+  allowed_subnet_ids = [var.vpn_subnet_id]
+
+  private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
+  private_endpoint_subnet_id   = var.private_endpoint_subnet_id
+
+  autoscale_settings = {
+    max_capacity                  = 1
+    scale_up_requests_threshold   = 250
+    scale_down_requests_threshold = 150
   }
 
-  tags = var.tags
+  always_on = true
 }
 
 resource "azurerm_storage_queue" "this" {

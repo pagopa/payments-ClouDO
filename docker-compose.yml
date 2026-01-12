@@ -40,6 +40,8 @@ services:
     env_file:
       - path: .env.local
         required: false
+    ports:
+      - "7071:80"
     environment:
       - AzureWebJobsStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
       - AzureFunctionsJobHost__logging__logLevel__Default=Warning
@@ -62,17 +64,6 @@ services:
     volumes:
       - ./src/core/orchestrator:/home/site/wwwroot/
       - ./src/runbooks:/work/runbooks:ro
-
-  gateway:
-    image: nginx:alpine
-    ports:
-      - "7071:80"
-    volumes:
-      - ./src/tests/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - orchestrator
-    networks:
-      - azure-functions
 
   worker-local:
     platform: linux/amd64
