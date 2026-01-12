@@ -101,7 +101,8 @@ variable "private_endpoint_dns_zone_id" {
 }
 
 variable "private_endpoint_subnet_id" {
-  type = string
+  type    = string
+  default = null
 }
 
 variable "vpn_subnet_id" {
