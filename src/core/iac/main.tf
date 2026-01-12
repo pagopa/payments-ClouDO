@@ -144,7 +144,7 @@ module "cloudo_ui" {
   product_name        = var.product_name
   resource_group_name = var.resource_group_name
 
-  app_service_plan_name = azurerm_service_plan.orchestrator.id
+  app_service_plan_name = azurerm_service_plan.orchestrator.name
   app_settings = {
     "ORCHESTRATOR_URL"                    = "https://${azurerm_linux_function_app.orchestrator.default_hostname}"
     "API_URL"                             = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api"
