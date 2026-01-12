@@ -141,7 +141,7 @@ module "cloudo_ui" {
   idh_resource_tier   = var.cluodo_ui_tier
   location            = var.location
   name                = "${var.prefix}-cloudo-ui"
-  product_name        = var.prefix
+  product_name        = var.product_name
   resource_group_name = var.resource_group_name
 
   app_service_plan_name = azurerm_service_plan.orchestrator.id
