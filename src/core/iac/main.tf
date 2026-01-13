@@ -136,7 +136,7 @@ resource "azurerm_linux_function_app" "orchestrator" {
 
 module "cloudo_ui" {
   count               = var.enable_ui ? 1 : 0
-  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=add-app-service-module-github-credential"
+  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=idh-app-service-webapp-external-plan"
   env                 = var.env
   idh_resource_tier   = var.cluodo_ui_tier
   location            = var.location
