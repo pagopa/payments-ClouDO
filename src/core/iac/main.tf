@@ -7,15 +7,15 @@ resource "random_password" "internal_auth_token" {
 }
 
 # Service Plan
-# resource "azurerm_service_plan" "orchestrator" {
-#   name                = "${var.prefix}-cloudo-orchestrator-service-plan"
-#   location            = var.location
-#   resource_group_name = var.resource_group_name
-#   os_type             = "Linux"
-#
-#   sku_name = var.service_plan_sku
-#   tags     = var.tags
-# }
+resource "azurerm_service_plan" "orchestrator" {
+  name                = "${var.prefix}-cloudo-orchestrator-service-plan"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  os_type             = "Linux"
+
+  sku_name = var.service_plan_sku
+  tags     = var.tags
+}
 
 resource "azurerm_service_plan" "workers" {
   name                = "${var.prefix}-cloudo-workers-service-plan"
@@ -28,77 +28,38 @@ resource "azurerm_service_plan" "workers" {
 }
 
 # Function Orchestrator and Executor
-# resource "azurerm_linux_function_app" "orchestrator" {
-#   name                       = "${var.prefix}-cloudo"
-#   location                   = var.location
-#   resource_group_name        = var.resource_group_name
-#   service_plan_id            = azurerm_service_plan.orchestrator.id
-#   storage_account_name       = module.storage_account.name
-#   storage_account_access_key = module.storage_account.primary_access_key
-#   https_only                 = true
-#
-#   identity {
-#     type = "SystemAssigned"
-#   }
-#
-#   site_config {
-#     app_service_logs {
-#       disk_quota_mb         = var.app_service_logs.disk_quota_mb
-#       retention_period_days = var.app_service_logs.retention_period_days
-#     }
-#     application_stack {
-#       docker {
-#         image_name        = var.orchestrator_image.image_name
-#         image_tag         = var.orchestrator_image.image_tag
-#         registry_url      = var.orchestrator_image.registry_url
-#         registry_username = var.orchestrator_image.registry_username
-#         registry_password = var.orchestrator_image.registry_password
-#       }
-#     }
-#     application_insights_connection_string = data.azurerm_application_insights.this.connection_string
-#     application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
-#     always_on                              = true
-#     http2_enabled                          = true
-#   }
-#   app_settings = merge(
-#     {
-#       "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
-#       "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
-#       "SLACK_TOKEN_DEFAULT"                 = var.slack_integration.token
-#       "SLACK_CHANNEL_DEFAULT"               = var.slack_integration.channel
-#       "OPSGENIE_API_KEY_DEFAULT"            = var.opsgenie_api_key
-#       "GITHUB_REPO"                         = var.github_repo_info.repo_name
-#       "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
-#       "GITHUB_TOKEN"                        = var.orchestrator_image.registry_password
-#       "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
-#       "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
-#       "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
-#       "APPROVAL_SECRET"                     = var.approval_runbook.secret
-#       "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
-#     },
-#     local.orchestrator_smart_routing_app_settings
-#   )
-#
-#   # virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
-#
-#   lifecycle {
-#     ignore_changes = [tags]
-#   }
-#   tags = var.tags
-# }
+resource "azurerm_linux_function_app" "orchestrator" {
+  name                       = "${var.prefix}-cloudo"
+  location                   = var.location
+  resource_group_name        = var.resource_group_name
+  service_plan_id            = azurerm_service_plan.orchestrator.id
+  storage_account_name       = module.storage_account.name
+  storage_account_access_key = module.storage_account.primary_access_key
+  https_only                 = true
 
-module "cloudo_orchestrator" {
-  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=idh-app-service-webapp-external-plan"
-  env                                      = var.env
-  idh_resource_tier                        = "basic_no_storage"
-  location                                 = var.location
-  name                                     = "${var.prefix}-cloudo-orchestrator"
-  product_name                             = var.product_name
-  resource_group_name                      = var.resource_group_name
-  application_insights_instrumentation_key = data.azurerm_application_insights.this.instrumentation_key
+  identity {
+    type = "SystemAssigned"
+  }
 
-  app_service_plan_name = "${var.prefix}-cloudo-orchestrator-service-plan"
-
+  site_config {
+    app_service_logs {
+      disk_quota_mb         = var.app_service_logs.disk_quota_mb
+      retention_period_days = var.app_service_logs.retention_period_days
+    }
+    application_stack {
+      docker {
+        image_name        = var.orchestrator_image.image_name
+        image_tag         = var.orchestrator_image.image_tag
+        registry_url      = var.orchestrator_image.registry_url
+        registry_username = var.orchestrator_image.registry_username
+        registry_password = var.orchestrator_image.registry_password
+      }
+    }
+    application_insights_connection_string = data.azurerm_application_insights.this.connection_string
+    application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
+    always_on                              = true
+    http2_enabled                          = true
+  }
   app_settings = merge(
     {
       "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
@@ -118,35 +79,74 @@ module "cloudo_orchestrator" {
     local.orchestrator_smart_routing_app_settings
   )
 
+  # virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
 
-  docker_image             = var.ui_image.image_name
-  docker_image_tag         = var.ui_image.image_tag
-  docker_registry_url      = var.ui_image.registry_url
-  docker_registry_password = var.ui_image.registry_password
-  docker_registry_username = var.ui_image.registry_username
-  # subnet_id                = module.cloudo_flexible_snet[0].subnet_id
+  lifecycle {
+    ignore_changes = [tags]
+  }
   tags = var.tags
-
-  # which subnet is allowed to reach this app service
-  allowed_subnet_ids = [var.vpn_subnet_id]
-
-  private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
-  # private_endpoint_subnet_id   = module.cloudo_flexible_snet[0].subnet_id
-
-  embedded_subnet = {
-    enabled      = true
-    vnet_name    = var.vnet_name
-    vnet_rg_name = var.vnet_rg
-  }
-
-  autoscale_settings = {
-    max_capacity                  = 1
-    scale_up_requests_threshold   = 250
-    scale_down_requests_threshold = 150
-  }
-
-  always_on = true
 }
+
+# module "cloudo_orchestrator" {
+#   source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=idh-app-service-webapp-external-plan"
+#   env                                      = var.env
+#   idh_resource_tier                        = "basic_no_storage"
+#   location                                 = var.location
+#   name                                     = "${var.prefix}-cloudo-orchestrator"
+#   product_name                             = var.product_name
+#   resource_group_name                      = var.resource_group_name
+#   application_insights_instrumentation_key = data.azurerm_application_insights.this.instrumentation_key
+#
+#   app_service_plan_name = "${var.prefix}-cloudo-orchestrator-service-plan"
+#
+#   app_settings = merge(
+#     {
+#       "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
+#       "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
+#       "SLACK_TOKEN_DEFAULT"                 = var.slack_integration.token
+#       "SLACK_CHANNEL_DEFAULT"               = var.slack_integration.channel
+#       "OPSGENIE_API_KEY_DEFAULT"            = var.opsgenie_api_key
+#       "GITHUB_REPO"                         = var.github_repo_info.repo_name
+#       "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
+#       "GITHUB_TOKEN"                        = var.orchestrator_image.registry_password
+#       "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
+#       "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
+#       "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
+#       "APPROVAL_SECRET"                     = var.approval_runbook.secret
+#       "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
+#     },
+#     local.orchestrator_smart_routing_app_settings
+#   )
+#
+#
+#   docker_image             = var.ui_image.image_name
+#   docker_image_tag         = var.ui_image.image_tag
+#   docker_registry_url      = var.ui_image.registry_url
+#   docker_registry_password = var.ui_image.registry_password
+#   docker_registry_username = var.ui_image.registry_username
+#   # subnet_id                = module.cloudo_flexible_snet[0].subnet_id
+#   tags = var.tags
+#
+#   # which subnet is allowed to reach this app service
+#   allowed_subnet_ids = [var.vpn_subnet_id]
+#
+#   private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
+#   # private_endpoint_subnet_id   = module.cloudo_flexible_snet[0].subnet_id
+#
+#   embedded_subnet = {
+#     enabled      = true
+#     vnet_name    = var.vnet_name
+#     vnet_rg_name = var.vnet_rg
+#   }
+#
+#   autoscale_settings = {
+#     max_capacity                  = 1
+#     scale_up_requests_threshold   = 250
+#     scale_down_requests_threshold = 150
+#   }
+#
+#   always_on = true
+# }
 
 
 # UI App Service
@@ -206,13 +206,13 @@ module "cloudo_ui" {
   product_name        = var.product_name
   resource_group_name = var.resource_group_name
 
-  app_service_plan_name = module.cloudo_orchestrator.service_plan_name
-  app_service_plan_id   = module.cloudo_orchestrator.service_plan_id
+  app_service_plan_name = azurerm_service_plan.orchestrator.name
+  app_service_plan_id   = azurerm_service_plan.orchestrator.id
 
   app_settings = {
-    "ORCHESTRATOR_URL"                    = "https://${module.cloudo_orchestrator.default_hostname}"
-    "API_URL"                             = "https://${module.cloudo_orchestrator.default_hostname}/api"
-    "FUNCTION_KEY"                        = module.cloudo_orchestrator.default_key
+    "ORCHESTRATOR_URL"                    = "https://${azurerm_linux_function_app.orchestrator.default_hostname}"
+    "API_URL"                             = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api"
+    "FUNCTION_KEY"                        = data.azurerm_function_app_host_keys.orchestrator.default_function_key
     "CLOUDO_KEY"                          = random_password.internal_auth_token.result
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
   }
@@ -303,7 +303,7 @@ resource "azurerm_linux_function_app" "worker" {
     "FUNCTIONS_WORKER_RUNTIME"            = "python"
     "DOTNET_RUNNING_IN_CONTAINER"         = true
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
-    "ORCHESTRATOR_URL"                    = "https://${module.cloudo_orchestrator.default_hostname}/api/workers/register"
+    "ORCHESTRATOR_URL"                    = "https://${azurerm_linux_function_app.orchestrator.default_hostname}/api/workers/register"
     "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
     "WORKER_CAPABILITY"                   = each.value
   }
