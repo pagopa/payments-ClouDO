@@ -79,7 +79,7 @@ resource "azurerm_linux_function_app" "orchestrator" {
     local.orchestrator_smart_routing_app_settings
   )
 
-  virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
+  # virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
 
   lifecycle {
     ignore_changes = [tags]
@@ -160,14 +160,20 @@ module "cloudo_ui" {
   docker_registry_url      = var.ui_image.registry_url
   docker_registry_password = var.ui_image.registry_password
   docker_registry_username = var.ui_image.registry_username
-  subnet_id                = module.cloudo_flexible_snet[0].subnet_id
-  tags                     = var.tags
+  # subnet_id                = module.cloudo_flexible_snet[0].subnet_id
+  tags = var.tags
 
   # which subnet is allowed to reach this app service
   allowed_subnet_ids = [var.vpn_subnet_id]
 
   private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
-  private_endpoint_subnet_id   = module.cloudo_flexible_snet[0].subnet_id
+  # private_endpoint_subnet_id   = module.cloudo_flexible_snet[0].subnet_id
+
+  embedded_subnet = {
+    enabled      = true
+    vnet_name    = var.vnet_name
+    vnet_rg_name = var.vnet_rg
+  }
 
   autoscale_settings = {
     max_capacity                  = 1
@@ -240,7 +246,7 @@ resource "azurerm_linux_function_app" "worker" {
     "WORKER_CAPABILITY"                   = each.value
   }
 
-  virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
+  # virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
 
   lifecycle {
     ignore_changes = [tags]
