@@ -167,7 +167,7 @@ module "cloudo_ui" {
   allowed_subnet_ids = [var.vpn_subnet_id]
 
   private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
-  private_endpoint_subnet_id   = var.private_endpoint_subnet_id
+  private_endpoint_subnet_id   = module.cloudo_flexible_snet[0].subnet_id
 
   autoscale_settings = {
     max_capacity                  = 1

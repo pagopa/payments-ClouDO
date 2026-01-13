@@ -100,10 +100,10 @@ variable "private_endpoint_dns_zone_id" {
   type = string
 }
 
-variable "private_endpoint_subnet_id" {
-  type    = string
-  default = null
-}
+# variable "private_endpoint_subnet_id" {
+#   type    = string
+#   default = null
+# }
 
 variable "vpn_subnet_id" {
   type = string
