@@ -90,7 +90,7 @@ resource "azurerm_service_plan" "workers" {
 module "cloudo_orchestrator" {
   source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=idh-app-service-webapp-external-plan"
   env                                      = var.env
-  idh_resource_tier                        = var.cluodo_ui_tier
+  idh_resource_tier                        = "basic"
   location                                 = var.location
   name                                     = "${var.prefix}-cloudo-orchestrator"
   product_name                             = var.product_name
