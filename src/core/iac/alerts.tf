@@ -1,7 +1,7 @@
 resource "azurerm_monitor_metric_alert" "function_failures" {
   for_each = merge(
     { (module.cloudo_orchestrator.name) = module.cloudo_orchestrator.id },
-    { for w in azurerm_linux_function_app.worker : w.name => w.id }
+    { for w in module.cloudo_worker : w.name => w.id }
   )
 
   name                = "${var.prefix}-${var.env}-cloudo-func-fail-${each.key}"
@@ -22,7 +22,7 @@ resource "azurerm_monitor_metric_alert" "function_failures" {
 resource "azurerm_monitor_metric_alert" "function_duration" {
   for_each = merge(
     { (module.cloudo_orchestrator.name) = module.cloudo_orchestrator.id },
-    { for w in azurerm_linux_function_app.worker : w.name => w.id }
+    { for w in module.cloudo_worker : w.name => w.id }
   )
 
   name                = "${var.prefix}-${var.env}-cloudo-func-duration-${each.key}"

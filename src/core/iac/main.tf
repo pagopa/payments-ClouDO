@@ -17,15 +17,15 @@ resource "random_password" "internal_auth_token" {
 #   tags     = var.tags
 # }
 
-resource "azurerm_service_plan" "workers" {
-  name                = "${var.prefix}-cloudo-workers-service-plan"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  os_type             = "Linux"
-
-  sku_name = var.service_plan_sku
-  tags     = var.tags
-}
+# resource "azurerm_service_plan" "workers" {
+#   name                = "${var.prefix}-cloudo-workers-service-plan"
+#   location            = var.location
+#   resource_group_name = var.resource_group_name
+#   os_type             = "Linux"
+#
+#   sku_name = var.service_plan_sku
+#   tags     = var.tags
+# }
 
 # Function Orchestrator and Executor
 # resource "azurerm_linux_function_app" "orchestrator" {
@@ -256,40 +256,87 @@ resource "azurerm_storage_queue" "this" {
 }
 
 #F Workers unction Module
-resource "azurerm_linux_function_app" "worker" {
-  for_each                   = var.workers_config.workers
-  name                       = "${var.prefix}-cloudo-${each.key}"
-  location                   = var.location
-  resource_group_name        = var.resource_group_name
-  service_plan_id            = azurerm_service_plan.workers.id
+# resource "azurerm_linux_function_app" "worker" {
+#   for_each                   = var.workers_config.workers
+#   name                       = "${var.prefix}-cloudo-${each.key}"
+#   location                   = var.location
+#   resource_group_name        = var.resource_group_name
+#   service_plan_id            = azurerm_service_plan.workers.id
+#   storage_account_name       = module.storage_account.name
+#   storage_account_access_key = module.storage_account.primary_access_key
+#   https_only                 = true
+#
+#   identity {
+#     type         = "UserAssigned"
+#     identity_ids = [azurerm_user_assigned_identity.identity.id]
+#   }
+#
+#   site_config {
+#     app_service_logs {
+#       disk_quota_mb         = var.app_service_logs.disk_quota_mb
+#       retention_period_days = var.app_service_logs.retention_period_days
+#     }
+#     application_stack {
+#       docker {
+#         image_name        = var.workers_config.image_name
+#         image_tag         = var.workers_config.image_tag
+#         registry_url      = var.workers_config.registry_url
+#         registry_username = var.workers_config.registry_username
+#         registry_password = var.workers_config.registry_password
+#       }
+#     }
+#     application_insights_connection_string = data.azurerm_application_insights.this.connection_string
+#     application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
+#     always_on                              = true
+#     http2_enabled                          = true
+#   }
+#   app_settings = {
+#     "QUEUE_NAME"                          = azurerm_storage_queue.this[each.key].name
+#     "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
+#     "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
+#     "GITHUB_REPO"                         = var.github_repo_info.repo_name
+#     "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
+#     "GITHUB_TOKEN"                        = var.workers_config.registry_password
+#     "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
+#     "AZURE_TENANT_ID"                     = azurerm_user_assigned_identity.identity.tenant_id
+#     "AZURE_CLIENT_ID"                     = azurerm_user_assigned_identity.identity.client_id
+#     "AZURE_SUBSCRIPTION_ID"               = data.azurerm_subscription.current.subscription_id
+#     "AzureWebJobsFeatureFlags"            = "EnableWorkerIndexing"
+#     "FUNCTIONS_WORKER_PROCESS_COUNT"      = 1
+#     "FUNCTIONS_WORKER_RUNTIME"            = "python"
+#     "DOTNET_RUNNING_IN_CONTAINER"         = true
+#     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
+#     "ORCHESTRATOR_URL"                    = "https://${module.cloudo_orchestrator.default_hostname}/api/workers/register"
+#     "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
+#     "WORKER_CAPABILITY"                   = each.value
+#   }
+#
+#   # virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
+#
+#   lifecycle {
+#     ignore_changes = [tags]
+#   }
+#
+#   tags = var.tags
+# }
+
+module "cloudo_worker" {
+  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=idh-app-service-webapp-external-plan"
+  for_each = var.workers_config.workers
+
+  env                                      = var.env
+  idh_resource_tier                        = "basic"
+  name                                     = "${var.prefix}-cloudo-${each.key}"
+  location                                 = var.location
+  product_name                             = var.product_name
+  resource_group_name                      = var.resource_group_name
+  application_insights_instrumentation_key = data.azurerm_application_insights.this.instrumentation_key
+
+  default_storage_enable     = false
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
-  https_only                 = true
+  app_service_plan_name      = "${var.prefix}-cloudo-workers-service-plan"
 
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.identity.id]
-  }
-
-  site_config {
-    app_service_logs {
-      disk_quota_mb         = var.app_service_logs.disk_quota_mb
-      retention_period_days = var.app_service_logs.retention_period_days
-    }
-    application_stack {
-      docker {
-        image_name        = var.workers_config.image_name
-        image_tag         = var.workers_config.image_tag
-        registry_url      = var.workers_config.registry_url
-        registry_username = var.workers_config.registry_username
-        registry_password = var.workers_config.registry_password
-      }
-    }
-    application_insights_connection_string = data.azurerm_application_insights.this.connection_string
-    application_insights_key               = data.azurerm_application_insights.this.instrumentation_key
-    always_on                              = true
-    http2_enabled                          = true
-  }
   app_settings = {
     "QUEUE_NAME"                          = azurerm_storage_queue.this[each.key].name
     "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
@@ -311,13 +358,33 @@ resource "azurerm_linux_function_app" "worker" {
     "WORKER_CAPABILITY"                   = each.value
   }
 
-  # virtual_network_subnet_id = try(module.cloudo_flexible_snet[0].id, null)
+  docker_image             = var.workers_config.image_name
+  docker_image_tag         = var.workers_config.image_tag
+  docker_registry_url      = var.workers_config.registry_url
+  docker_registry_password = var.workers_config.registry_password
+  docker_registry_username = var.workers_config.registry_username
+  # subnet_id                = module.cloudo_flexible_snet[0].subnet_id
+  tags = var.tags
 
-  lifecycle {
-    ignore_changes = [tags]
+  # which subnet is allowed to reach this app service
+  allowed_subnet_ids = [var.vpn_subnet_id]
+
+  private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
+  # private_endpoint_subnet_id   = module.cloudo_flexible_snet[0].subnet_id
+
+  embedded_subnet = {
+    enabled      = true
+    vnet_name    = var.vnet_name
+    vnet_rg_name = var.vnet_rg
   }
 
-  tags = var.tags
+  autoscale_settings = {
+    max_capacity                  = 1
+    scale_up_requests_threshold   = 250
+    scale_down_requests_threshold = 150
+  }
+
+  always_on = true
 }
 
 module "storage_account" {
