@@ -97,8 +97,10 @@ module "cloudo_orchestrator" {
   resource_group_name                      = var.resource_group_name
   application_insights_instrumentation_key = data.azurerm_application_insights.this.instrumentation_key
 
-  default_storage_enable = false
-  app_service_plan_name  = "${var.prefix}-cloudo-orchestrator-service-plan"
+  default_storage_enable     = false
+  storage_account_name       = module.storage_account.name
+  storage_account_access_key = module.storage_account.primary_access_key
+  app_service_plan_name      = "${var.prefix}-cloudo-orchestrator-service-plan"
 
   app_settings = merge(
     {
