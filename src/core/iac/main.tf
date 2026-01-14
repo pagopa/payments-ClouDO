@@ -122,11 +122,11 @@ module "cloudo_orchestrator" {
   )
 
 
-  docker_image             = var.ui_image.image_name
-  docker_image_tag         = var.ui_image.image_tag
-  docker_registry_url      = var.ui_image.registry_url
-  docker_registry_password = var.ui_image.registry_password
-  docker_registry_username = var.ui_image.registry_username
+  docker_image             = var.orchestrator_image.image_name
+  docker_image_tag         = var.orchestrator_image.image_tag
+  docker_registry_url      = var.orchestrator_image.registry_url
+  docker_registry_password = var.orchestrator_image.registry_password
+  docker_registry_username = var.orchestrator_image.registry_username
   # subnet_id                = module.cloudo_flexible_snet[0].subnet_id
   tags = var.tags
 
