@@ -10,7 +10,7 @@ resource "random_password" "internal_auth_token" {
 module "cloudo_orchestrator" {
   source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=idh-app-service-webapp-external-plan"
   env                                      = var.env
-  idh_resource_tier                        = "basic"
+  idh_resource_tier                        = "basic_private"
   location                                 = var.location
   name                                     = "${var.prefix}-cloudo-orchestrator"
   product_name                             = var.product_name
@@ -131,7 +131,7 @@ module "cloudo_worker" {
   for_each = var.workers_config.workers
 
   env                                      = var.env
-  idh_resource_tier                        = "basic"
+  idh_resource_tier                        = "basic_private"
   name                                     = "${var.prefix}-cloudo-${each.key}"
   location                                 = var.location
   product_name                             = var.product_name
