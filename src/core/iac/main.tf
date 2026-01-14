@@ -87,6 +87,7 @@ module "cloudo_ui" {
 
   app_service_plan_name = module.cloudo_orchestrator.service_plan_name
   app_service_plan_id   = module.cloudo_orchestrator.service_plan_id
+  plan_type             = "external"
 
   app_settings = {
     "ORCHESTRATOR_URL"                    = "https://${module.cloudo_orchestrator.default_hostname}"
