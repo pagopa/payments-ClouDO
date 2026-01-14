@@ -90,14 +90,15 @@ resource "azurerm_service_plan" "workers" {
 module "cloudo_orchestrator" {
   source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=idh-app-service-webapp-external-plan"
   env                                      = var.env
-  idh_resource_tier                        = "basic_no_storage"
+  idh_resource_tier                        = "basic"
   location                                 = var.location
   name                                     = "${var.prefix}-cloudo-orchestrator"
   product_name                             = var.product_name
   resource_group_name                      = var.resource_group_name
   application_insights_instrumentation_key = data.azurerm_application_insights.this.instrumentation_key
 
-  app_service_plan_name = "${var.prefix}-cloudo-orchestrator-service-plan"
+  default_storage_enable = false
+  app_service_plan_name  = "${var.prefix}-cloudo-orchestrator-service-plan"
 
   app_settings = merge(
     {
