@@ -142,7 +142,7 @@ module "cloudo_worker" {
   default_storage_enable     = false
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
-  app_service_plan_name      = "${var.prefix}-cloudo-${each.key}-workers-service-plan"
+  app_service_plan_name      = "${var.prefix}-cloudo-${each.value}-workers-service-plan"
 
   app_settings = {
     "QUEUE_NAME"                          = azurerm_storage_queue.this[each.key].name
