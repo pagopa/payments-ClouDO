@@ -8,7 +8,7 @@ resource "random_password" "internal_auth_token" {
 
 # Orchestrator Function
 module "cloudo_orchestrator" {
-  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=idh-app-service-webapp-external-plan"
+  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=a065466aa740278f591260ced27957dac1f6b6ae"
   env                                      = var.env
   idh_resource_tier                        = var.cluodo_function_tier
   location                                 = var.location
@@ -47,14 +47,11 @@ module "cloudo_orchestrator" {
   docker_registry_url      = var.orchestrator_image.registry_url
   docker_registry_password = var.orchestrator_image.registry_password
   docker_registry_username = var.orchestrator_image.registry_username
-  # subnet_id                = module.cloudo_flexible_snet[0].subnet_id
-  tags = var.tags
+  tags                     = var.tags
 
   # which subnet is allowed to reach this app service
-  allowed_subnet_ids = [var.vpn_subnet_id]
-
+  allowed_subnet_ids           = [var.vpn_subnet_id]
   private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
-  # private_endpoint_subnet_id   = module.cloudo_flexible_snet[0].subnet_id
 
   embedded_subnet = {
     enabled      = true
@@ -77,7 +74,7 @@ module "cloudo_orchestrator" {
 # UI App Service
 module "cloudo_ui" {
   count               = var.enable_ui ? 1 : 0
-  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=idh-app-service-webapp-external-plan"
+  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=a065466aa740278f591260ced27957dac1f6b6ae"
   env                 = var.env
   idh_resource_tier   = var.cluodo_ui_tier
   location            = var.location
@@ -102,14 +99,11 @@ module "cloudo_ui" {
   docker_registry_url      = var.ui_image.registry_url
   docker_registry_password = var.ui_image.registry_password
   docker_registry_username = var.ui_image.registry_username
-  # subnet_id                = module.cloudo_flexible_snet[0].subnet_id
-  tags = var.tags
+  tags                     = var.tags
 
   # which subnet is allowed to reach this app service
-  allowed_subnet_ids = [var.vpn_subnet_id]
-
+  allowed_subnet_ids           = [var.vpn_subnet_id]
   private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
-  # private_endpoint_subnet_id   = module.cloudo_flexible_snet[0].subnet_id
 
   embedded_subnet = {
     enabled      = true
@@ -128,7 +122,7 @@ module "cloudo_ui" {
 
 # Workers Function Module
 module "cloudo_worker" {
-  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=idh-app-service-webapp-external-plan"
+  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=a065466aa740278f591260ced27957dac1f6b6ae"
   for_each = var.workers_config.workers
 
   env                                      = var.env
@@ -170,14 +164,11 @@ module "cloudo_worker" {
   docker_registry_url      = var.workers_config.registry_url
   docker_registry_password = var.workers_config.registry_password
   docker_registry_username = var.workers_config.registry_username
-  # subnet_id                = module.cloudo_flexible_snet[0].subnet_id
-  tags = var.tags
+  tags                     = var.tags
 
   # which subnet is allowed to reach this app service
-  allowed_subnet_ids = [var.vpn_subnet_id]
-
+  allowed_subnet_ids           = [var.vpn_subnet_id]
   private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
-  # private_endpoint_subnet_id   = module.cloudo_flexible_snet[0].subnet_id
 
   embedded_subnet = {
     enabled      = true
