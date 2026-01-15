@@ -11,12 +11,12 @@ data "azurerm_application_insights" "this" {
 }
 
 # Function APP Keys
-data "azurerm_function_app_host_keys" "orchestrator" {
-  name                = azurerm_linux_function_app.orchestrator.name
-  resource_group_name = azurerm_linux_function_app.orchestrator.resource_group_name
-
-  depends_on = [azurerm_linux_function_app.orchestrator]
-}
+# data "azurerm_function_app_host_keys" "orchestrator" {
+#   name                = module.cloudo_orchestrator.name
+#   resource_group_name = module.cloudo_orchestrator.resource_group_name
+#
+#   depends_on = [module.cloudo_orchestrator]
+# }
 
 # Random UUID for RowKey
 resource "random_uuid" "uuid" {

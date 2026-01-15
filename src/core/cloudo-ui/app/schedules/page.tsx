@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { cloudoFetch } from "@/lib/api";
+import { DeleteConfirmationModal } from "../utils/modals";
 import {
   HiOutlinePlus,
   HiOutlineSearch,
@@ -17,6 +18,7 @@ import {
   HiOutlineSwitchHorizontal,
   HiOutlineBan,
   HiOutlineClipboardCopy,
+  HiOutlineChip,
 } from "react-icons/hi";
 
 interface Schedule {
@@ -45,6 +47,9 @@ export default function SchedulesPage() {
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
     null,
   );
+  const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(
+    null,
+  );
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [user, setUser] = useState<{ role: string } | null>(null);
@@ -53,6 +58,7 @@ export default function SchedulesPage() {
   const [isRunbookModalOpen, setIsRunbookModalOpen] = useState(false);
   const [fetchingRunbook, setFetchingRunbook] = useState(false);
   const [availableRunbooks, setAvailableRunbooks] = useState<string[]>([]);
+  const [availableWorkers, setAvailableWorkers] = useState<string[]>([]);
 
   const addNotification = (type: "success" | "error", message: string) => {
     const id = Date.now().toString();
@@ -99,6 +105,26 @@ export default function SchedulesPage() {
     }
   };
 
+  const fetchWorkers = async () => {
+    try {
+      const res = await cloudoFetch(`/workers`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        // Use PartitionKey as the capability as requested
+        const capabilities = Array.from(
+          new Set(
+            data
+              .map((w: { PartitionKey?: string }) => w.PartitionKey)
+              .filter((c) => c),
+          ),
+        ) as string[];
+        setAvailableWorkers(capabilities);
+      }
+    } catch {
+      console.error("Failed to fetch available workers");
+    }
+  };
+
   const fetchRunbookContent = async (runbook: string) => {
     setFetchingRunbook(true);
     setRunbookContent(null);
@@ -119,21 +145,6 @@ export default function SchedulesPage() {
       );
     } finally {
       setFetchingRunbook(false);
-    }
-  };
-
-  const deleteSchedule = async (id: string) => {
-    if (!confirm(`Are you sure you want to delete schedule ${id}?`)) return;
-    try {
-      const res = await cloudoFetch(`/schedules?id=${id}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        addNotification("success", `Schedule ${id} destroyed`);
-        fetchSchedules();
-      }
-    } catch {
-      addNotification("error", "Destruction failed");
     }
   };
 
@@ -250,6 +261,7 @@ export default function SchedulesPage() {
               setSelectedSchedule(null);
               setModalMode("create");
               fetchAvailableRunbooks();
+              fetchWorkers();
             }}
             className={`btn btn-primary h-10 px-4 flex items-center gap-2 group ${
               user?.role !== "ADMIN" && user?.role !== "OPERATOR"
@@ -396,6 +408,7 @@ export default function SchedulesPage() {
                               setSelectedSchedule(s);
                               setModalMode("edit");
                               fetchAvailableRunbooks();
+                              fetchWorkers();
                             }}
                             className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn ${
                               user?.role !== "ADMIN" &&
@@ -408,7 +421,7 @@ export default function SchedulesPage() {
                             <HiOutlinePencil className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => deleteSchedule(s.id)}
+                            onClick={() => setScheduleToDelete(s)}
                             className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn ${
                               user?.role !== "ADMIN" &&
                               user?.role !== "OPERATOR"
@@ -461,6 +474,7 @@ export default function SchedulesPage() {
               initialData={selectedSchedule}
               mode={modalMode}
               availableRunbooks={availableRunbooks}
+              availableWorkers={availableWorkers}
               onSuccess={(msg: string) => {
                 fetchSchedules();
                 setModalMode(null);
@@ -471,6 +485,20 @@ export default function SchedulesPage() {
             />
           </div>
         </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {scheduleToDelete && (
+        <DeleteConfirmationModal
+          schema={scheduleToDelete}
+          onClose={() => setScheduleToDelete(null)}
+          type="schedules"
+          onSuccess={(message) => {
+            fetchSchedules();
+            addNotification("success", message);
+          }}
+          onError={(message) => addNotification("error", message)}
+        />
       )}
 
       {/* Runbook Source Modal */}
@@ -538,6 +566,7 @@ function ScheduleForm({
   initialData,
   mode,
   availableRunbooks,
+  availableWorkers,
   onSuccess,
   onCancel,
   onError,
@@ -545,6 +574,7 @@ function ScheduleForm({
   initialData: Schedule | null;
   mode: "create" | "edit";
   availableRunbooks: string[];
+  availableWorkers: string[];
   onSuccess: (msg: string) => void;
   onCancel: () => void;
   onError: (msg: string) => void;
@@ -660,20 +690,52 @@ function ScheduleForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        <div className="space-y-2">
-          <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
-            Worker Pool (Lock)
-          </label>
-          <input
-            type="text"
-            className="input h-11 font-mono w-full"
+      <div className="space-y-2">
+        Worker Capability *
+        <div className="relative group">
+          <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center border-r border-cloudo-border/30 group-focus-within:border-cloudo-accent/50 bg-cloudo-accent/5">
+            <HiOutlineChip className="text-cloudo-muted/70 w-4 h-4" />
+          </div>
+          <select
+            required
+            className="input input-icon font-mono w-full appearance-none cursor-pointer"
             value={formData.worker_pool}
             onChange={(e) =>
               setFormData({ ...formData, worker_pool: e.target.value })
             }
-            placeholder="pool-01"
-          />
+          >
+            <option
+              value=""
+              disabled
+              className="bg-cloudo-panel text-cloudo-muted italic"
+            >
+              Select Worker Capability...
+            </option>
+            {availableWorkers.map((worker_pool) => (
+              <option
+                key={worker_pool}
+                value={worker_pool}
+                className="bg-cloudo-panel text-cloudo-text py-2"
+              >
+                {worker_pool}
+              </option>
+            ))}
+          </select>
+          <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-cloudo-muted">
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </div>
         </div>
       </div>
 

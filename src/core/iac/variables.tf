@@ -18,6 +18,12 @@ variable "resource_group_name" {
   description = "(Required) The name of the Resource Group in which the resources should be exist."
 }
 
+variable "product_name" {
+  type        = string
+  default     = null
+  description = "(Optional) The name of the product for IDH deployment."
+}
+
 variable "application_insights_name" {
   description = "The ID of the Application Insights to be linked to the Function App."
   type        = string
@@ -90,6 +96,19 @@ variable "vnet_rg" {
   default     = null
 }
 
+variable "private_endpoint_dns_zone_id" {
+  type = string
+}
+
+# variable "private_endpoint_subnet_id" {
+#   type    = string
+#   default = null
+# }
+
+variable "vpn_subnet_id" {
+  type = string
+}
+
 variable "aks_integration" {
   type = map(object({
     cluster_id = string
@@ -120,6 +139,16 @@ variable "ui_image" {
   })
 }
 
+variable "cluodo_ui_tier" {
+  type    = string
+  default = "basic"
+}
+
+variable "cluodo_function_tier" {
+  type    = string
+  default = "basic_private"
+}
+
 variable "enable_ui" {
   type        = bool
   description = "Enable UI App Service"
@@ -140,11 +169,11 @@ variable "workers_config" {
   })
 }
 
-variable "service_plan_sku" {
-  type        = string
-  default     = "B1"
-  description = "(Required) The SKU for the plan. (Default: B1)"
-}
+# variable "service_plan_sku" {
+#   type        = string
+#   default     = "B1"
+#   description = "(Required) The SKU for the plan. (Default: B1)"
+# }
 
 variable "slack_integration" {
   description = "(Optional) Configuration for Slack integration including the authentication token and target channel. If not provided, Slack integration will be disabled."
@@ -230,18 +259,6 @@ variable "approval_runbook" {
     secret  = optional(string)
   })
   default = {}
-}
-
-variable "app_service_logs" {
-  description = "(Optional) Configuration for App Service file system logs including disk quota and retention period."
-  type = object({
-    disk_quota_mb         = number
-    retention_period_days = number
-  })
-  default = {
-    disk_quota_mb         = 35
-    retention_period_days = 3
-  }
 }
 
 variable "tags" {
