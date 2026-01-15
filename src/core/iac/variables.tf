@@ -144,6 +144,11 @@ variable "cluodo_ui_tier" {
   default = "basic"
 }
 
+variable "cluodo_function_tier" {
+  type    = string
+  default = "basic_private"
+}
+
 variable "enable_ui" {
   type        = bool
   description = "Enable UI App Service"
@@ -255,18 +260,6 @@ variable "approval_runbook" {
   })
   default = {}
 }
-
-# variable "app_service_logs" {
-#   description = "(Optional) Configuration for App Service file system logs including disk quota and retention period."
-#   type = object({
-#     disk_quota_mb         = number
-#     retention_period_days = number
-#   })
-#   default = {
-#     disk_quota_mb         = 35
-#     retention_period_days = 3
-#   }
-# }
 
 variable "tags" {
   description = "A mapping of tags to assign to the Function App."
