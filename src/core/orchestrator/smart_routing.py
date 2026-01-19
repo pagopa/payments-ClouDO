@@ -35,11 +35,11 @@ class RoutingDecision:
 
 def load_routing_config() -> dict[str, Any]:
     """
-    Load routing configuration from env ROUTING_RULES (JSON).
-    If absent/invalid, return safe fallback with Opsgenie default.
+    Load routing configuration from Azure Table Storage (CloudoSettings/ROUTING_RULES).
+    Fallback to env ROUTING_RULES (JSON).
+    If both absent/invalid, return safe fallback with Opsgenie default.
     Do NOT store secrets (tokens/keys) in config JSON: resolve via environment.
     """
-    raw = (os.environ.get("ROUTING_RULES") or "").strip()
     defaults = {
         "opsgenie": {"team": "default"},  # apiKey resolved via env
         "slack": {
@@ -69,6 +69,28 @@ def load_routing_config() -> dict[str, Any]:
             },
         ],
     }
+
+    raw = ""
+    # 1. Try Azure Table Storage
+    try:
+        from azure.data.tables import TableClient
+
+        conn_str = os.environ.get("AzureWebJobsStorage")
+        if conn_str:
+            with TableClient.from_connection_string(
+                conn_str, table_name="CloudoSettings"
+            ) as table_client:
+                entity = table_client.get_entity(
+                    partition_key="GlobalConfig", row_key="ROUTING_RULES"
+                )
+                raw = entity.get("value", "")
+    except Exception as e:
+        logging.warning(f"Could not load ROUTING_RULES from Table Storage: {e}")
+
+    # 2. Fallback to Env
+    if not raw:
+        raw = (os.environ.get("ROUTING_RULES") or "").strip()
+
     if not raw:
         logging.info("ROUTING_RULES not set: using fallback configuration")
         return fallback
@@ -82,7 +104,7 @@ def load_routing_config() -> dict[str, Any]:
             "channel", defaults["slack"]["channel"]
         )
         cfg.setdefault("teams", {})
-        cfg.setdefault("rules", fallback["rules"])
+        cfg.setdefault("rules", cfg.get("rules") or fallback["rules"])
         return cfg
     except Exception as e:
         logging.error(f"Invalid ROUTING_RULES JSON: {e}")
@@ -142,7 +164,10 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
       - wildcard: any="*"
       - status filters: finalOnly (default True), statusIn (list of allowed statuses)
     """
-    if "any" in when:
+    exec_id = ctx.get("execId", "unknown")
+    # Wildcard catch-all: only if any is Exactly "*"
+    if when.get("any") == "*":
+        logging.warning(f"[{exec_id}] Match: global '*' wildcard detected")
         return True
 
     # Status filtering (centralized)
@@ -151,40 +176,70 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
     final_only = when.get("finalOnly", True)
     final_statuses = {"succeeded", "error", "failed", "timeout", "routed"}
     if final_only and status not in final_statuses:
+        logging.warning(
+            f"[{exec_id}] No Match: status '{status}' not in final_statuses and finalOnly=True"
+        )
         return False
     if "statusIn" in when:
         allowed = {str(x).strip().lower() for x in (when.get("statusIn") or [])}
         if allowed and status not in allowed:
+            logging.warning(
+                f"[{exec_id}] No Match: status '{status}' not in allowed statusIn {allowed}"
+            )
             return False
 
     # Equality
-    if "resourceId" in when and not _eq(ctx.get("resourceId"), when["resourceId"]):
-        return False
-    if "resourceGroup" in when and not _eq(
-        ctx.get("resourceGroup"), when["resourceGroup"]
-    ):
-        return False
-    if "resourceName" in when and not _eq(
-        ctx.get("resourceName"), when["resourceName"]
-    ):
-        return False
+    if "resourceId" in when:
+        if not _eq(ctx.get("resourceId"), when["resourceId"]):
+            logging.warning(
+                f"[{exec_id}] No Match: resourceId '{ctx.get('resourceId')}' != '{when['resourceId']}'"
+            )
+            return False
+    if "resourceGroup" in when:
+        if not _eq(ctx.get("resourceGroup"), when["resourceGroup"]):
+            logging.warning(
+                f"[{exec_id}] No Match: resourceGroup '{ctx.get('resourceGroup')}' != '{when['resourceGroup']}'"
+            )
+            return False
+    if "resourceName" in when:
+        if not _eq(ctx.get("resourceName"), when["resourceName"]):
+            logging.warning(
+                f"[{exec_id}] No Match: resourceName '{ctx.get('resourceName')}' != '{when['resourceName']}'"
+            )
+            return False
     if "subscriptionId" in when:
         sub = _subscription_from_resource_id(ctx.get("resourceId"))
         if not _eq(sub, when["subscriptionId"]):
+            logging.warning(
+                f"[{exec_id}] No Match: subscriptionId '{sub}' != '{when['subscriptionId']}'"
+            )
             return False
-    if "namespace" in when and not _eq(ctx.get("namespace"), when["namespace"]):
-        return False
-    if "alertRule" in when and not _eq(ctx.get("alertRule"), when["alertRule"]):
-        return False
-    if "oncall" in when and not _eq(str(ctx.get("oncall") or ""), str(when["oncall"])):
-        return False
+    if "namespace" in when:
+        if not _eq(ctx.get("namespace"), when["namespace"]):
+            logging.warning(
+                f"[{exec_id}] No Match: namespace '{ctx.get('namespace')}' != '{when['namespace']}'"
+            )
+            return False
+    if "alertRule" in when:
+        if not _eq(ctx.get("alertRule"), when["alertRule"]):
+            logging.warning(
+                f"[{exec_id}] No Match: alertRule '{ctx.get('alertRule')}' != '{when['alertRule']}'"
+            )
+            return False
+    if "oncall" in when:
+        if not _eq(str(ctx.get("oncall") or ""), str(when["oncall"])):
+            logging.warning(
+                f"[{exec_id}] No Match: oncall '{ctx.get('oncall')}' != '{when['oncall']}'"
+            )
+            return False
 
     # Prefix
-    if "resourceGroupPrefix" in when and not _starts(
-        ctx.get("resourceGroup"), when["resourceGroupPrefix"]
-    ):
-        return False
-    # TODO dinamic match
+    if "resourceGroupPrefix" in when:
+        if not _starts(ctx.get("resourceGroup"), when["resourceGroupPrefix"]):
+            logging.warning(
+                f"[{exec_id}] No Match: resourceGroup '{ctx.get('resourceGroup')}' does not start with '{when['resourceGroupPrefix']}'"
+            )
+            return False
 
     # Severity range
     sev = _sev_to_num(ctx.get("severity"))
@@ -199,17 +254,27 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
 
         is_alert = sev is not None
         if should_be_alert != is_alert:
+            logging.warning(
+                f"[{exec_id}] No Match: isAlert expected {should_be_alert}, got {is_alert} (sev={sev})"
+            )
             return False
 
     if "severityMin" in when:
         minv = _sev_to_num(when["severityMin"])
         if minv is not None and (sev is None or sev < minv):
+            logging.warning(
+                f"[{exec_id}] No Match: severity {sev} < severityMin {minv}"
+            )
             return False
     if "severityMax" in when:
         maxv = _sev_to_num(when["severityMax"])
         if maxv is not None and (sev is None or sev > maxv):
+            logging.warning(
+                f"[{exec_id}] No Match: severity {sev} > severityMax {maxv}"
+            )
             return False
 
+    logging.warning(f"[{exec_id}] Full Match for conditions: {when}")
     return True
 
 
@@ -218,32 +283,61 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
 # =========================
 
 
+def _get_setting(key: str) -> Optional[str]:
+    """
+    Helper to get a setting from Azure Table Storage or Environment.
+    """
+    # 1. Try Table Storage
+    try:
+        from azure.data.tables import TableClient
+
+        conn_str = os.environ.get("AzureWebJobsStorage")
+        if conn_str:
+            with TableClient.from_connection_string(
+                conn_str, table_name="CloudoSettings"
+            ) as table_client:
+                entity = table_client.get_entity(
+                    partition_key="GlobalConfig", row_key=key
+                )
+                val = entity.get("value")
+                if val:
+                    return str(val).strip()
+    except Exception:
+        pass
+
+    # 2. Try Environment
+    return os.environ.get(key)
+
+
 def resolve_opsgenie_apikey(team: Optional[str]) -> Optional[str]:
     """
-    Resolve Opsgenie apiKey from env using naming convention:
+    Resolve Opsgenie apiKey from table storage or env using naming convention:
       - OPSGENIE_API_KEY_<TEAM> (preferred)
-      - OPSGENIE_API_KEY (default)
+      - OPSGENIE_API_KEY_DEFAULT (fallback 1)
+      - OPSGENIE_API_KEY (fallback 2 - legacy)
     """
     if team:
-        env_name = f"OPSGENIE_API_KEY_{team}".upper().replace("-", "_")
-        key = os.getenv(env_name)
+        key_name = f"OPSGENIE_API_KEY_{team}".upper().replace("-", "_")
+        key = _get_setting(key_name)
         if key:
             return key
-    return os.getenv("OPSGENIE_API_KEY")
+
+    # Try DEFAULT first, then legacy
+    return _get_setting("OPSGENIE_API_KEY_DEFAULT") or _get_setting("OPSGENIE_API_KEY")
 
 
 def resolve_slack_token(team: Optional[str]) -> Optional[str]:
     """
-    Resolve Slack token from env using naming convention:
+    Resolve Slack token from table storage or env using naming convention:
       - SLACK_TOKEN_<TEAM> (preferred)
       - SLACK_TOKEN_DEFAULT (default)
     """
     if team:
-        env_name = f"SLACK_TOKEN_{team}".upper().replace("-", "_")
-        tok = os.getenv(env_name)
+        key_name = f"SLACK_TOKEN_{team}".upper().replace("-", "_")
+        tok = _get_setting(key_name)
         if tok:
             return tok
-    return os.getenv("SLACK_TOKEN_DEFAULT")
+    return _get_setting("SLACK_TOKEN_DEFAULT")
 
 
 # =========================
@@ -303,12 +397,14 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     ri_opsgenie_token = routing_info.get("opsgenie_token") or None
 
     status = (ctx.get("status") or "").strip().lower()
+    exec_id = ctx.get("execId", "unknown")
     logging.info(
-        f"Routing: evaluating {len(rules)} rules for execId={ctx.get('execId')} with status={status}"
+        f"[{exec_id}] Routing: evaluating {len(rules)} rules for status={status}"
     )
 
     for idx, rule in enumerate(rules):
         when = rule.get("when", {})
+        logging.warning(f"[{exec_id}] Evaluating rule #{idx}: when={when}")
         if not _match_when(when, ctx):
             continue
 
@@ -399,7 +495,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
         if resolved_actions:
             logging.info(
-                f"Routing: matched rule #{idx} (team={matched_team}) with {len(resolved_actions)} action(s)"
+                f"[{exec_id}] Routing: matched rule #{idx} (team={matched_team}) with {len(resolved_actions)} action(s)"
             )
             return RoutingDecision(
                 actions=resolved_actions,
@@ -409,13 +505,12 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
             )
 
     # Fallback only for final outcomes
-    final_statuses = {"error", "failed", "timeout", "routed"}
+    final_statuses = {"error", "failed", "timeout", "routed", "scheduled"}
     if status in final_statuses:
-        # Preferisci token/team da routing_info se disponibili
         og_team = ri_team or (defaults.get("opsgenie", {}) or {}).get("team")
         api_key = ri_opsgenie_token or resolve_opsgenie_apikey(og_team)
         logging.info(
-            "Routing: no rule matched, using Opsgenie fallback (final outcome)"
+            f"[{exec_id}] Routing: no rule matched, using Opsgenie fallback (final outcome)"
         )
         return RoutingDecision(
             actions=[Action(type="opsgenie", team=og_team, apiKey=api_key)],
@@ -424,7 +519,9 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
             reason="fallback_opsgenie",
         )
 
-    logging.debug("Routing: non-final status and no rule matched, no actions executed")
+    logging.warning(
+        f"[{exec_id}] Routing: non-final status and no rule matched, no actions executed"
+    )
     return RoutingDecision(
         actions=[],
         matched_rule_index=None,
@@ -458,7 +555,7 @@ def execute_actions(
                     raise ValueError("Missing Slack token")
                 if not a.channel:
                     raise ValueError("Missing Slack channel")
-                logging.debug(
+                logging.warning(
                     f"Routing: sending Slack (team={a.team}, channel={a.channel})"
                 )
                 send_slack_fn(token=a.token, channel=a.channel, **payload["slack"])
@@ -467,7 +564,7 @@ def execute_actions(
             elif a.type == "opsgenie":
                 if not a.apiKey:
                     raise ValueError("Missing Opsgenie apiKey")
-                logging.debug(f"Routing: sending Opsgenie (team={a.team})")
+                logging.warning(f"Routing: sending Opsgenie (team={a.team})")
                 send_opsgenie_fn(api_key=a.apiKey, **payload["opsgenie"])
                 any_success = True
 

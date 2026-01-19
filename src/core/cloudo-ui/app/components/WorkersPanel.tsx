@@ -15,6 +15,7 @@ import {
   HiOutlineExclamation,
   HiOutlineCheckCircle,
   HiOutlineExclamationCircle,
+  HiOutlineX,
 } from "react-icons/hi";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -65,6 +66,10 @@ export function WorkersPanel() {
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 4000);
+  };
+
+  const removeNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   const fetchWorkers = async () => {
@@ -211,27 +216,51 @@ export function WorkersPanel() {
 
   return (
     <div className="flex flex-col h-full bg-cloudo-dark text-cloudo-text font-mono relative">
-      {/* Notification Toast Container */}
-      <div className="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none">
-        {notifications.map((notif) => (
+      {/* Notifications */}
+      <div className="fixed top-8 right-8 z-[100] flex flex-col gap-3 pointer-events-none">
+        {notifications.map((n) => (
           <div
-            key={notif.id}
-            className={`pointer-events-auto min-w-[320px] p-4 border shadow-2xl animate-in slide-in-from-right-5 duration-300 ${
-              notif.type === "success"
+            key={n.id}
+            className={`px-6 py-4 flex items-center gap-4 animate-in slide-in-from-right-full duration-300 border shadow-2xl pointer-events-auto min-w-[300px] relative overflow-hidden ${
+              n.type === "success"
                 ? "bg-cloudo-panel border-cloudo-ok/30 text-cloudo-ok"
                 : "bg-cloudo-panel border-cloudo-err/30 text-cloudo-err"
             }`}
           >
-            <div className="flex items-center gap-3">
-              {notif.type === "success" ? (
-                <HiOutlineCheckCircle className="w-5 h-5 flex-shrink-0" />
+            {/* Background Accent */}
+            <div
+              className={`absolute top-0 left-0 w-1 h-full ${
+                n.type === "success" ? "bg-cloudo-ok" : "bg-cloudo-err"
+              }`}
+            />
+
+            <div
+              className={`p-2 ${
+                n.type === "success" ? "bg-cloudo-ok/10" : "bg-cloudo-err/10"
+              } shrink-0`}
+            >
+              {n.type === "success" ? (
+                <HiOutlineCheckCircle className="w-5 h-5" />
               ) : (
-                <HiOutlineExclamationCircle className="w-5 h-5 flex-shrink-0" />
+                <HiOutlineExclamationCircle className="w-5 h-5" />
               )}
-              <p className="text-[10px] font-black uppercase tracking-widest">
-                {notif.message}
-              </p>
             </div>
+
+            <div className="flex flex-col gap-1 flex-1">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+                {n.type === "success" ? "System Success" : "Engine Error"}
+              </span>
+              <span className="text-[11px] font-bold text-cloudo-text/90 uppercase tracking-widest leading-tight">
+                {n.message}
+              </span>
+            </div>
+
+            <button
+              onClick={() => removeNotification(n.id)}
+              className="p-1 hover:bg-white/5 transition-colors opacity-40 hover:opacity-100"
+            >
+              <HiOutlineX className="w-3.5 h-3.5" />
+            </button>
           </div>
         ))}
       </div>
