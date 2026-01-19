@@ -22,6 +22,7 @@ import {
   HiOutlineMoon,
   HiOutlineUser,
 } from "react-icons/hi";
+import { MdOutlineRouter } from "react-icons/md";
 
 interface NavItem {
   name: string;
@@ -50,6 +51,12 @@ const navigation: NavItem[] = [
     name: "Audit Logs",
     href: "/audit",
     icon: <HiOutlineClipboardList />,
+    adminOnly: true,
+  },
+  {
+    name: "Smart Routing",
+    href: "/smart-routing",
+    icon: <MdOutlineRouter />,
     adminOnly: true,
   },
   {

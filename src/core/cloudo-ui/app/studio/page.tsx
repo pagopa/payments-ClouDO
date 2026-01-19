@@ -13,10 +13,12 @@ import {
   HiOutlineVariable,
   HiOutlineCube,
   HiOutlinePlay,
+  HiOutlineX,
   HiOutlineDatabase,
   HiOutlineClipboardList,
   HiOutlineInformationCircle,
   HiOutlineExclamationCircle,
+  HiOutlineCheckCircle,
 } from "react-icons/hi";
 
 const TEMPLATES = [
@@ -131,7 +133,7 @@ export default function StudioPage() {
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0]);
   const [copied, setCopied] = useState(false);
   const [notifications, setNotifications] = useState<
-    { id: number; type: string; message: string }[]
+    { id: string; type: "success" | "error"; message: string }[]
   >([]);
 
   // Payload Simulator State
@@ -313,15 +315,16 @@ export default function StudioPage() {
     } catch {}
   }, [payloadInput, parsedEnv]);
 
-  const addNotification = (
-    type: "success" | "error" | "info",
-    message: string,
-  ) => {
-    const id = Date.now();
+  const addNotification = (type: "success" | "error", message: string) => {
+    const id = Date.now().toString();
     setNotifications((prev) => [...prev, { id, type, message }]);
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
-    }, 5000);
+    }, 4000);
+  };
+
+  const removeNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   const handleCopy = () => {
@@ -343,7 +346,7 @@ export default function StudioPage() {
       selectedTemplate.lang === "python" ? "runbook.py" : "runbook.sh";
     document.body.appendChild(element);
     element.click();
-    addNotification("info", "Runbook file exported");
+    addNotification("success", "Runbook file exported");
   };
 
   return (
@@ -670,29 +673,51 @@ export default function StudioPage() {
         </div>
       </div>
 
-      {/* Notifications Overlay */}
-      <div className="fixed bottom-8 right-8 z-50 flex flex-col gap-3 pointer-events-none">
+      {/* Notifications */}
+      <div className="fixed top-8 right-8 z-[100] flex flex-col gap-3 pointer-events-none">
         {notifications.map((n) => (
           <div
             key={n.id}
-            className={`flex items-center gap-3 px-6 py-4 border animate-in slide-in-from-right-full duration-300 pointer-events-auto ${
+            className={`px-6 py-4 flex items-center gap-4 animate-in slide-in-from-right-full duration-300 border shadow-2xl pointer-events-auto min-w-[300px] relative overflow-hidden ${
               n.type === "success"
-                ? "bg-green-500/10 border-green-500 text-green-500"
-                : n.type === "error"
-                  ? "bg-cloudo-err/10 border-cloudo-err text-cloudo-err"
-                  : "bg-cloudo-accent/10 border-cloudo-accent text-cloudo-accent"
+                ? "bg-cloudo-panel border-cloudo-ok/30 text-cloudo-ok"
+                : "bg-cloudo-panel border-cloudo-err/30 text-cloudo-err"
             }`}
           >
-            {n.type === "success" && <HiOutlineCheck className="w-5 h-5" />}
-            {n.type === "error" && (
-              <HiOutlineExclamationCircle className="w-5 h-5" />
-            )}
-            {n.type === "info" && (
-              <HiOutlineInformationCircle className="w-5 h-5" />
-            )}
-            <span className="text-xs font-black uppercase tracking-[0.2em]">
-              {n.message}
-            </span>
+            {/* Background Accent */}
+            <div
+              className={`absolute top-0 left-0 w-1 h-full ${
+                n.type === "success" ? "bg-cloudo-ok" : "bg-cloudo-err"
+              }`}
+            />
+
+            <div
+              className={`p-2 ${
+                n.type === "success" ? "bg-cloudo-ok/10" : "bg-cloudo-err/10"
+              } shrink-0`}
+            >
+              {n.type === "success" ? (
+                <HiOutlineCheckCircle className="w-5 h-5" />
+              ) : (
+                <HiOutlineExclamationCircle className="w-5 h-5" />
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1 flex-1">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+                {n.type === "success" ? "System Success" : "Engine Error"}
+              </span>
+              <span className="text-[11px] font-bold text-cloudo-text/90 uppercase tracking-widest leading-tight">
+                {n.message}
+              </span>
+            </div>
+
+            <button
+              onClick={() => removeNotification(n.id)}
+              className="p-1 hover:bg-white/5 transition-colors opacity-40 hover:opacity-100"
+            >
+              <HiOutlineX className="w-3.5 h-3.5" />
+            </button>
           </div>
         ))}
       </div>
