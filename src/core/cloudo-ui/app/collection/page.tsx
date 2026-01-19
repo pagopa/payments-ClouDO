@@ -15,7 +15,6 @@ import {
   HiOutlineFolderOpen,
 } from "react-icons/hi";
 import { HiOutlineCollection } from "react-icons/hi";
-import { SiGithub } from "react-icons/si";
 
 interface Notification {
   id: string;

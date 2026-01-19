@@ -197,17 +197,17 @@ export default function SmartRoutingPage() {
 
       // Clean up empty fields in rules to avoid backend matching issues
       if (configToSave.rules && Array.isArray(configToSave.rules)) {
-        configToSave.rules.forEach((rule: any) => {
+        configToSave.rules.forEach((rule: Rule) => {
           if (rule.when) {
             Object.keys(rule.when).forEach((key) => {
-              let val = rule.when[key];
+              const val = rule.when[key as keyof typeof rule.when];
 
               // Special handling for arrays: filter out empty strings (e.g., from trailing commas in UI)
               if (Array.isArray(val)) {
-                val = val
-                  .map((s: any) => (typeof s === "string" ? s.trim() : s))
-                  .filter((s) => s !== "");
-                rule.when[key] = val;
+                const cleanedVal = val
+                  .map((s: unknown) => (typeof s === "string" ? s.trim() : s))
+                  .filter((s) => s !== "") as string[];
+                (rule.when as Record<string, unknown>)[key] = cleanedVal;
               }
 
               if (
@@ -216,7 +216,7 @@ export default function SmartRoutingPage() {
                 val === undefined ||
                 (Array.isArray(val) && val.length === 0)
               ) {
-                delete rule.when[key];
+                delete (rule.when as Record<string, unknown>)[key];
               }
             });
           }
@@ -259,7 +259,7 @@ export default function SmartRoutingPage() {
       } else {
         addNotification("error", "Failed to save configuration");
       }
-    } catch (err) {
+    } catch {
       addNotification("error", "Error saving configuration");
     } finally {
       setSaving(false);
@@ -279,7 +279,7 @@ export default function SmartRoutingPage() {
     ruleIndex: number,
     actionIndex: number,
     field: string,
-    value: any,
+    value: unknown,
   ) => {
     setConfig((prev) => {
       const newRules = [...prev.rules];
@@ -374,7 +374,7 @@ export default function SmartRoutingPage() {
     );
   };
 
-  const updateRuleWhen = (ruleIndex: number, field: string, value: any) => {
+  const updateRuleWhen = (ruleIndex: number, field: string, value: unknown) => {
     setConfig((prev) => {
       const newRules = [...prev.rules];
       newRules[ruleIndex] = {
@@ -412,27 +412,6 @@ export default function SmartRoutingPage() {
       "success",
       `Team "${teamName}" removed locally (COMMIT to save)`,
     );
-  };
-
-  const updateTeamConfig = (
-    teamName: string,
-    type: "slack" | "opsgenie",
-    field: string,
-    value: string,
-  ) => {
-    setConfig((prev) => ({
-      ...prev,
-      teams: {
-        ...prev.teams,
-        [teamName]: {
-          ...prev.teams[teamName],
-          [type]: {
-            ...(prev.teams[teamName][type] || {}),
-            [field]: value,
-          },
-        },
-      },
-    }));
   };
 
   if (loading) {
@@ -1136,7 +1115,7 @@ export default function SmartRoutingPage() {
                 Permanently delete team definition:
                 <br />
                 <span className="text-cloudo-err mt-2 block font-mono">
-                  {teamToDelete}
+                  &quot;{teamToDelete}&quot;
                 </span>
               </p>
             </div>
@@ -1182,7 +1161,7 @@ function RuleModal({
         },
   );
 
-  const updateRuleWhen = (field: string, value: any) => {
+  const updateRuleWhen = (field: string, value: unknown) => {
     setRule((prev) => ({
       ...prev,
       when: { ...prev.when, [field]: value },
@@ -1196,7 +1175,7 @@ function RuleModal({
     }));
   };
 
-  const updateAction = (actionIndex: number, field: string, value: any) => {
+  const updateAction = (actionIndex: number, field: string, value: unknown) => {
     setRule((prev) => {
       const newThen = [...prev.then];
       newThen[actionIndex] = { ...newThen[actionIndex], [field]: value };
@@ -1366,7 +1345,7 @@ function RuleModal({
               </div>
               <div className="space-y-2">
                 <label className="text-[9px] font-black text-cloudo-muted uppercase tracking-widest">
-                  Catch-all (Any: "*")
+                  Catch-all (Any: &quot;*&quot;)
                 </label>
                 <input
                   type="text"

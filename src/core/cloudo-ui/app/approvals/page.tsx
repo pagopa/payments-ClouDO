@@ -13,7 +13,6 @@ import {
   HiOutlineFingerPrint,
   HiOutlineSearch,
   HiOutlineServer,
-  HiOutlineInformationCircle,
   HiOutlineExclamationCircle,
   HiOutlineCheckCircle,
 } from "react-icons/hi";

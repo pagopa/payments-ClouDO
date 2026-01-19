@@ -22,7 +22,7 @@ import {
   HiOutlineMoon,
   HiOutlineUser,
 } from "react-icons/hi";
-import { MdOutlineSpaceDashboard, MdOutlineRouter } from "react-icons/md";
+import { MdOutlineRouter } from "react-icons/md";
 
 interface NavItem {
   name: string;
