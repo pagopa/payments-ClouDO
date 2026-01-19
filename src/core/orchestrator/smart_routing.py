@@ -164,10 +164,8 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
       - wildcard: any="*"
       - status filters: finalOnly (default True), statusIn (list of allowed statuses)
     """
-    exec_id = ctx.get("execId", "unknown")
     # Wildcard catch-all: only if any is Exactly "*"
     if when.get("any") == "*":
-        logging.warning(f"[{exec_id}] Match: global '*' wildcard detected")
         return True
 
     # Status filtering (centralized)
@@ -176,69 +174,39 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
     final_only = when.get("finalOnly", True)
     final_statuses = {"succeeded", "error", "failed", "timeout", "routed"}
     if final_only and status not in final_statuses:
-        logging.warning(
-            f"[{exec_id}] No Match: status '{status}' not in final_statuses and finalOnly=True"
-        )
         return False
     if "statusIn" in when:
         allowed = {str(x).strip().lower() for x in (when.get("statusIn") or [])}
         if allowed and status not in allowed:
-            logging.warning(
-                f"[{exec_id}] No Match: status '{status}' not in allowed statusIn {allowed}"
-            )
             return False
 
     # Equality
     if "resourceId" in when:
         if not _eq(ctx.get("resourceId"), when["resourceId"]):
-            logging.warning(
-                f"[{exec_id}] No Match: resourceId '{ctx.get('resourceId')}' != '{when['resourceId']}'"
-            )
             return False
     if "resourceGroup" in when:
         if not _eq(ctx.get("resourceGroup"), when["resourceGroup"]):
-            logging.warning(
-                f"[{exec_id}] No Match: resourceGroup '{ctx.get('resourceGroup')}' != '{when['resourceGroup']}'"
-            )
             return False
     if "resourceName" in when:
         if not _eq(ctx.get("resourceName"), when["resourceName"]):
-            logging.warning(
-                f"[{exec_id}] No Match: resourceName '{ctx.get('resourceName')}' != '{when['resourceName']}'"
-            )
             return False
     if "subscriptionId" in when:
         sub = _subscription_from_resource_id(ctx.get("resourceId"))
         if not _eq(sub, when["subscriptionId"]):
-            logging.warning(
-                f"[{exec_id}] No Match: subscriptionId '{sub}' != '{when['subscriptionId']}'"
-            )
             return False
     if "namespace" in when:
         if not _eq(ctx.get("namespace"), when["namespace"]):
-            logging.warning(
-                f"[{exec_id}] No Match: namespace '{ctx.get('namespace')}' != '{when['namespace']}'"
-            )
             return False
     if "alertRule" in when:
         if not _eq(ctx.get("alertRule"), when["alertRule"]):
-            logging.warning(
-                f"[{exec_id}] No Match: alertRule '{ctx.get('alertRule')}' != '{when['alertRule']}'"
-            )
             return False
     if "oncall" in when:
         if not _eq(str(ctx.get("oncall") or ""), str(when["oncall"])):
-            logging.warning(
-                f"[{exec_id}] No Match: oncall '{ctx.get('oncall')}' != '{when['oncall']}'"
-            )
             return False
 
     # Prefix
     if "resourceGroupPrefix" in when:
         if not _starts(ctx.get("resourceGroup"), when["resourceGroupPrefix"]):
-            logging.warning(
-                f"[{exec_id}] No Match: resourceGroup '{ctx.get('resourceGroup')}' does not start with '{when['resourceGroupPrefix']}'"
-            )
             return False
 
     # Severity range
@@ -254,27 +222,17 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
 
         is_alert = sev is not None
         if should_be_alert != is_alert:
-            logging.warning(
-                f"[{exec_id}] No Match: isAlert expected {should_be_alert}, got {is_alert} (sev={sev})"
-            )
             return False
 
     if "severityMin" in when:
         minv = _sev_to_num(when["severityMin"])
         if minv is not None and (sev is None or sev < minv):
-            logging.warning(
-                f"[{exec_id}] No Match: severity {sev} < severityMin {minv}"
-            )
             return False
     if "severityMax" in when:
         maxv = _sev_to_num(when["severityMax"])
         if maxv is not None and (sev is None or sev > maxv):
-            logging.warning(
-                f"[{exec_id}] No Match: severity {sev} > severityMax {maxv}"
-            )
             return False
 
-    logging.warning(f"[{exec_id}] Full Match for conditions: {when}")
     return True
 
 
@@ -404,7 +362,6 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
     for idx, rule in enumerate(rules):
         when = rule.get("when", {})
-        logging.warning(f"[{exec_id}] Evaluating rule #{idx}: when={when}")
         if not _match_when(when, ctx):
             continue
 
@@ -555,16 +512,12 @@ def execute_actions(
                     raise ValueError("Missing Slack token")
                 if not a.channel:
                     raise ValueError("Missing Slack channel")
-                logging.warning(
-                    f"Routing: sending Slack (team={a.team}, channel={a.channel})"
-                )
                 send_slack_fn(token=a.token, channel=a.channel, **payload["slack"])
                 any_success = True
 
             elif a.type == "opsgenie":
                 if not a.apiKey:
                     raise ValueError("Missing Opsgenie apiKey")
-                logging.warning(f"Routing: sending Opsgenie (team={a.team})")
                 send_opsgenie_fn(api_key=a.apiKey, **payload["opsgenie"])
                 any_success = True
 
@@ -577,9 +530,6 @@ def execute_actions(
         try:
             api_key = resolve_opsgenie_apikey(None)
             if api_key:
-                logging.warning(
-                    "All actions failed, attempting final Opsgenie fallback"
-                )
                 try:
                     ok = send_opsgenie_fn(api_key=api_key, **payload["opsgenie"])
                     if not ok:
