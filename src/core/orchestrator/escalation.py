@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 from opsgenie_sdk import (
     AlertApi,
@@ -38,8 +39,27 @@ def send_opsgenie_alert(
         logging.warning("Opsgenie: missing or empty apiKey, skipping alert send.")
         return False
 
+    # Defensive trim and sanitization
+    api_key = str(api_key).strip().strip('"').strip("'")
+
+    # Validation and logging (safe)
+    if len(api_key) < 10:
+        logging.error(f"Opsgenie: apiKey is suspiciously short ({len(api_key)} chars)")
+    else:
+        logging.info(
+            f"Opsgenie: sending alert with apiKey len={len(api_key)}, prefix={api_key[:4]}... suffix=...{api_key[-4:]}"
+        )
+
     try:
         conf = Configuration()
+        # Handle EU region if the key prefix suggests it or via environment
+        if (
+            api_key.startswith("eu_")
+            or os.environ.get("OPSGENIE_REGION", "").upper() == "EU"
+        ):
+            conf.host = "https://api.eu.opsgenie.com"
+            logging.info("Opsgenie: using EU region endpoint")
+
         conf.api_key["Authorization"] = api_key
         client = ApiClient(configuration=conf)
         alert_api = AlertApi(api_client=client)
