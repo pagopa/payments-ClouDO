@@ -158,12 +158,14 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
     """
     Return True if context satisfies the rule's 'when' conditions.
     All conditions are AND-ed. Supports:
-      - equality: resourceId, resourceGroup, subscriptionId, namespace, alertRule, oncall
+      - equality: resourceId, resourceGroup, subscriptionId, namespace, schemaName, oncall
       - prefix: resourceGroupPrefix
       - severity ranges: severityMin, severityMax (SevN semantics)
       - wildcard: any="*"
       - status filters: finalOnly (default True), statusIn (list of allowed statuses)
     """
+    exec_id = ctx.get("execId", "unknown")
+
     # Wildcard catch-all: only if any is Exactly "*"
     if when.get("any") == "*":
         return True
@@ -174,39 +176,72 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
     final_only = when.get("finalOnly", True)
     final_statuses = {"succeeded", "error", "failed", "timeout", "routed"}
     if final_only and status not in final_statuses:
+        logging.debug(
+            f"[{exec_id}] Routing mismatch: status '{status}' not in final_statuses and finalOnly=True"
+        )
         return False
     if "statusIn" in when:
         allowed = {str(x).strip().lower() for x in (when.get("statusIn") or [])}
         if allowed and status not in allowed:
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: status '{status}' not in statusIn {allowed}"
+            )
             return False
 
     # Equality
     if "resourceId" in when:
         if not _eq(ctx.get("resourceId"), when["resourceId"]):
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: resourceId '{ctx.get('resourceId')}' != '{when['resourceId']}'"
+            )
             return False
     if "resourceGroup" in when:
         if not _eq(ctx.get("resourceGroup"), when["resourceGroup"]):
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: resourceGroup '{ctx.get('resourceGroup')}' != '{when['resourceGroup']}'"
+            )
             return False
     if "resourceName" in when:
         if not _eq(ctx.get("resourceName"), when["resourceName"]):
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: resourceName '{ctx.get('resourceName')}' != '{when['resourceName']}'"
+            )
             return False
     if "subscriptionId" in when:
         sub = _subscription_from_resource_id(ctx.get("resourceId"))
         if not _eq(sub, when["subscriptionId"]):
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: subscriptionId '{sub}' != '{when['subscriptionId']}'"
+            )
             return False
     if "namespace" in when:
         if not _eq(ctx.get("namespace"), when["namespace"]):
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: namespace '{ctx.get('namespace')}' != '{when['namespace']}'"
+            )
             return False
-    if "alertRule" in when:
-        if not _eq(ctx.get("alertRule"), when["alertRule"]):
+    if "schemaName" in when:
+        logging.debug(
+            f"[{exec_id}] Routing check: schemaName '{ctx.get('schemaName')}' != '{when['schemaName']}'"
+        )
+        if not _eq(ctx.get("schemaName"), when["schemaName"]):
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: schemaName '{ctx.get('schemaName')}' != '{when['schemaName']}'"
+            )
             return False
     if "oncall" in when:
         if not _eq(str(ctx.get("oncall") or ""), str(when["oncall"])):
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: oncall '{ctx.get('oncall')}' != '{when['oncall']}'"
+            )
             return False
 
     # Prefix
     if "resourceGroupPrefix" in when:
         if not _starts(ctx.get("resourceGroup"), when["resourceGroupPrefix"]):
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: resourceGroup '{ctx.get('resourceGroup')}' does not start with '{when['resourceGroupPrefix']}'"
+            )
             return False
 
     # Severity range
@@ -220,17 +255,29 @@ def _match_when(when: dict[str, Any], ctx: dict[str, Any]) -> bool:
         else:
             should_be_alert = bool(raw_val)
 
-        is_alert = sev is not None
+        # An event is considered an alert if it has a valid severity
+        # OR if it's in a failure status (error/failed/timeout)
+        is_alert = (sev is not None) or (status in {"failed", "error", "timeout"})
+
         if should_be_alert != is_alert:
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: isAlert requirement {should_be_alert} != actual {is_alert} (sev={sev}, status={status})"
+            )
             return False
 
     if "severityMin" in when:
         minv = _sev_to_num(when["severityMin"])
         if minv is not None and (sev is None or sev < minv):
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: severity {sev} < severityMin {minv}"
+            )
             return False
     if "severityMax" in when:
         maxv = _sev_to_num(when["severityMax"])
         if maxv is not None and (sev is None or sev > maxv):
+            logging.debug(
+                f"[{exec_id}] Routing mismatch: severity {sev} > severityMax {maxv}"
+            )
             return False
 
     return True
@@ -245,7 +292,7 @@ def _get_setting(key: str) -> Optional[str]:
     """
     Helper to get a setting from Azure Table Storage or Environment.
     """
-    # 1. Try Table Storage
+    # Try Table Storage
     try:
         from azure.data.tables import TableClient
 
@@ -259,12 +306,15 @@ def _get_setting(key: str) -> Optional[str]:
                 )
                 val = entity.get("value")
                 if val:
-                    return str(val).strip()
+                    return str(val).strip().strip('"').strip("'")
     except Exception:
         pass
 
-    # 2. Try Environment
-    return os.environ.get(key)
+    # Try Environment
+    val = os.environ.get(key)
+    if val:
+        return str(val).strip().strip('"').strip("'")
+    return None
 
 
 def resolve_opsgenie_apikey(team: Optional[str]) -> Optional[str]:
@@ -311,7 +361,7 @@ def normalize_context(raw_ctx: dict[str, Any]) -> dict[str, Any]:
         "resourceId": raw_ctx.get("resourceId"),
         "resourceGroup": raw_ctx.get("resourceGroup"),
         "resourceName": raw_ctx.get("resourceName"),
-        "alertRule": raw_ctx.get("alertRule"),
+        "schemaName": raw_ctx.get("schemaName"),
         "severity": raw_ctx.get("severity"),
         "namespace": raw_ctx.get("namespace"),
         "oncall": str(raw_ctx.get("oncall") or "").strip().lower(),
@@ -405,6 +455,9 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
                     or resolve_opsgenie_apikey(og_team)
                     or ri_opsgenie_token
                 )
+                if api_key:
+                    api_key = str(api_key).strip().strip('"').strip("'")
+
                 resolved_actions.append(
                     Action(type="opsgenie", team=og_team, apiKey=api_key)
                 )
@@ -444,6 +497,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
                     og_extra_team
                 )
                 if extra_api_key:
+                    extra_api_key = str(extra_api_key).strip().strip('"').strip("'")
                     resolved_actions.append(
                         Action(
                             type="opsgenie", team=og_extra_team, apiKey=extra_api_key
@@ -525,11 +579,16 @@ def execute_actions(
             logging.error(f"Routing action failed (type={a.type}, team={a.team}): {e}")
             continue
 
-    if not any_success:
-        # Final safety net
+    if not any_success and decision.reason != "no_action_non_final":
+        # Final safety net for critical failures or failed matched actions
         try:
+            # Fallback only if we really should have notified but couldn't
+            # or if it's a final error that matched nothing.
             api_key = resolve_opsgenie_apikey(None)
             if api_key:
+                logging.info(
+                    f"Attempting final Opsgenie fallback (reason={decision.reason})"
+                )
                 try:
                     ok = send_opsgenie_fn(api_key=api_key, **payload["opsgenie"])
                     if not ok:
@@ -540,7 +599,7 @@ def execute_actions(
                     )
             else:
                 logging.error("Final fallback skipped: OPSGENIE_API_KEY not set")
-            # Do not raise: report and continue gracefully
+
             status_msg = (
                 "Escalation finished with errors; Opsgenie fallback attempted"
                 if api_key
@@ -548,7 +607,6 @@ def execute_actions(
             )
             logging.warning(status_msg)
         except Exception as e:
-            # Swallow any unexpected errors here and log them instead of raising
             logging.error(f"Final Opsgenie fallback handling encountered an error: {e}")
             logging.warning(
                 "Escalation finished with errors; fallback handling error was logged"

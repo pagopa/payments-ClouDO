@@ -17,6 +17,7 @@ import {
   HiOutlineTerminal,
   HiOutlineCheckCircle,
   HiOutlineExclamationCircle,
+  HiCheck,
 } from "react-icons/hi";
 import { MdOutlineRouter } from "react-icons/md";
 
@@ -28,7 +29,7 @@ interface Rule {
     severityMax?: string;
     resourceGroup?: string;
     namespace?: string;
-    alertRule?: string;
+    schemaName?: string;
     subscriptionId?: string;
     any?: string;
   };
@@ -60,6 +61,99 @@ interface RoutingConfig {
   teams: Record<string, TeamConfig>;
   rules: Rule[];
 }
+
+const POSSIBLE_STATUSES = [
+  "succeeded",
+  "failed",
+  "error",
+  "timeout",
+  "routed",
+  "scheduled",
+  "skipped",
+  "running",
+];
+
+const StatusSelector = ({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (val: string[]) => void;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-cloudo-dark border border-cloudo-border px-3 py-1.5 text-xs outline-none flex items-center justify-between min-h-[32px]"
+      >
+        <div className="flex flex-wrap gap-1">
+          {selected.length > 0 ? (
+            selected.map((s) => (
+              <span
+                key={s}
+                className="px-1.5 py-0.5 bg-cloudo-accent/20 text-cloudo-accent text-[9px] font-bold uppercase"
+              >
+                {s}
+              </span>
+            ))
+          ) : (
+            <span className="text-cloudo-muted italic">Select statuses...</span>
+          )}
+        </div>
+        <HiOutlineChevronDown
+          className={`w-3 h-3 text-cloudo-muted transition-transform ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-[60]"
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute top-full left-0 right-0 mt-1 bg-cloudo-panel border border-cloudo-border shadow-xl z-[70] max-h-48 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-200">
+            {POSSIBLE_STATUSES.map((status) => (
+              <label
+                key={status}
+                className="flex items-center gap-3 px-3 py-2 hover:bg-white/5 cursor-pointer group"
+              >
+                <div className="relative flex items-center justify-center shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(status)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        onChange([...selected, status]);
+                      } else {
+                        onChange(selected.filter((s) => s !== status));
+                      }
+                    }}
+                    className="peer appearance-none w-4 h-4 border border-cloudo-border bg-cloudo-panel checked:bg-cloudo-accent checked:border-cloudo-accent transition-all cursor-pointer"
+                  />
+                  <HiCheck className="w-3 h-3 text-cloudo-dark absolute opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" />
+                </div>
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                    selected.includes(status)
+                      ? "text-cloudo-accent"
+                      : "text-cloudo-muted group-hover:text-cloudo-text"
+                  }`}
+                >
+                  {status}
+                </span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 export default function SmartRoutingPage() {
   const router = useRouter();
@@ -813,24 +907,15 @@ export default function SmartRoutingPage() {
                           Condition (WHEN)
                         </p>
                         <div className="grid grid-cols-3 gap-6">
-                          <div className="space-y-2">
+                          <div className="space-y-2 col-span-1">
                             <label className="text-[9px] font-black text-cloudo-muted uppercase tracking-widest">
                               Status In
                             </label>
-                            <input
-                              type="text"
-                              placeholder="failed, error"
-                              value={rule.when.statusIn?.join(", ") || ""}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                // Permetti di digitare liberamente, separiamo solo per lo stato interno
-                                // Se finisce con virgola o spazio, non filtriamo ancora i vuoti per permettere il completamento
-                                const list = val
-                                  .split(",")
-                                  .map((s) => s.trim());
-                                updateRuleWhen(rIdx, "statusIn", list);
-                              }}
-                              className="w-full bg-cloudo-dark border border-cloudo-border px-3 py-1.5 text-xs outline-none"
+                            <StatusSelector
+                              selected={rule.when.statusIn || []}
+                              onChange={(list) =>
+                                updateRuleWhen(rIdx, "statusIn", list)
+                              }
                             />
                           </div>
                           <div className="space-y-2">
@@ -906,16 +991,16 @@ export default function SmartRoutingPage() {
                           </div>
                           <div className="space-y-2">
                             <label className="text-[9px] font-black text-cloudo-muted uppercase tracking-widest">
-                              Alert Rule
+                              Schema Name
                             </label>
                             <input
                               type="text"
-                              placeholder="Costi-OverBudget"
-                              value={rule.when.alertRule || ""}
+                              placeholder="Example schema name"
+                              value={rule.when.schemaName || ""}
                               onChange={(e) =>
                                 updateRuleWhen(
                                   rIdx,
-                                  "alertRule",
+                                  "schemaName",
                                   e.target.value,
                                 )
                               }
@@ -1223,20 +1308,13 @@ function RuleModal({
               <HiOutlineShieldCheck className="w-4 h-4" /> Rule Condition (WHEN)
             </p>
             <div className="grid grid-cols-3 gap-6">
-              <div className="space-y-2">
+              <div className="space-y-2 col-span-1">
                 <label className="text-[9px] font-black text-cloudo-muted uppercase tracking-widest">
                   Status In
                 </label>
-                <input
-                  type="text"
-                  placeholder="failed, error"
-                  value={rule.when.statusIn?.join(", ") || ""}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const list = val.split(",").map((s) => s.trim());
-                    updateRuleWhen("statusIn", list);
-                  }}
-                  className="w-full bg-cloudo-dark border border-cloudo-border px-4 py-2 text-xs outline-none focus:border-cloudo-accent transition-colors"
+                <StatusSelector
+                  selected={rule.when.statusIn || []}
+                  onChange={(list) => updateRuleWhen("statusIn", list)}
                 />
               </div>
               <div className="space-y-2">
@@ -1310,8 +1388,8 @@ function RuleModal({
                 <input
                   type="text"
                   placeholder="Costi-OverBudget"
-                  value={rule.when.alertRule || ""}
-                  onChange={(e) => updateRuleWhen("alertRule", e.target.value)}
+                  value={rule.when.schemaName || ""}
+                  onChange={(e) => updateRuleWhen("schemaName", e.target.value)}
                   className="w-full bg-cloudo-dark border border-cloudo-border px-4 py-2 text-xs outline-none focus:border-cloudo-accent"
                 />
               </div>

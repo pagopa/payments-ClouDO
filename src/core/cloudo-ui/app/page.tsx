@@ -92,9 +92,9 @@ export default function DashboardPage() {
         running: 3,
         rejected: 3,
         stopped: 3,
-        accepted: 2,
+        skipped: 2,
+        accepted: 1,
         pending: 1,
-        skipped: 1,
         routed: 1,
       };
 

@@ -12,7 +12,7 @@ locals {
         r.when.resourceName != null ? { resourceName = r.when.resourceName } : {},
         r.when.subscriptionId != null ? { subscriptionId = r.when.subscriptionId } : {},
         r.when.namespace != null ? { namespace = r.when.namespace } : {},
-        r.when.alertRule != null ? { alertRule = r.when.alertRule } : {},
+        r.when.schemaName != null ? { schemaName = r.when.schemaName } : {},
         r.when.oncall != null ? { oncall = r.when.oncall } : {},
         r.when.resourceGroupPrefix != null ? { resourceGroupPrefix = r.when.resourceGroupPrefix } : {},
         r.when.isAlert != null ? { isAlert = r.when.isAlert } : {},
