@@ -11,6 +11,11 @@ import {
   HiOutlineExclamationCircle,
   HiOutlineShieldCheck,
   HiOutlineX,
+  HiOutlineKey,
+  HiOutlineEye,
+  HiOutlineEyeOff,
+  HiOutlineClipboardCopy,
+  HiOutlineClipboardCheck,
 } from "react-icons/hi";
 
 interface Notification {
@@ -34,10 +39,15 @@ export default function ProfilePage() {
     email: "",
     password: "",
     confirmPassword: "",
+    api_token: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const [showToken, setShowToken] = useState(false);
+  const [showRotateModal, setShowRotateModal] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const addNotification = (type: "success" | "error", message: string) => {
     const id = Date.now().toString();
@@ -76,6 +86,7 @@ export default function ProfilePage() {
           ...prev,
           username: data.username,
           email: data.email,
+          api_token: data.api_token,
         }));
       }
     } catch (err) {
@@ -124,8 +135,109 @@ export default function ProfilePage() {
     }
   };
 
+  const handleGenerateToken = async () => {
+    if (profile.api_token) {
+      setShowRotateModal(true);
+      return;
+    }
+    await executeGenerateToken();
+  };
+
+  const executeGenerateToken = async () => {
+    setSaving(true);
+    setShowRotateModal(false);
+    try {
+      const res = await cloudoFetch(`/auth/profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generate_token: true,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setProfile((prev) => ({ ...prev, api_token: data.api_token }));
+        addNotification("success", "New API Token generated");
+      } else {
+        const data = await res.json();
+        addNotification("error", data.error || "Failed to generate token");
+      }
+    } catch {
+      addNotification("error", "Uplink failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyToClipboard = () => {
+    if (profile.api_token) {
+      navigator.clipboard.writeText(profile.api_token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-cloudo-dark text-cloudo-text font-mono selection:bg-cloudo-accent/30">
+      {/* Rotate Token Confirmation Modal */}
+      {showRotateModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-cloudo-dark/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-cloudo-panel border border-cloudo-border max-w-md w-full p-8 shadow-2xl relative overflow-hidden">
+            {/* Decorative corner */}
+            <div className="absolute top-0 right-0 w-12 h-12 overflow-hidden pointer-events-none">
+              <div className="absolute top-[-24px] right-[-24px] w-12 h-12 bg-cloudo-err rotate-45" />
+            </div>
+
+            <div className="flex flex-col gap-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-cloudo-err/10 border border-cloudo-err/20">
+                  <HiOutlineRefresh className="text-cloudo-err w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-cloudo-text uppercase tracking-widest">
+                    Rotate API Token
+                  </h3>
+                  <p className="text-[10px] text-cloudo-err font-bold uppercase tracking-widest">
+                    Security Warning // ACTION_REQUIRED
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-[11px] text-cloudo-text/80 leading-relaxed uppercase tracking-widest font-bold">
+                  You are about to generate a new API token. The current token
+                  will be{" "}
+                  <span className="text-cloudo-err">
+                    immediately invalidated
+                  </span>
+                  .
+                </p>
+                <p className="text-[10px] text-cloudo-muted leading-relaxed uppercase">
+                  Any external systems or scripts currently using the existing
+                  token will lose access until updated with the new credentials.
+                </p>
+              </div>
+
+              <div className="flex gap-4 pt-4 border-t border-cloudo-border/50">
+                <button
+                  onClick={() => setShowRotateModal(false)}
+                  className="flex-1 btn btn-ghost h-11 border border-cloudo-border text-[11px] font-black uppercase tracking-widest"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeGenerateToken}
+                  className="flex-1 btn bg-cloudo-err hover:bg-cloudo-err/80 text-white h-11 text-[11px] font-black uppercase tracking-widest"
+                >
+                  Confirm Rotation
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Notifications */}
       <div className="fixed top-8 right-8 z-[100] flex flex-col gap-3 pointer-events-none">
         {notifications.map((n) => (
@@ -295,6 +407,81 @@ export default function ProfilePage() {
                       })
                     }
                   />
+                </div>
+              </div>
+
+              <div className="pt-8 border-t border-cloudo-border">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-2 bg-cloudo-accent/10 border border-cloudo-accent/20">
+                    <HiOutlineKey className="text-cloudo-accent w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-cloudo-text uppercase tracking-widest">
+                      Personal API Token
+                    </h3>
+                    <p className="text-[10px] text-cloudo-muted font-bold uppercase tracking-widest">
+                      External Integration Endpoint
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type={showToken ? "text" : "password"}
+                        className="input h-11 w-full font-mono text-[11px] pr-20"
+                        value={profile.api_token || "NO_TOKEN_GENERATED"}
+                        readOnly
+                      />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={copyToClipboard}
+                          title="Copy to clipboard"
+                          className={`p-1.5 hover:bg-white/5 transition-colors ${
+                            copied
+                              ? "text-cloudo-ok"
+                              : "text-cloudo-muted hover:text-cloudo-accent"
+                          }`}
+                        >
+                          {copied ? (
+                            <HiOutlineClipboardCheck className="w-4 h-4" />
+                          ) : (
+                            <HiOutlineClipboardCopy className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowToken(!showToken)}
+                          title={showToken ? "Hide token" : "Show token"}
+                          className="p-1.5 hover:bg-white/5 text-cloudo-muted hover:text-cloudo-text transition-colors"
+                        >
+                          {showToken ? (
+                            <HiOutlineEyeOff className="w-4 h-4" />
+                          ) : (
+                            <HiOutlineEye className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleGenerateToken}
+                      className="btn btn-ghost h-11 px-4 flex items-center gap-2 border border-cloudo-border hover:border-cloudo-accent/50"
+                    >
+                      <HiOutlineRefresh
+                        className={`w-4 h-4 ${saving ? "animate-spin" : ""}`}
+                      />
+                      {profile.api_token ? "Rotate Token" : "Generate Token"}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1 leading-relaxed">
+                    Use this token in the{" "}
+                    <code className="text-cloudo-accent">x-cloudo-key</code>{" "}
+                    header to authenticate API requests from external systems{" "}
+                    <b>with your profile</b>.
+                  </p>
                 </div>
               </div>
 

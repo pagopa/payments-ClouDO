@@ -154,11 +154,37 @@ def _get_authenticated_user(
         if ok:
             return session, None
 
-    # 2. Fallback to x-cloudo-key
+    # 2. Check x-cloudo-key (Personal API Token or Global Secret)
     cloudo_key = req.headers.get("x-cloudo-key")
-    expected_cloudo_key = os.environ.get("CLOUDO_SECRET_KEY")
-    if cloudo_key and expected_cloudo_key and cloudo_key == expected_cloudo_key:
-        return {"user": "api", "username": "api", "role": "OPERATOR"}, None
+    if cloudo_key:
+        # Check global secret
+        expected_global_key = os.environ.get("CLOUDO_SECRET_KEY")
+        if expected_global_key and cloudo_key == expected_global_key:
+            return {"user": "api", "username": "api", "role": "OPERATOR"}, None
+
+        # Check personal API tokens
+        try:
+            from azure.data.tables import TableClient
+
+            conn_str = os.environ.get(STORAGE_CONN)
+            table_client = TableClient.from_connection_string(
+                conn_str, table_name=TABLE_USERS
+            )
+
+            # This is not efficient (O(N)), but Table Storage doesn't support secondary indexes easily.
+            # For a small number of users it's fine.
+            # Alternatively, we could use a separate table for token lookup.
+            users = table_client.query_entities(
+                query_filter=f"api_token eq '{cloudo_key}'"
+            )
+            for u in users:
+                return {
+                    "username": f"{u.get('RowKey')}-api",
+                    "role": u.get("role", "OPERATOR"),
+                    "email": u.get("email"),
+                }, None
+        except Exception as e:
+            logging.error(f"Error verifying personal API token: {e}")
 
     # 3. Fallback to x-functions-key (Azure Actions or direct calls)
     action_key = req.params.get("x-cloud-key")
@@ -899,14 +925,14 @@ def Trigger(
                 if resource_info == {}:
                     log_audit(
                         user=requester_username,
-                        action="RUNBOOK_SCHEDULE",
+                        action="RUNBOOK_EXECUTE",
                         target=exec_id,
                         details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
                     )
                 else:
                     log_audit(
                         user=requester_username,
-                        action="RUNBOOK_SCHEDULE",
+                        action="RUNBOOK_EXECUTE",
                         target=exec_id,
                         details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
                     )
@@ -2777,6 +2803,7 @@ def auth_profile(req: func.HttpRequest) -> func.HttpResponse:
                     "email": user_entity.get("email"),
                     "role": user_entity.get("role"),
                     "created_at": user_entity.get("created_at"),
+                    "api_token": user_entity.get("api_token"),
                 }
             ),
             status_code=200,
@@ -2789,6 +2816,7 @@ def auth_profile(req: func.HttpRequest) -> func.HttpResponse:
             body = req.get_json()
             new_email = body.get("email")
             new_password = body.get("password")
+            generate_token = body.get("generate_token")
 
             if new_email:
                 user_entity["email"] = new_email
@@ -2801,17 +2829,29 @@ def auth_profile(req: func.HttpRequest) -> func.HttpResponse:
                 ).decode("utf-8")
                 user_entity["password"] = hashed_password
 
+            if generate_token:
+                import secrets
+
+                user_entity["api_token"] = f"cloudo_{secrets.token_urlsafe(32)}"
+
             table_client.update_entity(entity=user_entity, mode=UpdateMode.REPLACE)
 
             log_audit(
                 user=username,
                 action="USER_PROFILE_UPDATE",
                 target=username,
-                details=f"Updated profile for {username}",
+                details=f"Updated profile for {username} (generate_token={generate_token})",
             )
 
             return func.HttpResponse(
-                json.dumps({"success": True}),
+                json.dumps(
+                    {
+                        "success": True,
+                        "api_token": user_entity.get("api_token")
+                        if generate_token
+                        else None,
+                    }
+                ),
                 status_code=200,
                 mimetype="application/json",
                 headers={"Access-Control-Allow-Origin": "*"},
@@ -3819,7 +3859,6 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
                         workers_table = TableClient.from_connection_string(
                             conn_str, table_name="WorkersRegistry"
                         )
-                        # Cerchiamo un worker attivo in questo pool per estrarne la coda
                         entities = list(
                             workers_table.query_entities(
                                 query_filter=f"PartitionKey eq '{worker_pool}'"
@@ -3910,7 +3949,7 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
 )
 def worker_cleanup(cleanupTimer: func.TimerRequest) -> None:
     """
-    Garbage Collector: Cleanup old workers where LastSeen is > 5 minutes.
+    Garbage Collector: Cleanup old workers where LastSeen is > 3 minutes.
     """
     import utils
     from azure.data.tables import TableClient
@@ -3922,7 +3961,7 @@ def worker_cleanup(cleanupTimer: func.TimerRequest) -> None:
 
     now_str = utils.utc_now_iso()
     now_dt = datetime.fromisoformat(now_str.replace("Z", "+00:00"))
-    limit_time = now_dt - timedelta(minutes=5)
+    limit_time = now_dt - timedelta(minutes=3)
     limit_iso = limit_time.isoformat()
     logging.info(f"[Cleanup] Cleaning up {limit_iso}")
 

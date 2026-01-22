@@ -98,8 +98,10 @@ export default function AuditPage() {
         activeFilter === "all" ||
         (activeFilter === "manual" &&
           log.operator !== "api" &&
+          !log.operator?.endsWith("-api") &&
           log.operator !== "azure-action") ||
-        (activeFilter === "api" && log.operator === "api") ||
+        (activeFilter === "api" &&
+          (log.operator === "api" || log.operator?.endsWith("-api"))) ||
         (activeFilter === "action" && log.operator === "azure-action");
 
       const isMutation =
@@ -146,8 +148,10 @@ export default function AuditPage() {
         activeFilter === "all" ||
         (activeFilter === "manual" &&
           log.operator !== "api" &&
+          !log.operator?.endsWith("-api") &&
           log.operator !== "azure-action") ||
-        (activeFilter === "api" && log.operator === "api") ||
+        (activeFilter === "api" &&
+          (log.operator === "api" || log.operator?.endsWith("-api"))) ||
         (activeFilter === "action" && log.operator === "azure-action");
 
       const logDate = log.timestamp?.split("T")[0];
