@@ -176,30 +176,17 @@ function GoogleLoginButton({
   });
 
   return (
-    <>
-      <div className="relative py-4">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-cloudo-border/30"></div>
-        </div>
-        <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-          <span className="bg-cloudo-panel px-4 text-cloudo-muted font-bold">
-            Or access via
-          </span>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => googleLogin()}
-        disabled={isLoading}
-        className={`w-full bg-white text-gray-900 hover:bg-gray-100 py-3 text-[11px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 ${
-          isLoading ? "opacity-50 cursor-not-allowed" : ""
-        }`}
-      >
-        <FaGoogle className="w-4 h-4" />
-        <span>Google SSO</span>
-      </button>
-    </>
+    <button
+      type="button"
+      onClick={() => googleLogin()}
+      disabled={isLoading}
+      className={`w-full bg-cloudo-accent/5 border border-cloudo-border hover:bg-cloudo-accent/10 hover:border-cloudo-accent/50 text-cloudo-text py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 ${
+        isLoading ? "opacity-50 cursor-not-allowed" : ""
+      }`}
+    >
+      <FaGoogle className="w-4 h-4 text-cloudo-accent" />
+      <span>Google SSO</span>
+    </button>
   );
 }
 
@@ -433,35 +420,57 @@ function LoginForm({ googleSsoEnabled }: { googleSsoEnabled: boolean }) {
               </motion.div>
             )}
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className={`w-full bg-transparent border border-cloudo-accent text-cloudo-accent hover:bg-cloudo-accent hover:text-cloudo-dark py-4 text-[11px] font-black uppercase tracking-[0.4em] transition-all relative overflow-hidden group ${
-                isLoading ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-            >
-              <span className="relative z-10">
-                {isLoading ? "Authenticating..." : "Establish Connection"}
-              </span>
-              <div className="absolute inset-0 bg-cloudo-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-              {isLoading && (
-                <motion.div
-                  initial={{ left: "-100%" }}
-                  animate={{ left: "100%" }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  className="absolute top-0 bottom-0 w-1/4 bg-cloudo-text/20 skew-x-12 z-20"
+            <div className="flex flex-col gap-3">
+              <button
+                type="submit"
+                disabled={isLoading}
+                className={`w-full bg-transparent border border-cloudo-accent text-cloudo-accent hover:bg-cloudo-accent hover:text-cloudo-dark py-4 text-[11px] font-black uppercase tracking-[0.4em] transition-all relative overflow-hidden group ${
+                  isLoading ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                <span className="relative z-10">
+                  {isLoading ? "Authenticating..." : "Establish Connection"}
+                </span>
+                <div className="absolute inset-0 bg-cloudo-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                {isLoading && (
+                  <motion.div
+                    initial={{ left: "-100%" }}
+                    animate={{ left: "100%" }}
+                    transition={{
+                      duration: 1,
+                      repeat: Infinity,
+                      ease: "linear",
+                    }}
+                    className="absolute top-0 bottom-0 w-1/4 bg-cloudo-text/20 skew-x-12 z-20"
+                  />
+                )}
+              </button>
+
+              {googleSsoEnabled && (
+                <div className="relative">
+                  <div
+                    className="absolute inset-0 flex items-center"
+                    aria-hidden="true"
+                  >
+                    <div className="w-full border-t border-cloudo-border/30"></div>
+                  </div>
+                  <div className="relative flex justify-center text-[8px] uppercase tracking-[0.3em] font-bold">
+                    <span className="bg-cloudo-panel px-2 text-cloudo-muted">
+                      Secure SSO
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {googleSsoEnabled && (
+                <GoogleLoginButton
+                  isLoading={isLoading}
+                  setIsLoading={setIsLoading}
+                  setError={setError}
+                  router={router}
                 />
               )}
-            </button>
-
-            {googleSsoEnabled && (
-              <GoogleLoginButton
-                isLoading={isLoading}
-                setIsLoading={setIsLoading}
-                setError={setError}
-                router={router}
-              />
-            )}
+            </div>
 
             <div className="flex justify-center mt-4">
               <Link

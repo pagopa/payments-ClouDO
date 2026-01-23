@@ -33,11 +33,23 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [isBackendDown, setIsBackendDown] = useState(false);
 
+  const [user, setUser] = useState<{ role: string } | null>(null);
+
   useEffect(() => {
+    const userData = localStorage.getItem("cloudo_user");
+    if (userData) {
+      try {
+        setUser(JSON.parse(userData));
+      } catch (e) {
+        console.error("Failed to parse user data", e);
+      }
+    }
     fetchDashboardData();
     const interval = setInterval(fetchDashboardData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  const isViewer = user?.role === "VIEWER";
 
   const fetchDashboardData = async () => {
     try {

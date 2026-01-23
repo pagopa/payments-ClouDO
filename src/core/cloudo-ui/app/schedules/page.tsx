@@ -84,6 +84,8 @@ export default function SchedulesPage() {
     }
   }, []);
 
+  const isViewer = user?.role === "VIEWER";
+
   const fetchSchedules = async () => {
     setLoading(true);
     try {
@@ -192,7 +194,12 @@ export default function SchedulesPage() {
     );
   }, [schedules, searchQuery]);
 
-  if (user && user.role !== "ADMIN" && user.role !== "OPERATOR") {
+  if (
+    user &&
+    user.role !== "ADMIN" &&
+    user.role !== "OPERATOR" &&
+    user.role !== "VIEWER"
+  ) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-cloudo-dark text-cloudo-text font-mono">
         <HiOutlineBan className="w-16 h-16 text-cloudo-err mb-4" />
@@ -292,7 +299,7 @@ export default function SchedulesPage() {
               fetchWorkers();
             }}
             className={`btn btn-primary h-10 px-4 flex items-center gap-2 group ${
-              user?.role !== "ADMIN" && user?.role !== "OPERATOR"
+              isViewer || (user?.role !== "ADMIN" && user?.role !== "OPERATOR")
                 ? "hidden"
                 : ""
             }`}

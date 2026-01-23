@@ -583,6 +583,14 @@ def Trigger(
         return error_res
     requester_username = session.get("username")
 
+    if session.get("role") == "VIEWER":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Viewer cannot trigger executions"}),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
         schema_id = detection.extract_schema_id_from_req(req)
@@ -1221,6 +1229,19 @@ def approve(
     if req.method == "OPTIONS":
         return create_cors_response()
 
+    # Security: check session token
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
+
+    if session.get("role") == "VIEWER":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Viewer cannot approve executions"}),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
     try:
         from smart_routing import execute_actions, route_alert
     except ImportError:
@@ -1566,6 +1587,19 @@ def reject(
 
     if req.method == "OPTIONS":
         return create_cors_response()
+
+    # Security: check session token
+    session, error_res = _get_authenticated_user(req)
+    if error_res:
+        return error_res
+
+    if session.get("role") == "VIEWER":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Viewer cannot reject executions"}),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
 
     try:
         from smart_routing import execute_actions, route_alert
@@ -2826,8 +2860,17 @@ def auth_google(req: func.HttpRequest) -> func.HttpResponse:
                 partition_key="Operator", row_key=username
             )
             # Update picture if changed
+            updated = False
             if picture and user_entity.get("picture") != picture:
                 user_entity["picture"] = picture
+                updated = True
+
+            # Ensure sso_provider is set even for existing users who login via Google
+            if user_entity.get("sso_provider") != "google":
+                user_entity["sso_provider"] = "google"
+                updated = True
+
+            if updated:
                 table_client.update_entity(entity=user_entity)
         except Exception:
             user_entity = {
@@ -2840,8 +2883,20 @@ def auth_google(req: func.HttpRequest) -> func.HttpResponse:
                 "sso_provider": "google",
             }
             table_client.create_entity(entity=user_entity)
+            log_audit(
+                user=username,
+                action="USER_PROVISIONED_SSO",
+                target=email,
+                details=f"Provider: Google, role: {user_entity.get('role')}",
+            )
 
         if user_entity.get("role") == "PENDING":
+            log_audit(
+                user=user_entity.get("RowKey"),
+                action="USER_LOGIN_PENDING",
+                target=user_entity.get("email"),
+                details=f"Provider: Google, user: {user_entity.get('RowKey')}",
+            )
             return func.HttpResponse(
                 json.dumps({"error": "Account pending approval."}),
                 status_code=403,
@@ -2854,6 +2909,13 @@ def auth_google(req: func.HttpRequest) -> func.HttpResponse:
             username=user_entity.get("RowKey"),
             role=user_entity.get("role"),
             expires_at=expires_at,
+        )
+
+        log_audit(
+            user=user_entity.get("RowKey"),
+            action="USER_LOGIN_SUCCESS",
+            target=user_entity.get("email"),
+            details=f"Provider: Google, user: {user_entity.get('RowKey')}, email: {user_entity.get('email')}, role: {user_entity.get('role')}",
         )
 
         return func.HttpResponse(
@@ -2926,6 +2988,7 @@ def auth_profile(req: func.HttpRequest) -> func.HttpResponse:
                     "picture": user_entity.get("picture"),
                     "created_at": user_entity.get("created_at"),
                     "api_token": user_entity.get("api_token"),
+                    "sso_provider": user_entity.get("sso_provider"),
                 }
             ),
             status_code=200,
@@ -2940,10 +3003,29 @@ def auth_profile(req: func.HttpRequest) -> func.HttpResponse:
             new_password = body.get("password")
             generate_token = body.get("generate_token")
 
+            # Check if user is SSO (Google)
+            is_sso = user_entity.get("sso_provider") == "google"
+
             if new_email:
+                if is_sso and new_email != user_entity.get("email"):
+                    return func.HttpResponse(
+                        json.dumps({"error": "Email cannot be modified for SSO users"}),
+                        status_code=403,
+                        mimetype="application/json",
+                        headers={"Access-Control-Allow-Origin": "*"},
+                    )
                 user_entity["email"] = new_email
 
             if new_password:
+                if is_sso:
+                    return func.HttpResponse(
+                        json.dumps(
+                            {"error": "Password cannot be modified for SSO users"}
+                        ),
+                        status_code=403,
+                        mimetype="application/json",
+                        headers={"Access-Control-Allow-Origin": "*"},
+                    )
                 import bcrypt
 
                 hashed_password = bcrypt.hashpw(
@@ -3007,9 +3089,19 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
     if error_res:
         return error_res
 
-    if session.get("role") not in ["ADMIN", "OPERATOR"]:
+    if session.get("role") not in ["ADMIN", "OPERATOR", "VIEWER"]:
         return func.HttpResponse(
-            json.dumps({"error": "Unauthorized: Admin or Operator role required"}),
+            json.dumps(
+                {"error": "Unauthorized: Admin, Operator or Viewer role required"}
+            ),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    if req.method in ["POST", "DELETE"] and session.get("role") == "VIEWER":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Viewer cannot modify users"}),
             status_code=403,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"},
@@ -3034,6 +3126,7 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
                         "role": e.get("role"),
                         "created_at": e.get("created_at"),
                         "picture": e.get("picture"),
+                        "sso_provider": e.get("sso_provider"),
                     }
                 )
             return func.HttpResponse(
@@ -3062,11 +3155,28 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
                     partition_key="Operator", row_key=username
                 )
                 created_at = existing_user.get("created_at")
+
+                # Check if user is SSO (Google)
+                is_sso = existing_user.get("sso_provider") == "google"
+
                 # If password is not provided in body, keep the old one
-                password = body.get("password") or existing_user.get("password")
+                password = body.get("password")
+                if is_sso:
+                    # For SSO users, never update email or password via this endpoint
+                    email = existing_user.get("email")
+                    password = existing_user.get("password")
+                else:
+                    email = body.get("email") or existing_user.get("email")
+                    password = password or existing_user.get("password")
+
+                sso_provider = existing_user.get("sso_provider")
+                picture = existing_user.get("picture")
             except Exception:
                 created_at = datetime.now(timezone.utc).isoformat()
+                email = body.get("email")
                 password = body.get("password")
+                sso_provider = None
+                picture = None
 
             import bcrypt
 
@@ -3082,9 +3192,11 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
                 "PartitionKey": "Operator",
                 "RowKey": username,
                 "password": password,
-                "email": body.get("email"),
+                "email": email,
                 "role": body.get("role", "OPERATOR"),
                 "created_at": created_at,
+                "sso_provider": sso_provider,
+                "picture": picture,
             }
             table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
 
@@ -3157,9 +3269,19 @@ def settings_management(req: func.HttpRequest) -> func.HttpResponse:
     if error_res:
         return error_res
 
-    if session.get("role") not in ["ADMIN", "OPERATOR"]:
+    if session.get("role") not in ["ADMIN", "OPERATOR", "VIEWER"]:
         return func.HttpResponse(
-            json.dumps({"error": "Unauthorized: Admin or Operator role required"}),
+            json.dumps(
+                {"error": "Unauthorized: Admin, Operator or Viewer role required"}
+            ),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    if req.method == "POST" and session.get("role") == "VIEWER":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Viewer cannot modify settings"}),
             status_code=403,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"},
@@ -3233,9 +3355,11 @@ def get_audit_logs(req: func.HttpRequest) -> func.HttpResponse:
     if error_res:
         return error_res
 
-    if session.get("role") not in ["ADMIN", "OPERATOR"]:
+    if session.get("role") not in ["ADMIN", "OPERATOR", "VIEWER"]:
         return func.HttpResponse(
-            json.dumps({"error": "Unauthorized: Admin or Operator role required"}),
+            json.dumps(
+                {"error": "Unauthorized: Admin, Operator or Viewer role required"}
+            ),
             status_code=403,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"},
@@ -3305,6 +3429,14 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
     session, error_res = _get_authenticated_user(req)
     if error_res:
         return error_res
+
+    if req.method in ["POST", "DELETE"] and session.get("role") == "VIEWER":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Viewer cannot modify schedules"}),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
 
     if req.method == "GET":
         try:
@@ -3426,6 +3558,14 @@ def stop_worker_process(req: func.HttpRequest) -> func.HttpResponse:
     session, error_res = _get_authenticated_user(req)
     if error_res:
         return error_res
+
+    if session.get("role") == "VIEWER":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Viewer cannot stop processes"}),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
     worker = req.params.get("worker")
     exec_id = req.params.get("exec_id")
 
@@ -3503,8 +3643,15 @@ def runbook_schemas(
     if error_res:
         return error_res
 
+    if req.method in ["POST", "PUT", "DELETE"] and session.get("role") == "VIEWER":
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized: Viewer cannot modify schemas"}),
+            status_code=403,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
     requester_username = session.get("username")
-    # OPERATOR and ADMIN can manage schemas
 
     if req.method == "GET":
         try:

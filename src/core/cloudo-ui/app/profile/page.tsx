@@ -30,6 +30,7 @@ interface User {
   password: string | null;
   role: string | null;
   picture?: string;
+  sso_provider?: string;
 }
 
 export default function ProfilePage() {
@@ -42,6 +43,7 @@ export default function ProfilePage() {
     confirmPassword: "",
     api_token: "",
     picture: "",
+    sso_provider: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,14 +92,24 @@ export default function ProfilePage() {
           email: data.email,
           api_token: data.api_token,
           picture: data.picture,
+          sso_provider: data.sso_provider,
         }));
-        // Synchronize local storage picture if it changed
+        // Synchronize local storage user if it changed
         const userData = localStorage.getItem("cloudo_user");
         if (userData) {
           const u = JSON.parse(userData);
+          let updated = false;
           if (u.picture !== data.picture) {
             u.picture = data.picture;
+            updated = true;
+          }
+          if (u.sso_provider !== data.sso_provider) {
+            u.sso_provider = data.sso_provider;
+            updated = true;
+          }
+          if (updated) {
             localStorage.setItem("cloudo_user", JSON.stringify(u));
+            setUser(u);
             // Trigger a storage event manually to notify other components (like Sidebar)
             window.dispatchEvent(new Event("storage"));
           }
@@ -110,7 +122,11 @@ export default function ProfilePage() {
     }
   };
 
+  const isGoogleUser =
+    profile.sso_provider === "google" || user?.sso_provider === "google";
+
   const handleSaveProfile = async (e: React.FormEvent) => {
+    if (isGoogleUser) return;
     e.preventDefault();
     if (profile.password && profile.password !== profile.confirmPassword) {
       addNotification("error", "Passwords do not match");
@@ -390,47 +406,62 @@ export default function ProfilePage() {
                   </label>
                   <input
                     type="email"
-                    className="input h-11 w-full"
+                    className={`input h-11 w-full ${
+                      isGoogleUser
+                        ? "opacity-50 cursor-not-allowed bg-cloudo-accent/5"
+                        : ""
+                    }`}
                     value={profile.email}
                     onChange={(e) =>
                       setProfile({ ...profile, email: e.target.value })
                     }
+                    readOnly={isGoogleUser}
+                    disabled={isGoogleUser}
                     required
                   />
+                  {isGoogleUser && (
+                    <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1">
+                      Email managed by Google SSO provider
+                    </p>
+                  )}
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
-                    New Password
-                  </label>
-                  <input
-                    type="password"
-                    className="input h-11 w-full"
-                    placeholder="Leave empty to keep current"
-                    value={profile.password}
-                    onChange={(e) =>
-                      setProfile({ ...profile, password: e.target.value })
-                    }
-                  />
-                </div>
+                {!isGoogleUser && (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+                        New Password
+                      </label>
+                      <input
+                        type="password"
+                        className="input h-11 w-full"
+                        placeholder="Leave empty to keep current"
+                        value={profile.password}
+                        onChange={(e) =>
+                          setProfile({ ...profile, password: e.target.value })
+                        }
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
-                    Confirm New Password
-                  </label>
-                  <input
-                    type="password"
-                    className="input h-11 w-full"
-                    placeholder="Verify security credentials"
-                    value={profile.confirmPassword}
-                    onChange={(e) =>
-                      setProfile({
-                        ...profile,
-                        confirmPassword: e.target.value,
-                      })
-                    }
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+                        Confirm New Password
+                      </label>
+                      <input
+                        type="password"
+                        className="input h-11 w-full"
+                        placeholder="Verify security credentials"
+                        value={profile.confirmPassword}
+                        onChange={(e) =>
+                          setProfile({
+                            ...profile,
+                            confirmPassword: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="pt-8 border-t border-cloudo-border">
@@ -508,19 +539,23 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="flex justify-end pt-8 border-t border-cloudo-border">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="btn btn-primary h-11 px-10 flex items-center gap-2 relative overflow-hidden group"
-                >
-                  <HiOutlineSave className="w-4 h-4 relative z-10" />
-                  <span className="relative z-10">
-                    {saving ? "Updating Profile..." : "Commit Profile Changes"}
-                  </span>
-                  <div className="absolute inset-0 bg-cloudo-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-                </button>
-              </div>
+              {!isGoogleUser && (
+                <div className="flex justify-end pt-8 border-t border-cloudo-border">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="btn btn-primary h-11 px-10 flex items-center gap-2 relative overflow-hidden group"
+                  >
+                    <HiOutlineSave className="w-4 h-4 relative z-10" />
+                    <span className="relative z-10">
+                      {saving
+                        ? "Updating Profile..."
+                        : "Commit Profile Changes"}
+                    </span>
+                    <div className="absolute inset-0 bg-cloudo-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                  </button>
+                </div>
+              )}
             </form>
           </div>
 
