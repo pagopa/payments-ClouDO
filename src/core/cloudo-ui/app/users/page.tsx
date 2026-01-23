@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Image from "next/image";
 import { cloudoFetch } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import {
@@ -42,7 +43,7 @@ export default function UsersPage() {
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
     const userData = localStorage.getItem("cloudo_user");
@@ -319,9 +320,11 @@ export default function UsersPage() {
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-3">
                           {user.picture ? (
-                            <img
+                            <Image
                               src={user.picture}
-                              alt={user.username}
+                              alt={user.username || "User"}
+                              width={40}
+                              height={40}
                               referrerPolicy="no-referrer"
                               className="w-10 h-10 border border-cloudo-accent/20 object-cover shrink-0"
                             />

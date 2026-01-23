@@ -49,7 +49,7 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const isViewer = user?.role === "VIEWER";
+  // const isViewer = user?.role === "VIEWER";
 
   const fetchDashboardData = async () => {
     try {

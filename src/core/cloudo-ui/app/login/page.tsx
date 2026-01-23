@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { cloudoFetch } from "@/lib/api";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, AppRouterInstance } from "next/navigation";
 import Link from "next/link";
 import {
   HiOutlineLockClosed,
@@ -133,7 +133,7 @@ function GoogleLoginButton({
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   setError: (error: string) => void;
-  router: any;
+  router: AppRouterInstance;
 }) {
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {

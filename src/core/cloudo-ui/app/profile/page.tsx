@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { cloudoFetch } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import {
@@ -356,9 +357,11 @@ export default function ProfilePage() {
 
             <div className="p-8 border-b border-cloudo-border flex items-center gap-4 bg-cloudo-accent/5">
               {profile.picture ? (
-                <img
+                <Image
                   src={profile.picture}
-                  alt={profile.username}
+                  alt={profile.username || "Profile"}
+                  width={64}
+                  height={64}
                   referrerPolicy="no-referrer"
                   className="w-16 h-16 border-2 border-cloudo-accent/20 object-cover shrink-0"
                 />

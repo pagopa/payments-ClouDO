@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import {
@@ -271,9 +272,11 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
         {!collapsed ? (
           <div className="flex items-center gap-4 p-3 bg-cloudo-accent/10 border border-cloudo-border">
             {user?.picture ? (
-              <img
+              <Image
                 src={user.picture}
-                alt={user.username}
+                alt={user.username || "User"}
+                width={32}
+                height={32}
                 referrerPolicy="no-referrer"
                 className="w-8 h-8 border border-cloudo-accent shrink-0 object-cover"
               />
@@ -306,9 +309,11 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
               title="Logout"
             >
               {user?.picture ? (
-                <img
+                <Image
                   src={user.picture}
-                  alt={user.username}
+                  alt={user.username || "User"}
+                  width={40}
+                  height={40}
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover"
                 />
