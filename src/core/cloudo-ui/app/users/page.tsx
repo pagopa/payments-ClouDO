@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Image from "next/image";
 import { cloudoFetch } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import {
@@ -23,6 +24,8 @@ interface User {
   email: string;
   role: string;
   createdAt: string;
+  picture?: string;
+  sso_provider?: string;
 }
 
 interface Notification {
@@ -40,6 +43,18 @@ export default function UsersPage() {
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const userData = localStorage.getItem("cloudo_user");
+    if (userData) {
+      try {
+        setCurrentUser(JSON.parse(userData));
+      } catch (e) {
+        console.error("Error parsing user data", e);
+      }
+    }
+  }, []);
 
   const addNotification = (type: "success" | "error", message: string) => {
     const id = Date.now().toString();
@@ -58,7 +73,11 @@ export default function UsersPage() {
     if (userData) {
       try {
         const user = JSON.parse(userData);
-        if (user.role !== "ADMIN") {
+        if (
+          user.role !== "ADMIN" &&
+          user.role !== "OPERATOR" &&
+          user.role !== "VIEWER"
+        ) {
           router.push("/");
           return;
         }
@@ -72,6 +91,8 @@ export default function UsersPage() {
     }
     fetchUsers();
   }, [router]);
+
+  const isViewer = currentUser?.role === "VIEWER";
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -220,13 +241,15 @@ export default function UsersPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button
-            onClick={() => setModalMode("create")}
-            className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
-          >
-            <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" />{" "}
-            Add
-          </button>
+          {!isViewer && currentUser?.role === "ADMIN" && (
+            <button
+              onClick={() => setModalMode("create")}
+              className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
+            >
+              <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" />{" "}
+              Add
+            </button>
+          )}
         </div>
       </div>
 
@@ -250,7 +273,7 @@ export default function UsersPage() {
                     System Role
                   </th>
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-[11px]">
-                    Enrollment Date
+                    Provider
                   </th>
                   <th className="px-8 py-5 font-black text-cloudo-muted uppercase tracking-[0.3em] text-right text-[11px]">
                     Actions
@@ -296,9 +319,20 @@ export default function UsersPage() {
                     >
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-cloudo-accent/10 border border-cloudo-accent/20 flex items-center justify-center text-cloudo-accent">
-                            <HiOutlineUser className="w-5 h-5" />
-                          </div>
+                          {user.picture ? (
+                            <Image
+                              src={user.picture}
+                              alt={user.username || "User"}
+                              width={40}
+                              height={40}
+                              referrerPolicy="no-referrer"
+                              className="w-10 h-10 border border-cloudo-accent/20 object-cover shrink-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-cloudo-accent/10 border border-cloudo-accent/20 flex items-center justify-center text-cloudo-accent shrink-0">
+                              <HiOutlineUser className="w-5 h-5" />
+                            </div>
+                          )}
                           <span className="text-sm font-black text-cloudo-text tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors">
                             {user.username}
                           </span>
@@ -312,48 +346,67 @@ export default function UsersPage() {
                           className={`px-2 py-0.5 border text-[11px] font-black uppercase tracking-widest ${
                             user.role === "ADMIN"
                               ? "border-cloudo-warn/30 text-cloudo-warn bg-cloudo-warn/5"
-                              : user.role === "PENDING"
-                                ? "border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5"
-                                : "border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5"
+                              : user.role === "VIEWER"
+                                ? "border-cloudo-muted/30 text-cloudo-muted bg-cloudo-muted/5"
+                                : user.role === "PENDING"
+                                  ? "border-cloudo-err/30 text-cloudo-err bg-cloudo-err/5"
+                                  : "border-cloudo-accent/30 text-cloudo-accent bg-cloudo-accent/5"
                           }`}
                         >
                           {user.role}
                         </span>
                       </td>
-                      <td className="px-8 py-6 text-cloudo-muted opacity-70 font-mono">
-                        {user.createdAt}
+                      <td className="px-8 py-6">
+                        <span
+                          className={`text-[10px] font-black uppercase tracking-widest ${
+                            user.sso_provider === "google"
+                              ? "text-cloudo-accent"
+                              : "text-cloudo-muted opacity-50"
+                          }`}
+                        >
+                          {user.sso_provider || "Local"}
+                        </span>
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {user.role === "PENDING" && (
-                            <button
-                              onClick={() =>
-                                approveUser(user.username, user.email)
-                              }
-                              className="p-2.5 bg-cloudo-ok/10 border border-cloudo-ok/30 text-cloudo-ok hover:bg-cloudo-ok hover:text-cloudo-dark transition-all group/btn"
-                              title="Approve User"
-                            >
-                              <HiOutlineCheckCircle className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
-                            </button>
+                          {!isViewer && currentUser?.role === "ADMIN" && (
+                            <>
+                              {user.role === "PENDING" && (
+                                <button
+                                  onClick={() =>
+                                    approveUser(user.username, user.email)
+                                  }
+                                  className="p-2.5 bg-cloudo-ok/10 border border-cloudo-ok/30 text-cloudo-ok hover:bg-cloudo-ok hover:text-cloudo-dark transition-all group/btn"
+                                  title="Approve User"
+                                >
+                                  <HiOutlineCheckCircle className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setSelectedUser(user);
+                                  setModalMode("edit");
+                                }}
+                                className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn"
+                                title="Edit Operator"
+                              >
+                                <HiOutlinePencil className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                              </button>
+                              <button
+                                onClick={() => deleteUser(user.username)}
+                                className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn disabled:opacity-60 disabled:cursor-not-allowed"
+                                title="Revoke Access"
+                                disabled={user.username === "admin"}
+                              >
+                                <HiOutlineTrash className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                              </button>
+                            </>
                           )}
-                          <button
-                            onClick={() => {
-                              setSelectedUser(user);
-                              setModalMode("edit");
-                            }}
-                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn"
-                            title="Edit Operator"
-                          >
-                            <HiOutlinePencil className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
-                          </button>
-                          <button
-                            onClick={() => deleteUser(user.username)}
-                            className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn disabled:opacity-60 disabled:cursor-not-allowed"
-                            title="Revoke Access"
-                            disabled={user.username === "admin"}
-                          >
-                            <HiOutlineTrash className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
-                          </button>
+                          {currentUser?.role !== "ADMIN" && (
+                            <span className="text-[10px] text-cloudo-muted uppercase tracking-[0.2em] italic opacity-50">
+                              READ_ONLY
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -428,8 +481,11 @@ function UserForm({
     email: initialData?.email || "",
     password: "",
     role: initialData?.role || "OPERATOR",
+    sso_provider: initialData?.sso_provider || "",
   });
   const [submitting, setSubmitting] = useState(false);
+
+  const isSSOUser = formData.sso_provider === "google";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -497,7 +553,12 @@ function UserForm({
             <input
               type="email"
               required
-              className="input input-icon h-11 w-full"
+              disabled={isSSOUser}
+              className={`input input-icon h-11 w-full ${
+                isSSOUser
+                  ? "opacity-50 cursor-not-allowed bg-cloudo-accent/5"
+                  : ""
+              }`}
               value={formData.email}
               onChange={(e) =>
                 setFormData({ ...formData, email: e.target.value })
@@ -505,6 +566,11 @@ function UserForm({
               placeholder="operator@cloudo.sys"
             />
           </div>
+          {isSSOUser && (
+            <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1 mt-1">
+              Email managed by SSO provider
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -519,15 +585,25 @@ function UserForm({
             </div>
             <input
               type="password"
-              required={mode === "create"}
-              className="input input-icon h-11 w-full"
+              required={mode === "create" && !isSSOUser}
+              disabled={isSSOUser}
+              className={`input input-icon h-11 w-full ${
+                isSSOUser
+                  ? "opacity-50 cursor-not-allowed bg-cloudo-accent/5"
+                  : ""
+              }`}
               value={formData.password}
               onChange={(e) =>
                 setFormData({ ...formData, password: e.target.value })
               }
-              placeholder="••••••••"
+              placeholder={isSSOUser ? "N/A (SSO AUTH)" : "••••••••"}
             />
           </div>
+          {isSSOUser && mode === "edit" && (
+            <p className="text-[10px] text-cloudo-muted/70 uppercase tracking-tight ml-1 mt-1">
+              Password managed by SSO provider
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -541,6 +617,7 @@ function UserForm({
           >
             <option value="OPERATOR">OPERATOR (Standard Access)</option>
             <option value="ADMIN">ADMIN (Full System Control)</option>
+            <option value="VIEWER">VIEWER (Read-only Access)</option>
           </select>
         </div>
       </div>

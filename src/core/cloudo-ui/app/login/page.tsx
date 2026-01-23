@@ -13,7 +13,9 @@ import {
   HiOutlineMoon,
   HiOutlineShieldCheck,
 } from "react-icons/hi";
+import { FaGoogle } from "react-icons/fa";
 import { motion, AnimatePresence } from "framer-motion";
+import { GoogleOAuthProvider, useGoogleLogin } from "@react-oauth/google";
 
 const LOADING_STEPS = [
   { id: 1, text: "INITIALIZING UPLINK...", status: "pending" },
@@ -122,7 +124,73 @@ function LoadingOverlay() {
   );
 }
 
-function LoginForm() {
+function GoogleLoginButton({
+  isLoading,
+  setIsLoading,
+  setError,
+  router,
+}: {
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
+  setError: (error: string) => void;
+  router: ReturnType<typeof useRouter>;
+}) {
+  const googleLogin = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setIsLoading(true);
+      setError("");
+
+      try {
+        const res = await cloudoFetch(`/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            access_token: tokenResponse.access_token,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success && data.expires_at) {
+          localStorage.setItem("cloudo_auth", "true");
+          localStorage.setItem("cloudo_user", JSON.stringify(data.user));
+          localStorage.setItem("cloudo_expires_at", data.expires_at);
+          if (data.token) {
+            localStorage.setItem("cloudo_token", data.token);
+          }
+          router.push("/");
+        } else {
+          setError(data.error || "Google SSO failed.");
+          setIsLoading(false);
+        }
+      } catch (err) {
+        console.error("Google login error:", err);
+        setError("Uplink to Google Auth failed.");
+        setIsLoading(false);
+      }
+    },
+    onError: () => {
+      setError("Google Login Failed");
+      setIsLoading(false);
+    },
+  });
+
+  return (
+    <button
+      type="button"
+      onClick={() => googleLogin()}
+      disabled={isLoading}
+      className={`w-full bg-cloudo-accent/5 border border-cloudo-border hover:bg-cloudo-accent/10 hover:border-cloudo-accent/50 text-cloudo-text py-4 text-[11px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 ${
+        isLoading ? "opacity-50 cursor-not-allowed" : ""
+      }`}
+    >
+      <FaGoogle className="w-4 h-4 text-cloudo-accent" />
+      <span>Google SSO</span>
+    </button>
+  );
+}
+
+function LoginForm({ googleSsoEnabled }: { googleSsoEnabled: boolean }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -352,26 +420,58 @@ function LoginForm() {
               </motion.div>
             )}
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className={`w-full bg-transparent border border-cloudo-accent text-cloudo-accent hover:bg-cloudo-accent hover:text-cloudo-dark py-4 text-[11px] font-black uppercase tracking-[0.4em] transition-all relative overflow-hidden group ${
-                isLoading ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-            >
-              <span className="relative z-10">
-                {isLoading ? "Authenticating..." : "Establish Connection"}
-              </span>
-              <div className="absolute inset-0 bg-cloudo-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-              {isLoading && (
-                <motion.div
-                  initial={{ left: "-100%" }}
-                  animate={{ left: "100%" }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  className="absolute top-0 bottom-0 w-1/4 bg-cloudo-text/20 skew-x-12 z-20"
+            <div className="flex flex-col gap-3">
+              <button
+                type="submit"
+                disabled={isLoading}
+                className={`w-full bg-transparent border border-cloudo-accent text-cloudo-accent hover:bg-cloudo-accent hover:text-cloudo-dark py-4 text-[11px] font-black uppercase tracking-[0.4em] transition-all relative overflow-hidden group ${
+                  isLoading ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                <span className="relative z-10">
+                  {isLoading ? "Authenticating..." : "Establish Connection"}
+                </span>
+                <div className="absolute inset-0 bg-cloudo-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                {isLoading && (
+                  <motion.div
+                    initial={{ left: "-100%" }}
+                    animate={{ left: "100%" }}
+                    transition={{
+                      duration: 1,
+                      repeat: Infinity,
+                      ease: "linear",
+                    }}
+                    className="absolute top-0 bottom-0 w-1/4 bg-cloudo-text/20 skew-x-12 z-20"
+                  />
+                )}
+              </button>
+
+              {googleSsoEnabled && (
+                <div className="relative">
+                  <div
+                    className="absolute inset-0 flex items-center"
+                    aria-hidden="true"
+                  >
+                    <div className="w-full border-t border-cloudo-border/30"></div>
+                  </div>
+                  <div className="relative flex justify-center text-[8px] uppercase tracking-[0.3em] font-bold">
+                    <span className="bg-cloudo-panel px-2 text-cloudo-muted">
+                      Secure SSO
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {googleSsoEnabled && (
+                <GoogleLoginButton
+                  isLoading={isLoading}
+                  setIsLoading={setIsLoading}
+                  setError={setError}
+                  router={router}
                 />
               )}
-            </button>
+            </div>
+
             <div className="flex justify-center mt-4">
               <Link
                 href="/register"
@@ -427,7 +527,45 @@ export default function LoginPage() {
         </div>
       }
     >
-      <LoginForm />
+      <GoogleAuthWrapper />
     </Suspense>
+  );
+}
+
+function GoogleAuthWrapper() {
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchConfig() {
+      try {
+        const response = await fetch("/api/config");
+        const data = await response.json();
+        setGoogleClientId(data.googleClientId || null);
+      } catch (error) {
+        console.error("Failed to fetch config:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchConfig();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-cloudo-dark font-mono text-cloudo-accent text-[10px] tracking-widest uppercase">
+        Verifying Security Config...
+      </div>
+    );
+  }
+
+  if (!googleClientId) {
+    return <LoginForm googleSsoEnabled={false} />;
+  }
+
+  return (
+    <GoogleOAuthProvider clientId={googleClientId}>
+      <LoginForm googleSsoEnabled={true} />
+    </GoogleOAuthProvider>
   );
 }

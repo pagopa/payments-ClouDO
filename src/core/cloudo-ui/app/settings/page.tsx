@@ -64,7 +64,7 @@ export default function SettingsPage() {
     if (userData) {
       try {
         const parsedUser = JSON.parse(userData);
-        if (parsedUser.role !== "ADMIN") {
+        if (parsedUser.role !== "ADMIN" && parsedUser.role !== "OPERATOR") {
           router.push("/profile");
           return;
         }
@@ -198,14 +198,22 @@ export default function SettingsPage() {
             />
             Sync
           </button>
-          <button
-            onClick={saveSettings}
-            disabled={saving}
-            className="btn btn-primary h-10 px-6 flex items-center gap-2"
-          >
-            <HiOutlineSave className="w-4 h-4" />
-            {saving ? "Saving..." : "Commit Global Changes"}
-          </button>
+          {user?.role === "ADMIN" && (
+            <button
+              onClick={saveSettings}
+              disabled={saving}
+              className="btn btn-primary h-10 px-6 flex items-center gap-2"
+            >
+              <HiOutlineSave className="w-4 h-4" />
+              {saving ? "Saving..." : "Commit Global Changes"}
+            </button>
+          )}
+          {user?.role !== "ADMIN" && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-cloudo-accent/5 border border-cloudo-accent/20 text-cloudo-muted text-[10px] font-black uppercase tracking-widest">
+              <HiOutlineInformationCircle className="w-4 h-4 text-cloudo-accent" />
+              READ_ONLY_ACCESS
+            </div>
+          )}
         </div>
       </div>
 
@@ -228,8 +236,9 @@ export default function SettingsPage() {
                   </label>
                   <input
                     type="number"
-                    className="input h-11 w-full"
+                    className="input h-11 w-full disabled:opacity-50 disabled:cursor-not-allowed"
                     value={settings.RUNBOOK_TIMEOUT_MIN}
+                    disabled={user?.role !== "ADMIN"}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
@@ -248,8 +257,9 @@ export default function SettingsPage() {
                   </label>
                   <input
                     type="number"
-                    className="input h-11 w-full"
+                    className="input h-11 w-full disabled:opacity-50 disabled:cursor-not-allowed"
                     value={settings.LOG_RETENTION_DAYS}
+                    disabled={user?.role !== "ADMIN"}
                     onChange={(e) =>
                       setSettings({
                         ...settings,

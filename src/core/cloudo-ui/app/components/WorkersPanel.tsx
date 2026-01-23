@@ -72,6 +72,8 @@ export function WorkersPanel() {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
+  const isViewer = user?.role === "VIEWER";
+
   const fetchWorkers = async () => {
     setLoadingWorkers(true);
     try {
@@ -514,7 +516,8 @@ export function WorkersPanel() {
                           </td>
                           <td className="px-6 py-4 text-right">
                             {proc.status.toLowerCase() === "running" &&
-                              user?.role === "ADMIN" && (
+                              user?.role === "ADMIN" &&
+                              !isViewer && (
                                 <button
                                   onClick={() =>
                                     setProcessToStop({

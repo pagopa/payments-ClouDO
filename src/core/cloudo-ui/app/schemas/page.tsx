@@ -102,6 +102,8 @@ export default function SchemasPage() {
     }
   }, []);
 
+  const isViewer = user?.role === "VIEWER";
+
   const fetchSchemas = async () => {
     setLoading(true);
     try {
@@ -321,20 +323,21 @@ export default function SchemasPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            {(user?.role === "ADMIN" || user?.role === "OPERATOR") && (
-              <button
-                onClick={() => {
-                  setSelectedSchema(null);
-                  setModalMode("create");
-                  fetchAvailableRunbooks();
-                  fetchWorkers();
-                }}
-                className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
-              >
-                <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" />{" "}
-                New Schema
-              </button>
-            )}
+            {!isViewer &&
+              (user?.role === "ADMIN" || user?.role === "OPERATOR") && (
+                <button
+                  onClick={() => {
+                    setSelectedSchema(null);
+                    setModalMode("create");
+                    fetchAvailableRunbooks();
+                    fetchWorkers();
+                  }}
+                  className="btn btn-primary h-10 px-4 flex items-center gap-2 group"
+                >
+                  <HiOutlinePlus className="w-4 h-4 group-hover:rotate-90 transition-transform" />{" "}
+                  New Schema
+                </button>
+              )}
           </div>
         </div>
 
@@ -570,108 +573,128 @@ export default function SchemasPage() {
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <div className="relative group/run">
-                            <button
-                              onClick={() => {
-                                if (confirmRunId === schema.id) {
-                                  handleRun(schema.id);
-                                } else {
-                                  setConfirmRunId(schema.id);
-                                  setTimeout(() => setConfirmRunId(null), 3000);
-                                }
-                              }}
-                              disabled={executingId === schema.id}
-                              className={`p-2.5 border transition-all flex items-center gap-2 ${
-                                confirmRunId === schema.id
-                                  ? "bg-cloudo-accent border-cloudo-accent text-cloudo-dark"
-                                  : "bg-cloudo-accent/10 border-cloudo-border text-cloudo-accent hover:border-cloudo-accent/40"
-                              } ${
-                                executingId === schema.id
-                                  ? "opacity-50 cursor-wait"
-                                  : ""
-                              }`}
-                            >
-                              {executingId === schema.id ? (
-                                <HiOutlineRefresh className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <HiOutlinePlay
-                                  className={`w-4 h-4 ${
-                                    confirmRunId === schema.id
-                                      ? "scale-110"
-                                      : ""
-                                  }`}
-                                />
-                              )}
-                              {confirmRunId === schema.id && (
-                                <span className="text-[9px] font-black uppercase tracking-tighter">
-                                  Confirm?
-                                </span>
-                              )}
-                            </button>
-                            {!confirmRunId && !executingId && (
-                              <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-cloudo-panel border border-cloudo-border text-[9px] text-cloudo-text uppercase tracking-widest opacity-0 group-hover/run:opacity-400 transition-opacity whitespace-nowrap pointer-events-none">
-                                Run Procedure
-                              </div>
-                            )}
-                          </div>
-                          {(user?.role === "ADMIN" ||
-                            user?.role === "OPERATOR") && (
-                            <>
+                          {!isViewer && (
+                            <div className="relative group/run">
                               <button
                                 onClick={() => {
-                                  setSelectedSchema(schema);
-                                  setModalMode(
-                                    isTerraform(schema.tags) ? "view" : "edit",
-                                  );
-                                  fetchAvailableRunbooks();
-                                  fetchWorkers();
+                                  if (confirmRunId === schema.id) {
+                                    handleRun(schema.id);
+                                  } else {
+                                    setConfirmRunId(schema.id);
+                                    setTimeout(
+                                      () => setConfirmRunId(null),
+                                      3000,
+                                    );
+                                  }
                                 }}
-                                className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn hover:border-white/20 text-cloudo-muted hover:text-cloudo-text`}
-                                title={
-                                  isTerraform(schema.tags)
-                                    ? "Managed by Terraform - Read Only"
-                                    : "Edit Configuration"
-                                }
+                                disabled={executingId === schema.id}
+                                className={`p-2.5 border transition-all flex items-center gap-2 ${
+                                  confirmRunId === schema.id
+                                    ? "bg-cloudo-accent border-cloudo-accent text-cloudo-dark"
+                                    : "bg-cloudo-accent/10 border-cloudo-border text-cloudo-accent hover:border-cloudo-accent/40"
+                                } ${
+                                  executingId === schema.id
+                                    ? "opacity-50 cursor-wait"
+                                    : ""
+                                }`}
                               >
-                                {isTerraform(schema.tags) ? (
-                                  <HiOutlineEye
-                                    className={`w-4 h-4 ${
-                                      !isTerraform(schema.tags) &&
-                                      "group-hover/btn:scale-110"
-                                    } transition-transform`}
-                                  />
+                                {executingId === schema.id ? (
+                                  <HiOutlineRefresh className="w-4 h-4 animate-spin" />
                                 ) : (
-                                  <HiOutlinePencil
+                                  <HiOutlinePlay
                                     className={`w-4 h-4 ${
-                                      !isTerraform(schema.tags) &&
-                                      "group-hover/btn:scale-110"
-                                    } transition-transform`}
+                                      confirmRunId === schema.id
+                                        ? "scale-110"
+                                        : ""
+                                    }`}
                                   />
                                 )}
+                                {confirmRunId === schema.id && (
+                                  <span className="text-[9px] font-black uppercase tracking-tighter">
+                                    Confirm?
+                                  </span>
+                                )}
                               </button>
-                              <button
-                                onClick={() => setSchemaToDelete(schema)}
-                                disabled={isTerraform(schema.tags)}
-                                className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
-                                  isTerraform(schema.tags)
-                                    ? "opacity-20 cursor-not-allowed grayscale"
-                                    : "hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text"
-                                }`}
-                                title={
-                                  isTerraform(schema.tags)
-                                    ? "Managed by Terraform - Protected"
-                                    : "Delete Schema Entry"
-                                }
-                              >
-                                <HiOutlineTrash
-                                  className={`w-4 h-4 ${
-                                    !isTerraform(schema.tags) &&
-                                    "group-hover/btn:scale-110"
-                                  } transition-transform`}
-                                />
-                              </button>
-                            </>
+                              {!confirmRunId && !executingId && (
+                                <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-cloudo-panel border border-cloudo-border text-[9px] text-cloudo-text uppercase tracking-widest opacity-0 group-hover/run:opacity-400 transition-opacity whitespace-nowrap pointer-events-none">
+                                  Run Procedure
+                                </div>
+                              )}
+                            </div>
                           )}
+                          {isViewer && (
+                            <button
+                              onClick={() => {
+                                setSelectedSchema(schema);
+                                setModalMode("view");
+                              }}
+                              className="p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all text-cloudo-accent hover:border-cloudo-accent/40"
+                              title="View Schema"
+                            >
+                              <HiOutlineEye className="w-4 h-4" />
+                            </button>
+                          )}
+                          {!isViewer &&
+                            (user?.role === "ADMIN" ||
+                              user?.role === "OPERATOR") && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setSelectedSchema(schema);
+                                    setModalMode(
+                                      isTerraform(schema.tags)
+                                        ? "view"
+                                        : "edit",
+                                    );
+                                    fetchAvailableRunbooks();
+                                    fetchWorkers();
+                                  }}
+                                  className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn hover:border-white/20 text-cloudo-muted hover:text-cloudo-text`}
+                                  title={
+                                    isTerraform(schema.tags)
+                                      ? "Managed by Terraform - Read Only"
+                                      : "Edit Configuration"
+                                  }
+                                >
+                                  {isTerraform(schema.tags) ? (
+                                    <HiOutlineEye
+                                      className={`w-4 h-4 ${
+                                        !isTerraform(schema.tags) &&
+                                        "group-hover/btn:scale-110"
+                                      } transition-transform`}
+                                    />
+                                  ) : (
+                                    <HiOutlinePencil
+                                      className={`w-4 h-4 ${
+                                        !isTerraform(schema.tags) &&
+                                        "group-hover/btn:scale-110"
+                                      } transition-transform`}
+                                    />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => setSchemaToDelete(schema)}
+                                  disabled={isTerraform(schema.tags)}
+                                  className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border transition-all group/btn ${
+                                    isTerraform(schema.tags)
+                                      ? "opacity-20 cursor-not-allowed grayscale"
+                                      : "hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text"
+                                  }`}
+                                  title={
+                                    isTerraform(schema.tags)
+                                      ? "Managed by Terraform - Protected"
+                                      : "Delete Schema Entry"
+                                  }
+                                >
+                                  <HiOutlineTrash
+                                    className={`w-4 h-4 ${
+                                      !isTerraform(schema.tags) &&
+                                      "group-hover/btn:scale-110"
+                                    } transition-transform`}
+                                  />
+                                </button>
+                              </>
+                            )}
                         </div>
                       </td>
                     </tr>
