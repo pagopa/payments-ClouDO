@@ -49,8 +49,6 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // const isViewer = user?.role === "VIEWER";
-
   const fetchDashboardData = async () => {
     try {
       const workersRes = await cloudoFetch(`/workers`);
