@@ -2765,6 +2765,127 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.route(
+    route="auth/google",
+    methods=[func.HttpMethod.POST, func.HttpMethod.OPTIONS],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def auth_google(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return create_cors_response()
+
+    try:
+        body = req.get_json()
+        access_token = body.get("access_token")
+        if not access_token:
+            return func.HttpResponse(
+                json.dumps({"error": "Google access token required"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        import requests
+
+        # Verify token and get user info from Google
+        google_res = requests.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        if not google_res.ok:
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid Google token"}),
+                status_code=401,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        google_user = google_res.json()
+        email = google_user.get("email")
+        picture = google_user.get("picture")
+
+        if not email:
+            return func.HttpResponse(
+                json.dumps({"error": "Email not provided by Google"}),
+                status_code=400,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        from azure.data.tables import TableClient
+
+        conn_str = os.environ.get(STORAGE_CONN)
+        table_client = TableClient.from_connection_string(
+            conn_str, table_name=TABLE_USERS
+        )
+
+        username = email.split("@")[0].lower()
+
+        try:
+            user_entity = table_client.get_entity(
+                partition_key="Operator", row_key=username
+            )
+            # Update picture if changed
+            if picture and user_entity.get("picture") != picture:
+                user_entity["picture"] = picture
+                table_client.update_entity(entity=user_entity)
+        except Exception:
+            user_entity = {
+                "PartitionKey": "Operator",
+                "RowKey": username,
+                "email": email,
+                "role": "VIEWER",
+                "picture": picture,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "sso_provider": "google",
+            }
+            table_client.create_entity(entity=user_entity)
+
+        if user_entity.get("role") == "PENDING":
+            return func.HttpResponse(
+                json.dumps({"error": "Account pending approval."}),
+                status_code=403,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=8)).isoformat()
+        session_token = _create_session_token(
+            username=user_entity.get("RowKey"),
+            role=user_entity.get("role"),
+            expires_at=expires_at,
+        )
+
+        return func.HttpResponse(
+            json.dumps(
+                {
+                    "success": True,
+                    "user": {
+                        "username": user_entity.get("RowKey"),
+                        "email": user_entity.get("email"),
+                        "role": user_entity.get("role"),
+                        "picture": user_entity.get("picture"),
+                    },
+                    "expires_at": expires_at,
+                    "token": session_token,
+                }
+            ),
+            status_code=200,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    except Exception as e:
+        logging.error(f"Google Auth error: {e}")
+        return func.HttpResponse(
+            json.dumps({"error": "Internal server error during Google SSO"}),
+            status_code=500,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+
+@app.route(
     route="auth/profile",
     methods=[func.HttpMethod.GET, func.HttpMethod.POST, func.HttpMethod.OPTIONS],
     auth_level=AUTH,
@@ -2802,6 +2923,7 @@ def auth_profile(req: func.HttpRequest) -> func.HttpResponse:
                     "username": user_entity.get("RowKey"),
                     "email": user_entity.get("email"),
                     "role": user_entity.get("role"),
+                    "picture": user_entity.get("picture"),
                     "created_at": user_entity.get("created_at"),
                     "api_token": user_entity.get("api_token"),
                 }
@@ -2880,24 +3002,23 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return create_cors_response()
 
-    from azure.data.tables import TableClient, UpdateMode
-
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_USERS)
-
-    # Verification of admin role
     # Security: check session token
     session, error_res = _get_authenticated_user(req)
     if error_res:
         return error_res
 
-    if session.get("role") != "ADMIN":
+    if session.get("role") not in ["ADMIN", "OPERATOR"]:
         return func.HttpResponse(
-            json.dumps({"error": "Unauthorized: Admin role required"}),
+            json.dumps({"error": "Unauthorized: Admin or Operator role required"}),
             status_code=403,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"},
         )
+
+    from azure.data.tables import TableClient, UpdateMode
+
+    conn_str = os.environ.get(STORAGE_CONN)
+    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_USERS)
 
     if req.method == "GET":
         try:
@@ -2912,6 +3033,7 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
                         "email": e.get("email"),
                         "role": e.get("role"),
                         "created_at": e.get("created_at"),
+                        "picture": e.get("picture"),
                     }
                 )
             return func.HttpResponse(
@@ -3035,9 +3157,9 @@ def settings_management(req: func.HttpRequest) -> func.HttpResponse:
     if error_res:
         return error_res
 
-    if session.get("role") != "ADMIN":
+    if session.get("role") not in ["ADMIN", "OPERATOR"]:
         return func.HttpResponse(
-            json.dumps({"error": "Unauthorized: Admin role required"}),
+            json.dumps({"error": "Unauthorized: Admin or Operator role required"}),
             status_code=403,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"},
@@ -3111,9 +3233,9 @@ def get_audit_logs(req: func.HttpRequest) -> func.HttpResponse:
     if error_res:
         return error_res
 
-    if session.get("role") != "ADMIN":
+    if session.get("role") not in ["ADMIN", "OPERATOR"]:
         return func.HttpResponse(
-            json.dumps({"error": "Unauthorized: Admin role required"}),
+            json.dumps({"error": "Unauthorized: Admin or Operator role required"}),
             status_code=403,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"},

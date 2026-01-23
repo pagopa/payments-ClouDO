@@ -29,6 +29,7 @@ interface User {
   email: string | null;
   password: string | null;
   role: string | null;
+  picture?: string;
 }
 
 export default function ProfilePage() {
@@ -40,6 +41,7 @@ export default function ProfilePage() {
     password: "",
     confirmPassword: "",
     api_token: "",
+    picture: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -87,7 +89,19 @@ export default function ProfilePage() {
           username: data.username,
           email: data.email,
           api_token: data.api_token,
+          picture: data.picture,
         }));
+        // Synchronize local storage picture if it changed
+        const userData = localStorage.getItem("cloudo_user");
+        if (userData) {
+          const u = JSON.parse(userData);
+          if (u.picture !== data.picture) {
+            u.picture = data.picture;
+            localStorage.setItem("cloudo_user", JSON.stringify(u));
+            // Trigger a storage event manually to notify other components (like Sidebar)
+            window.dispatchEvent(new Event("storage"));
+          }
+        }
       }
     } catch (err) {
       console.error("Failed to fetch profile", err);
@@ -325,9 +339,18 @@ export default function ProfilePage() {
             </div>
 
             <div className="p-8 border-b border-cloudo-border flex items-center gap-4 bg-cloudo-accent/5">
-              <div className="w-16 h-16 bg-cloudo-accent text-cloudo-dark flex items-center justify-center font-black text-2xl uppercase border-2 border-cloudo-accent/20">
-                {profile.username?.slice(0, 2) || "??"}
-              </div>
+              {profile.picture ? (
+                <img
+                  src={profile.picture}
+                  alt={profile.username}
+                  referrerPolicy="no-referrer"
+                  className="w-16 h-16 border-2 border-cloudo-accent/20 object-cover shrink-0"
+                />
+              ) : (
+                <div className="w-16 h-16 bg-cloudo-accent text-cloudo-dark flex items-center justify-center font-black text-2xl uppercase border-2 border-cloudo-accent/20">
+                  {profile.username?.slice(0, 2) || "??"}
+                </div>
+              )}
               <div>
                 <h2 className="text-xl font-black text-cloudo-text uppercase tracking-widest">
                   {profile.username || "OPERATOR"}

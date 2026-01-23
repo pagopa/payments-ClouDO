@@ -85,22 +85,30 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
     username: string;
     email: string;
     role: string;
+    picture?: string;
   } | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const userData = localStorage.getItem("cloudo_user");
-    if (userData) {
-      try {
-        const parsed = JSON.parse(userData);
-        if (JSON.stringify(user) !== JSON.stringify(parsed)) {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          setUser(parsed);
+
+    const syncUser = () => {
+      const userData = localStorage.getItem("cloudo_user");
+      if (userData) {
+        try {
+          const parsed = JSON.parse(userData);
+          if (JSON.stringify(user) !== JSON.stringify(parsed)) {
+            setUser(parsed);
+          }
+        } catch (e) {
+          console.error("Failed to parse user data", e);
         }
-      } catch (e) {
-        console.error("Failed to parse user data", e);
       }
-    }
+    };
+
+    syncUser();
+
+    window.addEventListener("storage", syncUser);
+    return () => window.removeEventListener("storage", syncUser);
   }, [user]);
 
   const handleLogout = () => {
@@ -262,9 +270,18 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
         )}
         {!collapsed ? (
           <div className="flex items-center gap-4 p-3 bg-cloudo-accent/10 border border-cloudo-border">
-            <div className="w-8 h-8 bg-cloudo-accent text-cloudo-dark flex items-center justify-center font-black text-[11px] shrink-0 uppercase">
-              {user?.username?.slice(0, 2) || "??"}
-            </div>
+            {user?.picture ? (
+              <img
+                src={user.picture}
+                alt={user.username}
+                referrerPolicy="no-referrer"
+                className="w-8 h-8 border border-cloudo-accent shrink-0 object-cover"
+              />
+            ) : (
+              <div className="w-8 h-8 bg-cloudo-accent text-cloudo-dark flex items-center justify-center font-black text-[11px] shrink-0 uppercase">
+                {user?.username?.slice(0, 2) || "??"}
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-[12px] font-black text-cloudo-text uppercase tracking-widest truncate">
                 {user?.username || "Unknown User"}
@@ -285,10 +302,19 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
           <div className="flex justify-center py-2">
             <button
               onClick={handleLogout}
-              className="w-10 h-10 bg-cloudo-accent/10 border border-cloudo-border flex items-center justify-center text-cloudo-muted hover:bg-cloudo-err hover:text-cloudo-text transition-all"
+              className="w-10 h-10 border border-cloudo-border flex items-center justify-center text-cloudo-muted hover:bg-cloudo-err hover:text-cloudo-text transition-all overflow-hidden"
               title="Logout"
             >
-              <HiOutlineLogout className="w-4 h-4" />
+              {user?.picture ? (
+                <img
+                  src={user.picture}
+                  alt={user.username}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <HiOutlineLogout className="w-4 h-4" />
+              )}
             </button>
           </div>
         )}

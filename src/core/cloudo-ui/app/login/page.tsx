@@ -13,7 +13,9 @@ import {
   HiOutlineMoon,
   HiOutlineShieldCheck,
 } from "react-icons/hi";
+import { FaGoogle } from "react-icons/fa";
 import { motion, AnimatePresence } from "framer-motion";
+import { GoogleOAuthProvider, useGoogleLogin } from "@react-oauth/google";
 
 const LOADING_STEPS = [
   { id: 1, text: "INITIALIZING UPLINK...", status: "pending" },
@@ -122,7 +124,86 @@ function LoadingOverlay() {
   );
 }
 
-function LoginForm() {
+function GoogleLoginButton({
+  isLoading,
+  setIsLoading,
+  setError,
+  router,
+}: {
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
+  setError: (error: string) => void;
+  router: any;
+}) {
+  const googleLogin = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setIsLoading(true);
+      setError("");
+
+      try {
+        const res = await cloudoFetch(`/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            access_token: tokenResponse.access_token,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success && data.expires_at) {
+          localStorage.setItem("cloudo_auth", "true");
+          localStorage.setItem("cloudo_user", JSON.stringify(data.user));
+          localStorage.setItem("cloudo_expires_at", data.expires_at);
+          if (data.token) {
+            localStorage.setItem("cloudo_token", data.token);
+          }
+          router.push("/");
+        } else {
+          setError(data.error || "Google SSO failed.");
+          setIsLoading(false);
+        }
+      } catch (err) {
+        console.error("Google login error:", err);
+        setError("Uplink to Google Auth failed.");
+        setIsLoading(false);
+      }
+    },
+    onError: () => {
+      setError("Google Login Failed");
+      setIsLoading(false);
+    },
+  });
+
+  return (
+    <>
+      <div className="relative py-4">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-cloudo-border/30"></div>
+        </div>
+        <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
+          <span className="bg-cloudo-panel px-4 text-cloudo-muted font-bold">
+            Or access via
+          </span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => googleLogin()}
+        disabled={isLoading}
+        className={`w-full bg-white text-gray-900 hover:bg-gray-100 py-3 text-[11px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 ${
+          isLoading ? "opacity-50 cursor-not-allowed" : ""
+        }`}
+      >
+        <FaGoogle className="w-4 h-4" />
+        <span>Google SSO</span>
+      </button>
+    </>
+  );
+}
+
+function LoginForm({ googleSsoEnabled }: { googleSsoEnabled: boolean }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -372,6 +453,16 @@ function LoginForm() {
                 />
               )}
             </button>
+
+            {googleSsoEnabled && (
+              <GoogleLoginButton
+                isLoading={isLoading}
+                setIsLoading={setIsLoading}
+                setError={setError}
+                router={router}
+              />
+            )}
+
             <div className="flex justify-center mt-4">
               <Link
                 href="/register"
@@ -427,7 +518,45 @@ export default function LoginPage() {
         </div>
       }
     >
-      <LoginForm />
+      <GoogleAuthWrapper />
     </Suspense>
+  );
+}
+
+function GoogleAuthWrapper() {
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchConfig() {
+      try {
+        const response = await fetch("/api/config");
+        const data = await response.json();
+        setGoogleClientId(data.googleClientId || null);
+      } catch (error) {
+        console.error("Failed to fetch config:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchConfig();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-cloudo-dark font-mono text-cloudo-accent text-[10px] tracking-widest uppercase">
+        Verifying Security Config...
+      </div>
+    );
+  }
+
+  if (!googleClientId) {
+    return <LoginForm googleSsoEnabled={false} />;
+  }
+
+  return (
+    <GoogleOAuthProvider clientId={googleClientId}>
+      <LoginForm googleSsoEnabled={true} />
+    </GoogleOAuthProvider>
   );
 }
