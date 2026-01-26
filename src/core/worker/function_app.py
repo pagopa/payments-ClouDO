@@ -522,7 +522,7 @@ def process_runbook(
             )
             return
 
-    # Register the execution as "in progress"
+    # Register the execution as "in progress" and notify
     with _ACTIVE_LOCK:
         _ACTIVE_RUNS[exec_id] = {
             "exec_id": exec_id,
@@ -537,6 +537,14 @@ def process_runbook(
             "status": "running",
         }
 
+    cloudo_notification_q.set(
+        _post_status(
+            payload,
+            status="running",
+            log_message=f"[{exec_id}] Job {payload.get('name')} started",
+        )
+    )
+
     try:
         info_raw = payload.get("resource_info")
         info: dict = {}
@@ -546,9 +554,7 @@ def process_runbook(
                 if isinstance(parsed, dict):
                     info = parsed
             except json.JSONDecodeError:
-                logging.warning(
-                    "[%s] resource_info non è JSON valido", payload.get("exec_id")
-                )
+                logging.warning("[%s] resource_info not valid JSON", exec_id)
         elif isinstance(info_raw, dict):
             info = info_raw
 
@@ -559,22 +565,17 @@ def process_runbook(
         if info and has_valid_ns:
             try:
                 kubeconfig_path = _run_aks_login(info, payload)
-                logging.info(
-                    f"[{payload.get('exec_id')}] AKS login completed successfully"
-                )
+                logging.info(f"[{exec_id}] AKS login completed successfully")
             except Exception as e:
                 # Report error and stop processing
-                err_msg = f"[{payload.get('exec_id')}] AKS login failed: {type(e).__name__}: {e}"
+                err_msg = f"[{exec_id}] AKS login failed: {type(e).__name__}: {e}"
                 cloudo_notification_q.set(
                     _post_status(payload, status="error", log_message=err_msg)
                 )
                 logging.error(f"{err_msg}")
                 return
 
-        if os.getenv("DEV_SCRIPT_PATH"):
-            script_path = os.getenv("DEV_SCRIPT_PATH", "/work/runbooks/")
-        else:
-            script_path = None
+        script_path = os.getenv("DEV_SCRIPT_PATH")
 
         result = _run_script(
             script_name=payload.get("runbook"),
@@ -587,19 +588,19 @@ def process_runbook(
         )
         stopped = False
         try:
-            if os.name != "nt":
+            if os.name != "nt" and result:
                 stopped = result.returncode == -getattr(signal, "SIGTERM", 15)
         except Exception as e:
             logging.error(e)
 
         if not stopped:
-            log_msg = f"{result.stdout.strip()}"
-            logging.info(f"[{payload.get('exec_id')}] {log_msg}")
+            log_msg = f"{result.stdout.strip() if result else 'No output'}"
+            logging.info(f"[{exec_id}] {log_msg}")
             cloudo_notification_q.set(
                 _post_status(payload, status="completed", log_message=log_msg)
             )
             logging.debug(
-                f"[{payload.get('exec_id')}] Receiver response: status=queued",
+                f"[{exec_id}] Receiver response: status=queued",
             )
     except subprocess.CalledProcessError as e:
         error_message = f"Script failed. returncode={e.returncode} stderr={e.stderr.strip()} stdout={e.stdout.strip()}"
@@ -608,10 +609,10 @@ def process_runbook(
                 _post_status(payload, status="failed", log_message=error_message)
             )
             logging.error(
-                f"[{payload.get('exec_id')}] Receiver response: status=queued",
+                f"[{exec_id}] Receiver response: status=queued",
             )
         finally:
-            logging.error(f"[{payload.get('exec_id')}] {error_message}")
+            logging.error(f"[{exec_id}] {error_message}")
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
         try:
@@ -619,15 +620,15 @@ def process_runbook(
                 _post_status(payload, status="error", log_message=err_msg)
             )
             logging.error(
-                f"[{payload.get('exec_id')}] Receiver response: status=queued",
+                f"[{exec_id}] Receiver response: status=queued",
             )
         finally:
-            logging.error(f"[{payload.get('exec_id')}] Unexpected error: %s", err_msg)
+            logging.error(f"[{exec_id}] Unexpected error: %s", err_msg)
     finally:
         # Remove from the registry: no longer "in progress"
         logging.info(
             "[%s] Job complete (requested at %s)",
-            payload.get("exec_id"),
+            exec_id,
             payload.get("requestedAt"),
         )
         with _ACTIVE_LOCK:
@@ -796,6 +797,7 @@ def stop_process(
                 "id": run_info.get("id"),
                 "name": run_info.get("name"),
                 "exec_id": run_info.get("exec_id"),
+                "worker": run_info.get("worker"),
                 "oncall": None,
                 "monitor_condition": None,
                 "severity": None,
@@ -809,7 +811,7 @@ def stop_process(
                 )
             )
     except Exception:
-        logging.warning("Unable to send status stop for %s", exec_id)
+        logging.warning("[%s] Unable to send status stop", exec_id)
 
     return func.HttpResponse(
         json.dumps({"status": status, "exec_id": exec_id}, ensure_ascii=False),

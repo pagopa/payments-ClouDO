@@ -160,7 +160,13 @@ def _get_authenticated_user(
         # Check global secret
         expected_global_key = os.environ.get("CLOUDO_SECRET_KEY")
         if expected_global_key and cloudo_key == expected_global_key:
-            return {"user": "api", "username": "api", "role": "OPERATOR"}, None
+            # If authenticated via global key, we might have a forwarded user from UI proxy or a direct caller
+            forwarded_user = req.headers.get("x-cloudo-user")
+            return {
+                "user": forwarded_user or "api",
+                "username": forwarded_user or "api",
+                "role": "OPERATOR",
+            }, None
 
         # Check personal API tokens
         try:
@@ -253,10 +259,33 @@ def _only_pending_for_exec(rows: list[dict], exec_id: str) -> bool:
 def _notify_slack_decision(
     exec_id: str, schema_id: str, decision: str, approver: str, extra: str = ""
 ) -> None:
+    from azure.data.tables import TableClient
     from escalation import send_slack_execution
 
-    token = (os.environ.get("SLACK_TOKEN") or "").strip()
-    channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
+    # Fetch settings from Table Storage
+    conn_str = os.environ.get(STORAGE_CONN)
+    table_client = TableClient.from_connection_string(
+        conn_str, table_name=TABLE_SETTINGS
+    )
+
+    try:
+        # Get SLACK_TOKEN_DEFAULT and SLACK_CHANNEL from GlobalConfig
+        token_entity = table_client.get_entity(
+            partition_key="GlobalConfig", row_key="SLACK_TOKEN_DEFAULT"
+        )
+        token = token_entity.get("value", "").strip()
+
+        channel_entity = table_client.get_entity(
+            partition_key="GlobalConfig", row_key="SLACK_CHANNEL"
+        )
+        channel = channel_entity.get("value", "").strip() or "#cloudo-test"
+    except Exception as e:
+        logging.warning(
+            f"Failed to fetch Slack settings from Table Storage, falling back to ENV: {e}"
+        )
+        token = (os.environ.get("SLACK_TOKEN_DEFAULT") or "").strip()
+        channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
+
     if not token:
         return
     emoji = "✅" if decision == "approved" else "❌"
@@ -271,7 +300,7 @@ def _notify_slack_decision(
                     "text": {
                         "type": "mrkdwn",
                         "text": (
-                            f"*{decision}*\n"
+                            f"*{decision.capitalize()}*\n"
                             f"*ExecId:* `{exec_id}`\n"
                             f"*SchemaId:* `{schema_id}`\n"
                             f"*By:* {approver}"
@@ -1222,8 +1251,6 @@ def approve(
     workers: str,
 ) -> func.HttpResponse:
     import utils
-    from escalation import send_slack_execution
-    from frontend import render_template
     from worker_routing import worker_routing
 
     if req.method == "OPTIONS":
@@ -1258,13 +1285,25 @@ def approve(
     if os.getenv("FEATURE_DEV", "false").lower() != "true":
         session, error_res = _get_authenticated_user(req)
         if error_res:
-            # Fallback for Slack/Email links: if no session, we might still allow it if p and s are valid
-            # and the payload is signed. But it's better to log who did it if they are logged in.
-            approver = req.headers.get("X-Approver") or "anonymous-link"
+            # Fallback for Slack/Email links
+            approver = (
+                req.headers.get("x-cloudo-user")
+                or req.headers.get("X-Approver")
+                or "anonymous-link"
+            )
         else:
             approver = session.get("username")
     else:
-        approver = req.headers.get("X-Approver") or "unknown"
+        # Trust headers in FEATURE_DEV
+        approver = (
+            req.headers.get("x-cloudo-user")
+            or req.headers.get("X-Approver")
+            or "unknown"
+        )
+        # Try to get session if available anyway
+        session, _ = _get_authenticated_user(req)
+        if session:
+            approver = session.get("username")
 
     if not execId:
         return func.HttpResponse(
@@ -1295,7 +1334,6 @@ def approve(
     schema_id = payload.get("schemaId") or ""
     resource_info = payload.get("resource_info") or None
     routing_info = payload.get("routing_info") or None
-    func_key = payload.get("code") or ""
     monitor_condition = payload.get("monitorCondition") or ""
     severity = payload.get("severity") or ""
 
@@ -1403,7 +1441,7 @@ def approve(
             worker=schema.worker,
             log_msg=json.dumps(
                 {
-                    "message": "Approved and executed",
+                    "message": f"Approved and executed by {approver}",
                     "response": api_body,
                     "resource_info": resource_info,
                 },
@@ -1421,7 +1459,7 @@ def approve(
             user=approver,
             action="RUNBOOK_APPROVE",
             target=execId,
-            details=f"Runbook: {schema.runbook}, Schema: {schema.id}",
+            details=f"Runbook: {schema.runbook}, Schema: {schema.id}, Approver: {approver}",
         )
 
         # smart routing notification (if routing module available)
@@ -1442,80 +1480,36 @@ def approve(
             }
             decision = route_alert(ctx)
             logging.debug(f"[{execId}] Approval: {decision}")
+
+            # Notify Slack directly (bypassing smart routing for Slack as requested)
+            _notify_slack_decision(
+                exec_id=execId,
+                schema_id=schema_id,
+                decision="approved",
+                approver=approver,
+            )
+
+            # We still execute other actions via smart routing if any (excluding Slack)
             payload = {
-                "slack": {
-                    "message": f"[{execId}] 🚀 Approved - {schema_id}",
-                    "blocks": [
-                        {
-                            "type": "header",
-                            "text": {
-                                "type": "plain_text",
-                                "text": f"🚀 Approved - {schema_id}",
-                                "emoji": True,
-                            },
-                        },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": (
-                                    f"*ExecId:* `{execId}`\n"
-                                    f"*SchemaId:* `{schema_id}`\n"
-                                    f"*By:* {approver}"
-                                ),
-                            },
-                        },
-                        *(
-                            [
-                                {
-                                    "type": "context",
-                                    "elements": [
-                                        {
-                                            "type": "mrkdwn",
-                                            "text": f"*Status:* {status_label}",
-                                        }
-                                    ],
-                                }
-                            ]
-                            if status_label
-                            else []
-                        ),
-                    ],
-                }
+                "slack": None  # Skip slack in execute_actions
             }
             try:
-                execute_actions(
-                    decision,
-                    payload,
-                    send_slack_fn=lambda token, channel, **kw: send_slack_execution(
-                        token=token, channel=channel, **kw
-                    ),
-                )
+                execute_actions(decision, payload, send_slack_fn=None)
             except Exception as e:
-                logging.error(f"[{execId}] smart routing approval failed: {e}")
-
-        html = render_template(
-            "approve.html",
-            {
-                "status_label": status_label,
-                "execId": execId,
-                "schema_id": schema.id,
-                "schema_name": schema.name or "-",
-                "schema_runbook": schema.runbook or "-",
-                "schema_run_args": (schema.run_args or "-"),
-                "severity": severity or "-",
-                "requested_at": requested_at,
-                "partition_key": partition_key,
-                "func_key": func_key,
-            },
-        )
+                logging.error(f"[{execId}] smart routing approval actions failed: {e}")
 
         return func.HttpResponse(
-            html,
+            json.dumps(
+                {
+                    "message": f"Approved and executed by {approver}",
+                    "response": api_body,
+                    "resource_info": resource_info,
+                }
+            ),
             status_code=200,
-            mimetype="text/html",
+            mimetype="application/json",
             headers={
-                "Content-Type": "text/html",
+                "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
             },
         )
@@ -1543,7 +1537,7 @@ def approve(
         _notify_slack_decision(
             execId,
             schema_id,
-            f"approved {execId}",
+            f"approved {execId} by {approver}",
             approver,
             extra=f"*Error:* {str(e)}",
         )
@@ -1582,8 +1576,6 @@ def reject(
     req: func.HttpRequest, log_table: func.Out[str], schemas: str, today_logs: str
 ) -> func.HttpResponse:
     import utils
-    from escalation import send_slack_execution
-    from frontend import render_template
 
     if req.method == "OPTIONS":
         return create_cors_response()
@@ -1632,11 +1624,24 @@ def reject(
         session, error_res = _get_authenticated_user(req)
         if error_res:
             # Fallback for Slack/Email links
-            approver = req.headers.get("X-Approver") or "anonymous-link"
+            approver = (
+                req.headers.get("x-cloudo-user")
+                or req.headers.get("X-Approver")
+                or "anonymous-link"
+            )
         else:
             approver = session.get("username")
     else:
-        approver = req.headers.get("X-Approver") or "unknown"
+        # Trust headers in FEATURE_DEV
+        approver = (
+            req.headers.get("x-cloudo-user")
+            or req.headers.get("X-Approver")
+            or "unknown"
+        )
+        # Try to get session if available anyway
+        session, _ = _get_authenticated_user(req)
+        if session:
+            approver = session.get("username")
 
     if not execId:
         return func.HttpResponse(
@@ -1698,7 +1703,9 @@ def reject(
         runbook=schema.runbook,
         run_args=schema.run_args,
         worker=schema.worker,
-        log_msg=json.dumps({"message": "Rejected by approver"}, ensure_ascii=False),
+        log_msg=json.dumps(
+            {"message": f"Rejected by approver: {approver}"}, ensure_ascii=False
+        ),
         oncall=schema.oncall,
         monitor_condition=monitor_condition,
         severity=severity,
@@ -1712,6 +1719,11 @@ def reject(
         action="RUNBOOK_REJECT",
         target=execId,
         details=f"Runbook: {schema.runbook}, Schema: {schema.id}",
+    )
+
+    # Notify Slack directly
+    _notify_slack_decision(
+        exec_id=execId, schema_id=schema_id, decision="rejected", approver=approver
     )
 
     # smart routing notification (if routing module available)
@@ -1734,70 +1746,19 @@ def reject(
         logging.debug(f"[{execId}] Reject: {decision}")
 
         payload = {
-            "slack": {
-                "message": f"[{execId}] ⛔️ Rejected - {schema_id}",
-                "blocks": [
-                    {
-                        "type": "header",
-                        "text": {
-                            "type": "plain_text",
-                            "text": f"⛔️ Rejected - {schema_id}",
-                            "emoji": True,
-                        },
-                    },
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": (
-                                f"*ExecId:* `{execId}`\n"
-                                f"*SchemaId:* `{schema_id}`\n"
-                                f"*By:* {approver}"
-                            ),
-                        },
-                    },
-                    *(
-                        [
-                            {
-                                "type": "context",
-                                "elements": [
-                                    {"type": "mrkdwn", "text": "*Status:* rejected"}
-                                ],
-                            }
-                        ]
-                        if "rejected"
-                        else []
-                    ),
-                ],
-            }
+            "slack": None  # Skip slack in execute_actions
         }
         try:
-            execute_actions(
-                decision,
-                payload,
-                send_slack_fn=lambda token, channel, **kw: send_slack_execution(
-                    token=token, channel=channel, **kw
-                ),
-            )
+            execute_actions(decision, payload, send_slack_fn=None)
         except Exception as e:
-            logging.error(f"[{execId}] smart routing approval failed: {e}")
-
-    html = render_template(
-        "reject.html",
-        {
-            "execId": execId,
-            "schema_id": schema_id,
-            "approver": approver or "-",
-            "requested_at": requested_at,
-        },
-    )
+            logging.error(f"[{execId}] smart routing rejection failed: {e}")
 
     return func.HttpResponse(
-        html,
+        json.dumps({"message": f"Rejected by approver: {approver}"}),
         status_code=200,
-        mimetype="text/html",
+        mimetype="application/json",
         headers={
-            "Content-Type": "text/html",
+            "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
         },
     )
@@ -2135,130 +2096,6 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
         status_code=200,
         mimetype="application/json",
     )
-
-
-# =========================
-# HTTP Function: Logs UI
-# =========================
-
-
-# @app.route(route="logs", auth_level=func.AuthLevel.ANONYMOUS)
-# @app.table_input(
-#     arg_name="workers", table_name="WorkersRegistry", connection=STORAGE_CONNECTION
-# )
-# # ruff: noqa
-# def logs_frontend(req: func.HttpRequest, workers: str) -> func.HttpResponse:
-#     from frontend import render_template
-#     from requests import request
-#
-#     # --- 1. Key Extraction ---
-#     candidate_key = req.headers.get("x-functions-key") or req.params.get("code")
-#
-#     if not candidate_key:
-#         cookie_header = req.headers.get("Cookie")
-#         if cookie_header:
-#             parts = cookie_header.split(";")
-#             for part in parts:
-#                 clean_part = part.strip()
-#                 if clean_part.startswith("x-functions-key="):
-#                     candidate_key = clean_part.split("=", 1)[1]
-#                     break
-#
-#     # --- 2. Key Validation ---
-#     is_valid = False
-#
-#     if candidate_key:
-#         # Build the test URL
-#         # req.url is the full current URL. Remove everything after /api/
-#         base_url = str(req.url).split("/api/")[0]
-#         if "localhost:7071" in base_url:
-#             base_url = base_url.replace(":7071", ":80")
-#
-#         check_url = f"{base_url}/api/healthz"
-#
-#         try:
-#             res = request(
-#                 method="GET",
-#                 url=check_url,
-#                 headers={"x-functions-key": candidate_key},
-#                 timeout=5,
-#             )
-#             if res.status_code == 200:
-#                 is_valid = True
-#             else:
-#                 logging.warning(f"Key present but invalid. Status: {res.status_code}")
-#         except Exception as e:
-#             logging.error(f"Key validation error: {e}")
-#
-#     # --- 3. Response ---
-#
-#     if is_valid:
-#         try:
-#             workers = json.loads(workers) if isinstance(workers, str) else workers
-#             workers = list({w.get("RowKey") for w in workers if w.get("RowKey")})
-#         except Exception as e:
-#             logging.warning(f"Error parsing workers: {e}")
-#         code_js = json.dumps(candidate_key or "")
-#         html = render_template(
-#             "logs.html",
-#             {
-#                 "code_js": code_js,
-#                 "workers": workers,
-#             },
-#         )
-#         return func.HttpResponse(html, status_code=200, mimetype="text/html")
-#
-#     else:
-#         error_msg = ""
-#         if candidate_key:
-#             error_msg = (
-#                 "<p style='color: red; font-weight: bold;'>Invalid or expired key.</p>"
-#             )
-#
-#         login_html = f"""
-#         <!DOCTYPE html>
-#         <html lang="en">
-#         <head>
-#             <meta charset="UTF-8">
-#             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-#             <title>Login Required</title>
-#             <style>
-#                 body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f4f4f4; margin: 0; }}
-#                 .login-box {{ background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; width: 300px; }}
-#                 input {{ width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }}
-#                 button {{ width: 100%; padding: 10px; background-color: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }}
-#                 button:hover {{ background-color: #0063b1; }}
-#             </style>
-#         </head>
-#         <body>
-#             <div class="login-box">
-#                 <h2>Access Logs</h2>
-#                 {error_msg}
-#                 <form onsubmit="doLogin(event)">
-#                     <input type="password" id="key" placeholder="Function Key" required>
-#                     <button type="submit">Login</button>
-#                 </form>
-#             </div>
-#             <script>
-#                 function doLogin(e) {{
-#                     e.preventDefault();
-#                     const val = document.getElementById('key').value;
-#
-#                     const d = new Date();
-#                     d.setTime(d.getTime() + (1*24*60*60*100)); // 1 day
-#
-#                     // Fix for localhost vs Azure
-#                     const isSecure = window.location.protocol === 'https:' ? '; Secure' : '';
-#
-#                     document.cookie = "x-functions-key=" + val + "; expires=" + d.toUTCString() + "; path=/; SameSite=Lax" + isSecure;
-#
-#                     window.location.reload();
-#                 }}
-#             </script>
-#         </body>
-#         </html>
-#         """
-#         return func.HttpResponse(login_html, status_code=200, mimetype="text/html")
 
 
 # TODO Manage empty partitions
