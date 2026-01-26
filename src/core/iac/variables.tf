@@ -144,6 +144,11 @@ variable "cluodo_ui_tier" {
   default = "basic"
 }
 
+variable "cloudo_google_sso_integration_client_id" {
+  type        = string
+  description = "Cloudo SSO google client id."
+}
+
 variable "cluodo_function_tier" {
   type    = string
   default = "basic_private"
