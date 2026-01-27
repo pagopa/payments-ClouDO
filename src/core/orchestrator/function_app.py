@@ -468,6 +468,7 @@ def build_log_entry(
     monitor_condition: Optional[str],
     severity: Optional[str],
     initiator: Optional[str] = None,
+    resource_info: Optional[dict[str, Any]] = None,
     approval_required: Optional[bool] = None,
     approval_expires_at: Optional[str] = None,
     approval_decision_by: Optional[str] = None,
@@ -487,6 +488,9 @@ def build_log_entry(
         "Log": log_msg,
         "OnCall": oncall,
         "Initiator": initiator,
+        "ResourceInfo": json.dumps(resource_info, ensure_ascii=False)
+        if resource_info
+        else None,
         "MonitorCondition": monitor_condition,
         "Severity": severity,
         "ApprovalRequired": approval_required,
@@ -824,6 +828,7 @@ def Trigger(
                 ),
                 oncall=schema.oncall,
                 initiator=requester_username,
+                resource_info=resource_info,
                 monitor_condition=monitor_condition,
                 severity=severity,
                 approval_required=True,
@@ -1849,6 +1854,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
         log_msg=utils._truncate_for_table(logs_raw, MAX_TABLE_CHARS),
         oncall=body.get("oncall"),
         initiator=body.get("initiator"),
+        resource_info=body.get("resource_info"),
         monitor_condition=body.get("monitor_condition"),
         severity=body.get("severity"),
     )

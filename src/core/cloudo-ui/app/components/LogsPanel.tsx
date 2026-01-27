@@ -16,6 +16,7 @@ import {
   HiOutlineFingerPrint,
   HiOutlineCalendar,
   HiOutlineShare,
+  HiOutlineArrowsExpand,
 } from "react-icons/hi";
 import {
   parseDate,
@@ -40,6 +41,7 @@ interface LogEntry {
   OnCall?: boolean | string;
   Initiator?: string;
   Worker?: string;
+  ResourceInfo?: string;
 }
 
 export function LogsPanel() {
@@ -84,6 +86,7 @@ function LogsPanelContent() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
@@ -505,7 +508,13 @@ function LogsPanelContent() {
 
       {/* Detail Panel Section */}
       {selectedLog && (
-        <div className="flex-1 bg-cloudo-panel border border-cloudo-border flex flex-col animate-in slide-in-from-right-4 duration-300 overflow-hidden">
+        <div
+          className={`bg-cloudo-panel border border-cloudo-border flex flex-col transition-all duration-500 ease-in-out overflow-hidden ${
+            isExpanded
+              ? "fixed inset-4 z-[60] shadow-2xl animate-in zoom-in-95 overflow-y-auto custom-scrollbar"
+              : "flex-1 animate-in slide-in-from-right-4"
+          }`}
+        >
           <div className="p-6 border-b border-cloudo-border bg-cloudo-panel-2 flex justify-between items-center">
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 bg-cloudo-accent/10 border border-cloudo-accent/20 flex items-center justify-center text-cloudo-accent">
@@ -523,6 +532,17 @@ function LogsPanelContent() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="p-2 text-cloudo-muted hover:text-cloudo-accent border border-cloudo-border transition-colors group/expand"
+                title={isExpanded ? "Collapse" : "Expand"}
+              >
+                <HiOutlineArrowsExpand
+                  className={`w-4 h-4 transition-transform duration-300 ${
+                    isExpanded ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
               <button
                 onClick={copyShareLink}
                 className={`flex items-center gap-2 px-3 py-1.5 border text-[10px] font-black uppercase tracking-widest transition-all ${
@@ -544,7 +564,10 @@ function LogsPanelContent() {
                 )}
               </button>
               <button
-                onClick={() => setSelectedLog(null)}
+                onClick={() => {
+                  setSelectedLog(null);
+                  setIsExpanded(false);
+                }}
                 className="p-2 text-cloudo-muted hover:text-cloudo-text border border-cloudo-border transition-colors"
               >
                 <HiOutlineX className="w-4 h-4" />
@@ -552,7 +575,7 @@ function LogsPanelContent() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto p-8 space-y-8 custom-scrollbar bg-cloudo-accent/10">
+          <div className="flex-1 overflow-auto p-8 space-y-8 custom-scrollbar bg-cloudo-dark/30">
             {/* Section: Identity & Deployment */}
             <div className="space-y-4">
               <div className="flex items-center gap-2">
@@ -615,7 +638,7 @@ function LogsPanelContent() {
                   )}`}
                 />
                 <div
-                  className="bg-cloudo-accent/10 border border-cloudo-border p-3 flex flex-col justify-center items-center gap-1 cursor-pointer hover:bg-cloudo-accent/5 transition-colors"
+                  className="bg-cloudo-accent/5 border border-cloudo-border p-3 flex flex-col justify-center items-center gap-1 cursor-pointer hover:bg-cloudo-accent/10 transition-colors"
                   onClick={() => copyToClipboard(selectedLog.ExecId)}
                 >
                   <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block">
@@ -642,6 +665,77 @@ function LogsPanelContent() {
                 {selectedLog.Run_Args || "EMPTY_ARGS"}
               </div>
             </div>
+
+            {/* Section: Resource Info */}
+            {(() => {
+              let info: Record<string, unknown> | null = null;
+              if (selectedLog.ResourceInfo) {
+                try {
+                  info = JSON.parse(selectedLog.ResourceInfo);
+                } catch (e) {
+                  console.warn("Failed to parse ResourceInfo:", e);
+                }
+              }
+
+              if (info && Object.keys(info).length > 0) {
+                return (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1 h-3 bg-cloudo-accent" />
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                        Resource Info
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {Object.entries(info)
+                        .filter(
+                          ([_, v]) =>
+                            v !== null &&
+                            v !== undefined &&
+                            String(v).trim() !== "",
+                        )
+                        .map(([k, v]) => {
+                          const isRaw = k === "_raw";
+                          let displayValue = String(v);
+
+                          if (isRaw) {
+                            try {
+                              const parsed =
+                                typeof v === "string" ? JSON.parse(v) : v;
+                              displayValue = JSON.stringify(parsed, null, 2);
+                            } catch {
+                              // fallback
+                            }
+                          }
+
+                          return (
+                            <div
+                              key={k}
+                              className={`bg-cloudo-accent/5 border border-cloudo-border p-3 flex flex-col group gap-2 ${
+                                isRaw ? "md:col-span-2" : ""
+                              }`}
+                            >
+                              <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest shrink-0">
+                                {k}
+                              </span>
+                              <span
+                                className={`text-xs font-mono text-cloudo-text group-hover:text-cloudo-accent transition-colors break-all ${
+                                  isRaw
+                                    ? "whitespace-pre-wrap text-left"
+                                    : "text-right"
+                                }`}
+                              >
+                                {displayValue}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             {/* Section: Telemetry Logs */}
             <div className="space-y-4">
@@ -694,7 +788,7 @@ function DetailItem({
 }) {
   return (
     <div
-      className={`bg-cloudo-accent/10 border border-cloudo-border p-3 space-y-2 overflow-hidden ${className}`}
+      className={`bg-cloudo-accent/5 border border-cloudo-border p-3 space-y-2 overflow-hidden ${className}`}
     >
       <div className="flex items-center gap-2 text-cloudo-muted/60">
         <span className="text-sm">{icon}</span>

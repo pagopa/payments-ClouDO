@@ -132,6 +132,20 @@ export function SchemaCard({
               </span>
             </div>
           </div>
+
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-cloudo-accent/5 border border-cloudo-border group-hover:border-cloudo-accent/20 transition-all shrink-0">
+              <HiOutlineTerminal className="text-cloudo-accent/70 w-4 h-4" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] text-cloudo-muted/50 uppercase font-black tracking-widest">
+                Default Arguments
+              </span>
+              <span className="text-[11px] font-mono text-cloudo-text/70 truncate italic">
+                {schema.run_args || "None"}
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-2">

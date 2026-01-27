@@ -126,6 +126,9 @@ export function SchemaTable({
                 </div>
               </th>
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                Run_Args
+              </th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
                 Tags
               </th>
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted text-right">
@@ -210,6 +213,13 @@ export function SchemaTable({
                       <HiOutlineChip className="text-cloudo-accent/60 w-3.5 h-3.5" />
                       <span className="text-[11px] font-mono text-cloudo-text/70 uppercase">
                         {schema.worker}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col gap-0.5 max-w-[150px]">
+                      <span className="text-[10px] font-mono text-cloudo-text/60 truncate italic">
+                        {schema.run_args || "-"}
                       </span>
                     </div>
                   </td>

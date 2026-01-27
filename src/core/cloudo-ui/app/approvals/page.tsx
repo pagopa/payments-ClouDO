@@ -17,6 +17,7 @@ import {
   HiOutlineExclamationCircle,
   HiOutlineCheckCircle,
   HiOutlineShare,
+  HiOutlineArrowsExpand,
 } from "react-icons/hi";
 
 interface Notification {
@@ -32,11 +33,11 @@ interface PendingApproval {
   RequestedAt: string;
   Status: string;
   Log?: string;
-  ResourceInfo?: Record<string, unknown>;
   Run_Args?: string;
   Worker?: string;
   OnCall?: string;
   Initiator?: string;
+  ResourceInfo?: string;
 }
 
 export default function ApprovalsPage() {
@@ -60,6 +61,7 @@ function ApprovalsPageContent() {
   const [selectedExec, setSelectedExec] = useState<PendingApproval | null>(
     null,
   );
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -395,7 +397,13 @@ function ApprovalsPageContent() {
                   </h2>
                 </div>
                 {selectedExec ? (
-                  <div className="border border-cloudo-border bg-cloudo-panel overflow-hidden sticky top-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div
+                    className={`bg-cloudo-panel border border-cloudo-border flex flex-col transition-all duration-500 ease-in-out overflow-hidden ${
+                      isExpanded
+                        ? "fixed inset-4 z-[60] shadow-2xl animate-in zoom-in-95 overflow-y-auto custom-scrollbar"
+                        : "sticky top-8 animate-in fade-in slide-in-from-right-4 duration-300"
+                    }`}
+                  >
                     <div className="p-6 border-b border-cloudo-border bg-cloudo-accent/5 flex justify-between items-center">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-cloudo-warn/10 border border-cloudo-warn/20 flex items-center justify-center text-cloudo-warn">
@@ -411,6 +419,17 @@ function ApprovalsPageContent() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setIsExpanded(!isExpanded)}
+                          className="p-2 text-cloudo-muted hover:text-cloudo-warn border border-cloudo-border transition-colors group/expand"
+                          title={isExpanded ? "Collapse" : "Expand"}
+                        >
+                          <HiOutlineArrowsExpand
+                            className={`w-4 h-4 transition-transform duration-300 ${
+                              isExpanded ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
                         <button
                           onClick={copyShareLink}
                           className={`flex items-center gap-2 px-3 py-1.5 border text-[10px] font-black uppercase tracking-widest transition-all ${
@@ -432,7 +451,10 @@ function ApprovalsPageContent() {
                           )}
                         </button>
                         <button
-                          onClick={() => setSelectedExec(null)}
+                          onClick={() => {
+                            setSelectedExec(null);
+                            setIsExpanded(false);
+                          }}
                           className="p-2 text-cloudo-muted hover:text-cloudo-text transition-colors border border-cloudo-border"
                         >
                           <HiOutlineX className="w-5 h-5" />
@@ -440,7 +462,7 @@ function ApprovalsPageContent() {
                       </div>
                     </div>
 
-                    <div className="p-8 space-y-8">
+                    <div className="flex-1 overflow-auto p-8 space-y-8 custom-scrollbar bg-cloudo-dark/30">
                       {/* Section: Identity & Routing */}
                       <div className="space-y-4">
                         <div className="flex items-center gap-2">
@@ -530,37 +552,90 @@ function ApprovalsPageContent() {
                       </div>
 
                       {/* Section: Compliance Manifest */}
-                      {approvalLinks?.display_info &&
-                        Object.keys(approvalLinks.display_info).length > 0 && (
-                          <div className="space-y-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-1 h-3 bg-cloudo-warn" />
-                              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
-                                Compliance Manifest
-                              </h3>
+                      {(() => {
+                        let info: Record<string, unknown> = {};
+                        if (selectedExec.ResourceInfo) {
+                          try {
+                            info = JSON.parse(selectedExec.ResourceInfo);
+                          } catch (e) {
+                            console.warn("Failed to parse ResourceInfo:", e);
+                          }
+                        }
+
+                        // Fallback to display_info from log parsing if ResourceInfo is empty
+                        const display_info =
+                          Object.keys(info).length > 0
+                            ? info
+                            : (approvalLinks?.display_info as Record<
+                                string,
+                                unknown
+                              >) || {};
+
+                        if (Object.keys(display_info).length > 0) {
+                          return (
+                            <div className="space-y-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1 h-3 bg-cloudo-warn" />
+                                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                                  Compliance Manifest & Resource Info
+                                </h3>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {Object.entries(display_info)
+                                  .filter(
+                                    ([_, v]) =>
+                                      v !== null &&
+                                      v !== undefined &&
+                                      String(v).trim() !== "",
+                                  )
+                                  .map(([k, v]) => {
+                                    const isRaw = k === "_raw";
+                                    let displayValue = String(v);
+
+                                    if (isRaw) {
+                                      try {
+                                        const parsed =
+                                          typeof v === "string"
+                                            ? JSON.parse(v)
+                                            : v;
+                                        displayValue = JSON.stringify(
+                                          parsed,
+                                          null,
+                                          2,
+                                        );
+                                      } catch {
+                                        // fallback to string
+                                      }
+                                    }
+
+                                    return (
+                                      <div
+                                        key={k}
+                                        className={`bg-cloudo-accent/10 border border-cloudo-border p-3 flex flex-col group gap-2 ${
+                                          isRaw ? "md:col-span-2" : ""
+                                        }`}
+                                      >
+                                        <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest shrink-0">
+                                          {k}
+                                        </span>
+                                        <span
+                                          className={`text-xs font-mono text-cloudo-text group-hover:text-cloudo-accent transition-colors break-all ${
+                                            isRaw
+                                              ? "whitespace-pre-wrap text-left"
+                                              : "text-right"
+                                          }`}
+                                        >
+                                          {displayValue}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {Object.entries(
-                                approvalLinks.display_info as Record<
-                                  string,
-                                  unknown
-                                >,
-                              ).map(([k, v]) => (
-                                <div
-                                  key={k}
-                                  className="bg-cloudo-accent/10 border border-cloudo-border p-3 flex justify-between items-center group gap-4"
-                                >
-                                  <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest shrink-0">
-                                    {k}
-                                  </span>
-                                  <span className="text-xs font-mono text-cloudo-text group-hover:text-cloudo-accent transition-colors break-all text-right">
-                                    {String(v)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                          );
+                        }
+                        return null;
+                      })()}
 
                       {/* Action Bar */}
                       <div className="grid grid-cols-2 gap-4 pt-8 border-t border-cloudo-border">
@@ -662,7 +737,7 @@ function DetailItem({
 }) {
   return (
     <div
-      className={`bg-cloudo-accent/10 border border-cloudo-border p-3 space-y-2 overflow-hidden ${className}`}
+      className={`bg-cloudo-warn/5 border border-cloudo-border p-3 space-y-2 overflow-hidden ${className}`}
     >
       <div className="flex items-center gap-2 text-cloudo-muted/60">
         <span className="text-sm">{icon}</span>
