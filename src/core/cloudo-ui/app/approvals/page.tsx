@@ -34,6 +34,7 @@ interface PendingApproval {
   Run_Args?: string;
   Worker?: string;
   OnCall?: string;
+  Initiator?: string;
 }
 
 export default function ApprovalsPage() {
@@ -114,6 +115,7 @@ export default function ApprovalsPage() {
         monitor: decodedPayload?.monitorCondition || null,
         run_args: selectedExec.Run_Args || null,
         oncall: selectedExec.OnCall || null,
+        initiator: selectedExec.Initiator || null,
       };
     } catch {
       return null;
@@ -171,6 +173,7 @@ export default function ApprovalsPage() {
         Log?: string;
         Worker?: string;
         OnCall?: string;
+        Initiator?: string;
       }[];
 
       const terminalIds = new Set(
@@ -385,54 +388,105 @@ export default function ApprovalsPage() {
                     </div>
 
                     <div className="p-8 space-y-8">
-                      {/* Meta Information Grid */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <DetailItem
-                          label="Initiator"
-                          value={selectedExec.OnCall || "AUTO_TRIGGER"}
-                          icon={<HiOutlineUser />}
-                        />
-                        <DetailItem
-                          label="Node"
-                          value={selectedExec.Worker || "DYNAMIC"}
-                          icon={<HiOutlineServer className="w-4 h-4" />}
-                        />
-                        <DetailItem
-                          label="Priority"
-                          value={approvalLinks?.severity || "NORMAL"}
-                          icon={<HiOutlineClock />}
-                        />
-                        <DetailItem
-                          label="Condition"
-                          value={approvalLinks?.monitor || "DIRECT"}
-                          icon={<HiOutlineSearch />}
-                        />
+                      {/* Section: Identity & Routing */}
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1 h-3 bg-cloudo-warn" />
+                          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                            Request Identity & Routing
+                          </h3>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                          <DetailItem
+                            label="Initiator"
+                            value={
+                              selectedExec.Initiator ||
+                              selectedExec.OnCall ||
+                              "AUTO_TRIGGER"
+                            }
+                            icon={<HiOutlineUser />}
+                          />
+                          <DetailItem
+                            label="Node"
+                            value={selectedExec.Worker || "DYNAMIC"}
+                            icon={<HiOutlineServer className="w-4 h-4" />}
+                          />
+                          <DetailItem
+                            label="Runbook"
+                            value={selectedExec.Runbook}
+                            icon={<HiOutlineTerminal />}
+                          />
+                          <DetailItem
+                            label="Requested At"
+                            className="md:col-span-2"
+                            value={new Date(
+                              selectedExec.RequestedAt,
+                            ).toLocaleString([], {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                              hour12: false,
+                            })}
+                            icon={<HiOutlineClock />}
+                          />
+                        </div>
                       </div>
 
-                      {/* Arguments Panel */}
-                      <div className="space-y-3">
+                      {/* Section: Execution Context */}
+                      <div className="space-y-4">
                         <div className="flex items-center gap-2">
-                          <div className="w-1.5 h-2.5 bg-cloudo-accent" />
-                          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">
-                            Runtime Arguments
-                          </span>
+                          <div className="w-1 h-3 bg-cloudo-accent" />
+                          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                            Execution Context
+                          </h3>
                         </div>
-                        <div className="bg-cloudo-dark/60 border border-cloudo-border p-4 font-mono text-xs text-cloudo-accent/80 whitespace-pre-wrap leading-relaxed">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                          <DetailItem
+                            label="Priority"
+                            value={approvalLinks?.severity || "NORMAL"}
+                            icon={<HiOutlineClock />}
+                          />
+                          <DetailItem
+                            label="Condition"
+                            value={approvalLinks?.monitor || "DIRECT"}
+                            icon={<HiOutlineSearch />}
+                          />
+                        </div>
+
+                        {approvalLinks?.message && (
+                          <div className="bg-cloudo-ok/5 border border-cloudo-ok/20 p-4 font-mono text-xs text-cloudo-ok/90 leading-relaxed break-all">
+                            {approvalLinks.message}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Section: Runtime Arguments */}
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1 h-3 bg-cloudo-accent" />
+                          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                            Runtime Arguments
+                          </h3>
+                        </div>
+                        <div className="bg-cloudo-dark/60 border border-cloudo-border p-4 font-mono text-xs text-cloudo-accent/80 whitespace-pre-wrap break-all leading-relaxed">
                           {selectedExec.Run_Args || "NO_ARGS_PROVIDED"}
                         </div>
                       </div>
 
-                      {/* Approval Data Panel */}
+                      {/* Section: Compliance Manifest */}
                       {approvalLinks?.display_info &&
                         Object.keys(approvalLinks.display_info).length > 0 && (
-                          <div className="space-y-3">
+                          <div className="space-y-4">
                             <div className="flex items-center gap-2">
-                              <div className="w-1.5 h-2.5 bg-cloudo-warn" />
-                              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">
+                              <div className="w-1 h-3 bg-cloudo-warn" />
+                              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
                                 Compliance Manifest
-                              </span>
+                              </h3>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {Object.entries(
                                 approvalLinks.display_info as Record<
                                   string,
@@ -441,12 +495,12 @@ export default function ApprovalsPage() {
                               ).map(([k, v]) => (
                                 <div
                                   key={k}
-                                  className="bg-cloudo-accent/10 border border-cloudo-border p-3 flex justify-between items-center group"
+                                  className="bg-cloudo-accent/10 border border-cloudo-border p-3 flex justify-between items-center group gap-4"
                                 >
-                                  <span className="text-[11px] font-black text-cloudo-muted uppercase tracking-widest">
+                                  <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest shrink-0">
                                     {k}
                                   </span>
-                                  <span className="text-xs font-mono text-cloudo-text group-hover:text-cloudo-accent transition-colors">
+                                  <span className="text-xs font-mono text-cloudo-text group-hover:text-cloudo-accent transition-colors break-all text-right">
                                     {String(v)}
                                   </span>
                                 </div>
@@ -546,20 +600,27 @@ function DetailItem({
   label,
   value,
   icon,
+  className = "",
 }: {
   label: string;
   value: string;
   icon: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="bg-cloudo-accent/10 border border-cloudo-border p-3 space-y-2">
+    <div
+      className={`bg-cloudo-accent/10 border border-cloudo-border p-3 space-y-2 overflow-hidden ${className}`}
+    >
       <div className="flex items-center gap-2 text-cloudo-muted/60">
         <span className="text-sm">{icon}</span>
-        <span className="text-[10px] font-black uppercase tracking-widest">
+        <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
           {label}
         </span>
       </div>
-      <div className="text-[11px] font-bold text-cloudo-text truncate uppercase tracking-tighter">
+      <div
+        className="text-[11px] font-bold text-cloudo-text truncate uppercase tracking-tighter hover:whitespace-normal hover:break-all transition-all"
+        title={value}
+      >
         {value}
       </div>
     </div>

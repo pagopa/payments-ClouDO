@@ -490,6 +490,7 @@ def _inspect_duplicate_runs(items: list[Any], payload: Any):
             item["name"] == payload.get("name")
             and item["runbook"] == payload.get("runbook")
             and item["run_args"] == payload.get("run_args")
+            and item["resource_info"] == payload.get("resource_info")
         ):
             return True
         else:

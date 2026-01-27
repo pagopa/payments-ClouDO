@@ -36,6 +36,8 @@ interface LogEntry {
   MonitorCondition: string;
   Severity: string;
   OnCall?: boolean | string;
+  Initiator?: string;
+  Worker?: string;
 }
 
 export function LogsPanel() {
@@ -203,7 +205,7 @@ export function LogsPanel() {
       return (
         <div
           key={i}
-          className={`${color} font-mono text-xs leading-relaxed py-1 border-b border-white/[0.02]`}
+          className={`${color} font-mono text-xs leading-relaxed py-1 border-b border-white/[0.02] break-all`}
         >
           {line}
         </div>
@@ -372,6 +374,7 @@ export function LogsPanel() {
                   <th className="px-4 py-4 text-left">Timestamp</th>
                   <th className="px-4 py-4 text-left">State</th>
                   <th className="px-4 py-4 text-left">Process_Context</th>
+                  <th className="px-4 py-4 text-left">Runbook</th>
                   <th className="px-4 py-4 text-center w-10">On Call</th>
                 </tr>
               </thead>
@@ -411,6 +414,11 @@ export function LogsPanel() {
                       </div>
                       <div className="text-[10px] text-cloudo-muted/60 opacity-50 truncate max-w-[150px]">
                         {log.ExecId.slice(0, 12)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-[11px] font-mono text-cloudo-accent/70 uppercase tracking-widest truncate max-w-[150px]">
+                        {log.Runbook}
                       </div>
                     </td>
                     <td className="px-4 py-4 text-center">
@@ -464,59 +472,98 @@ export function LogsPanel() {
           </div>
 
           <div className="flex-1 overflow-auto p-8 space-y-8 custom-scrollbar bg-cloudo-accent/10">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-cloudo-accent/10 border border-cloudo-border p-3">
-                <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">
-                  Asset_Path
-                </span>
-                <span className="text-[11px] font-bold text-cloudo-accent truncate block">
-                  {selectedLog.Runbook}
-                </span>
+            {/* Section: Identity & Deployment */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-3 bg-cloudo-accent" />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                  Process Identity & Deployment
+                </h3>
               </div>
-              <div className="bg-cloudo-accent/10 border border-cloudo-border p-3">
-                <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">
-                  Date
-                </span>
-                <span className="text-[11px] font-bold text-cloudo-text block truncate">
-                  {selectedLog.RequestedAt}
-                </span>
-              </div>
-              <div className="bg-cloudo-accent/10 border border-cloudo-border p-3">
-                <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block mb-1">
-                  On_Call
-                </span>
-                <span className="text-[11px] font-bold text-cloudo-text block">
-                  {String(selectedLog.OnCall || "NONE")}
-                </span>
-              </div>
-              <div
-                className="bg-cloudo-accent/10 border border-cloudo-border p-3 flex flex-col justify-center items-center gap-1 cursor-pointer hover:bg-cloudo-accent/5 transition-colors"
-                onClick={() => copyToClipboard(selectedLog.ExecId)}
-              >
-                <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block">
-                  Copy_ID
-                </span>
-                {copied ? (
-                  <HiOutlineClipboardCheck className="text-cloudo-ok w-3 h-3" />
-                ) : (
-                  <HiOutlineClipboard className="w-3 h-3" />
-                )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <DetailItem
+                  label="Asset_Path"
+                  value={selectedLog.Runbook}
+                  icon={<HiOutlineTerminal className="text-cloudo-accent" />}
+                />
+                <DetailItem
+                  label="Initiator"
+                  value={
+                    selectedLog.Initiator ||
+                    String(selectedLog.OnCall || "AUTO")
+                  }
+                  icon={<HiOutlineTag />}
+                />
+                <DetailItem
+                  label="Node"
+                  value={selectedLog.Worker || "DYNAMIC"}
+                  icon={<HiOutlineDatabase />}
+                />
+                <DetailItem
+                  label="Requested At"
+                  value={new Date(selectedLog.RequestedAt).toLocaleString([], {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    hour12: false,
+                  })}
+                  icon={<HiOutlineCalendar />}
+                  className="md:col-span-2"
+                />
               </div>
             </div>
 
-            <div className="space-y-3">
+            {/* Section: Execution Status */}
+            <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <div className="w-1 h-2 bg-cloudo-accent" />
-                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">
+                <div className="w-1 h-3 bg-cloudo-accent" />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                  Execution Status
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <DetailItem
+                  label="Status"
+                  value={selectedLog.Status}
+                  icon={<HiOutlineTag />}
+                  className={`flex-col items-start !space-y-1 ${getStatusBadgeClass(
+                    selectedLog.Status,
+                  )}`}
+                />
+                <div
+                  className="bg-cloudo-accent/10 border border-cloudo-border p-3 flex flex-col justify-center items-center gap-1 cursor-pointer hover:bg-cloudo-accent/5 transition-colors"
+                  onClick={() => copyToClipboard(selectedLog.ExecId)}
+                >
+                  <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block">
+                    Copy_ID
+                  </span>
+                  {copied ? (
+                    <HiOutlineClipboardCheck className="text-cloudo-ok w-3 h-3" />
+                  ) : (
+                    <HiOutlineClipboard className="w-3 h-3" />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Section: Runtime Arguments */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-3 bg-cloudo-accent" />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
                   Runtime Arguments
-                </span>
+                </h3>
               </div>
               <div className="bg-cloudo-dark/60 border border-cloudo-border p-4 font-mono text-[11px] text-cloudo-accent whitespace-pre-wrap break-all leading-relaxed">
                 {selectedLog.Run_Args || "EMPTY_ARGS"}
               </div>
             </div>
 
-            <div className="space-y-3">
+            {/* Section: Telemetry Logs */}
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-1 h-2 bg-cloudo-accent" />
@@ -542,13 +589,44 @@ export function LogsPanel() {
                   )}
                 </button>
               </div>
-              <div className="bg-cloudo-dark p-6 border border-cloudo-border font-mono text-xs min-h-[400px]">
+              <div className="bg-cloudo-dark p-6 border border-cloudo-border font-mono text-xs min-h-[400px] overflow-x-auto">
                 {formatLogContent(selectedLog.Log)}
               </div>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function DetailItem({
+  label,
+  value,
+  icon,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`bg-cloudo-accent/10 border border-cloudo-border p-3 space-y-2 overflow-hidden ${className}`}
+    >
+      <div className="flex items-center gap-2 text-cloudo-muted/60">
+        <span className="text-sm">{icon}</span>
+        <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
+          {label}
+        </span>
+      </div>
+      <div
+        className="text-[11px] font-bold text-cloudo-text truncate uppercase tracking-tighter hover:whitespace-normal hover:break-all transition-all"
+        title={value}
+      >
+        {value}
+      </div>
     </div>
   );
 }
