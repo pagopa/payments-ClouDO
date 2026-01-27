@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { cloudoFetch } from "@/lib/api";
+import { useSearchParams } from "next/navigation";
 import {
   HiOutlineShieldCheck,
   HiOutlineTerminal,
@@ -15,6 +16,7 @@ import {
   HiOutlineServer,
   HiOutlineExclamationCircle,
   HiOutlineCheckCircle,
+  HiOutlineShare,
 } from "react-icons/hi";
 
 interface Notification {
@@ -38,6 +40,21 @@ interface PendingApproval {
 }
 
 export default function ApprovalsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center">
+          <HiOutlineRefresh className="animate-spin w-8 h-8 text-cloudo-warn" />
+        </div>
+      }
+    >
+      <ApprovalsPageContent />
+    </Suspense>
+  );
+}
+
+function ApprovalsPageContent() {
+  const searchParams = useSearchParams();
   const [pendingList, setPendingList] = useState<PendingApproval[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedExec, setSelectedExec] = useState<PendingApproval | null>(
@@ -45,6 +62,7 @@ export default function ApprovalsPage() {
   );
   const [isProcessing, setIsProcessing] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const addNotification = (type: "success" | "error", message: string) => {
     const id = Date.now().toString();
@@ -56,6 +74,15 @@ export default function ApprovalsPage() {
 
   const removeNotification = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  const copyShareLink = () => {
+    if (!selectedExec) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("execId", selectedExec.ExecId);
+    navigator.clipboard.writeText(url.toString());
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   };
 
   const approvalLinks = useMemo(() => {
@@ -231,17 +258,21 @@ export default function ApprovalsPage() {
 
       setPendingList(finalPendingList);
 
+      // Deep link selection
+      const initialExecId = searchParams.get("execId");
+
       // Update selection with new data if it exists, otherwise clear it
       setSelectedExec((prev) => {
-        if (!prev) return null;
-        return pendingMap.get(prev.ExecId) || null;
+        const targetId = initialExecId || (prev ? prev.ExecId : null);
+        if (!targetId) return null;
+        return pendingMap.get(targetId) || null;
       });
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     fetchPendingApprovals();
@@ -379,12 +410,34 @@ export default function ApprovalsPage() {
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => setSelectedExec(null)}
-                        className="p-2 text-cloudo-muted hover:text-cloudo-text transition-colors border border-cloudo-border"
-                      >
-                        <HiOutlineX className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={copyShareLink}
+                          className={`flex items-center gap-2 px-3 py-1.5 border text-[10px] font-black uppercase tracking-widest transition-all ${
+                            linkCopied
+                              ? "bg-cloudo-ok border-cloudo-ok text-cloudo-dark"
+                              : "bg-cloudo-warn/10 border-cloudo-warn/20 text-cloudo-warn hover:bg-cloudo-warn hover:text-cloudo-dark"
+                          }`}
+                        >
+                          {linkCopied ? (
+                            <>
+                              <HiOutlineCheck className="w-3.5 h-3.5" />
+                              <span>Link_Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <HiOutlineShare className="w-3.5 h-3.5" />
+                              <span>Share_Request</span>
+                            </>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setSelectedExec(null)}
+                          className="p-2 text-cloudo-muted hover:text-cloudo-text transition-colors border border-cloudo-border"
+                        >
+                          <HiOutlineX className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="p-8 space-y-8">

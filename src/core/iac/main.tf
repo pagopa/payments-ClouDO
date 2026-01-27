@@ -51,6 +51,7 @@ module "cloudo_orchestrator" {
 
   # which subnet is allowed to reach this app service
   allowed_subnet_ids           = [var.vpn_subnet_id]
+  allowed_service_tags         = ["ActionGroup"]
   private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
 
   embedded_subnet = {

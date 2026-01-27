@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { cloudoFetch } from "@/lib/api";
+import { useSearchParams } from "next/navigation";
 import {
   HiOutlineSearch,
   HiOutlineDatabase,
@@ -14,6 +15,7 @@ import {
   HiOutlineTag,
   HiOutlineFingerPrint,
   HiOutlineCalendar,
+  HiOutlineShare,
 } from "react-icons/hi";
 import {
   parseDate,
@@ -41,13 +43,41 @@ interface LogEntry {
 }
 
 export function LogsPanel() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center">
+          <HiOutlineRefresh className="animate-spin w-8 h-8 text-cloudo-accent" />
+        </div>
+      }
+    >
+      <LogsPanelContent />
+    </Suspense>
+  );
+}
+
+function LogsPanelContent() {
+  const searchParams = useSearchParams();
   const [partitionKey, setPartitionKey] = useState(
-    today(getLocalTimeZone()).toString().replace(/-/g, ""),
+    searchParams.get("partitionKey") ||
+      today(getLocalTimeZone()).toString().replace(/-/g, ""),
   );
-  const [dateValue, setDateValue] = useState<CalendarDate | null>(
-    today(getLocalTimeZone()),
-  );
-  const [execId, setExecId] = useState("");
+  const [dateValue, setDateValue] = useState<CalendarDate | null>(() => {
+    const pk = searchParams.get("partitionKey");
+    if (pk && pk.length === 8) {
+      try {
+        const formatted = `${pk.slice(0, 4)}-${pk.slice(4, 6)}-${pk.slice(
+          6,
+          8,
+        )}`;
+        return parseDate(formatted);
+      } catch {
+        return today(getLocalTimeZone());
+      }
+    }
+    return today(getLocalTimeZone());
+  });
+  const [execId, setExecId] = useState(searchParams.get("execId") || "");
   const [status, setStatus] = useState("");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState("200");
@@ -55,6 +85,7 @@ export function LogsPanel() {
   const [loading, setLoading] = useState(false);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const setTodayDate = () => {
     const t = today(getLocalTimeZone());
@@ -63,7 +94,7 @@ export function LogsPanel() {
   };
 
   const runQuery = useCallback(
-    async (overrideParams?: { partitionKey?: string }) => {
+    async (overrideParams?: { partitionKey?: string; execId?: string }) => {
       setLoading(true);
       try {
         const params = new URLSearchParams();
@@ -71,9 +102,11 @@ export function LogsPanel() {
           overrideParams?.partitionKey !== undefined
             ? overrideParams.partitionKey
             : partitionKey;
+        const eId =
+          overrideParams?.execId !== undefined ? overrideParams.execId : execId;
 
         if (pKey) params.set("partitionKey", pKey);
-        if (execId) params.set("execId", execId);
+        if (eId) params.set("execId", eId);
         if (status) params.set("status", status);
         if (query) params.set("q", query);
         if (limit) params.set("limit", limit);
@@ -98,11 +131,11 @@ export function LogsPanel() {
         };
 
         rawLogs.forEach((log: LogEntry) => {
-          const execId = log.ExecId;
-          const existing = groupedByExecId.get(execId);
+          const logExecId = log.ExecId;
+          const existing = groupedByExecId.get(logExecId);
 
           if (!existing) {
-            groupedByExecId.set(execId, log);
+            groupedByExecId.set(logExecId, log);
           } else {
             // Keep the entry with higher priority status
             const currentPriority =
@@ -111,21 +144,28 @@ export function LogsPanel() {
               statusPriority[existing.Status?.toLowerCase()] || 0;
 
             if (currentPriority > existingPriority) {
-              groupedByExecId.set(execId, log);
+              groupedByExecId.set(logExecId, log);
             } else if (currentPriority === existingPriority) {
               // If same priority, keep the most recent
               if (log.RequestedAt > existing.RequestedAt) {
-                groupedByExecId.set(execId, log);
+                groupedByExecId.set(logExecId, log);
               }
             }
           }
         });
 
-        setLogs(
-          Array.from(groupedByExecId.values()).sort((a, b) =>
-            b.RequestedAt.localeCompare(a.RequestedAt),
-          ),
+        const finalLogs = Array.from(groupedByExecId.values()).sort((a, b) =>
+          b.RequestedAt.localeCompare(a.RequestedAt),
         );
+        setLogs(finalLogs);
+
+        // If we are looking for a specific execId via deep link, select it
+        if (eId && finalLogs.length > 0) {
+          const target = finalLogs.find((l) => l.ExecId === eId);
+          if (target) {
+            setSelectedLog(target);
+          }
+        }
       } catch (error) {
         console.error("Error fetching logs:", error);
         setLogs([]);
@@ -137,7 +177,16 @@ export function LogsPanel() {
   );
 
   useEffect(() => {
-    runQuery();
+    const initialExecId = searchParams.get("execId");
+    const initialPK = searchParams.get("partitionKey");
+    if (initialExecId || initialPK) {
+      runQuery({
+        execId: initialExecId || execId,
+        partitionKey: initialPK || partitionKey,
+      });
+    } else {
+      runQuery();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only on mount
 
@@ -217,6 +266,16 @@ export function LogsPanel() {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyShareLink = () => {
+    if (!selectedLog) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("execId", selectedLog.ExecId);
+    url.searchParams.set("partitionKey", selectedLog.PartitionKey);
+    navigator.clipboard.writeText(url.toString());
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   };
 
   return (
@@ -463,12 +522,34 @@ export function LogsPanel() {
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => setSelectedLog(null)}
-              className="p-2 text-cloudo-muted hover:text-cloudo-text border border-cloudo-border transition-colors"
-            >
-              <HiOutlineX className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={copyShareLink}
+                className={`flex items-center gap-2 px-3 py-1.5 border text-[10px] font-black uppercase tracking-widest transition-all ${
+                  linkCopied
+                    ? "bg-cloudo-ok border-cloudo-ok text-cloudo-dark"
+                    : "bg-cloudo-accent/10 border-cloudo-accent/20 text-cloudo-accent hover:bg-cloudo-accent hover:text-cloudo-dark"
+                }`}
+              >
+                {linkCopied ? (
+                  <>
+                    <HiOutlineClipboardCheck className="w-3.5 h-3.5" />
+                    <span>Link_Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <HiOutlineShare className="w-3.5 h-3.5" />
+                    <span>Share_Execution</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="p-2 text-cloudo-muted hover:text-cloudo-text border border-cloudo-border transition-colors"
+              >
+                <HiOutlineX className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-auto p-8 space-y-8 custom-scrollbar bg-cloudo-accent/10">

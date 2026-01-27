@@ -286,6 +286,12 @@ export default function DashboardPage() {
                 <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">
                   Operational Stream
                 </h2>
+                <a
+                  href="/executions"
+                  className="ml-auto text-[10px] font-black uppercase tracking-widest text-cloudo-accent hover:text-cloudo-text transition-colors flex items-center gap-1"
+                >
+                  View All <HiOutlineArrowRight className="w-3 h-3" />
+                </a>
               </div>
               <div className="bg-cloudo-panel border border-cloudo-border overflow-hidden">
                 <table className="w-full text-left border-collapse text-sm">
@@ -312,7 +318,10 @@ export default function DashboardPage() {
                         (exec: Record<string, unknown>) => (
                           <tr
                             key={exec.RowKey as string}
-                            className="group hover:bg-white/[0.02] transition-colors"
+                            className="group hover:bg-white/[0.02] transition-colors cursor-pointer"
+                            onClick={() => {
+                              window.location.href = `/executions?execId=${exec.ExecId}&partitionKey=${exec.PartitionKey}`;
+                            }}
                           >
                             <td className="px-6 py-4 font-mono">
                               <div className="text-cloudo-text font-bold">
@@ -353,6 +362,12 @@ export default function DashboardPage() {
                 <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">
                   Runtime Processes
                 </h2>
+                <a
+                  href="/workers"
+                  className="ml-auto text-[10px] font-black uppercase tracking-widest text-cloudo-accent hover:text-cloudo-text transition-colors flex items-center gap-1"
+                >
+                  View All <HiOutlineArrowRight className="w-3 h-3" />
+                </a>
               </div>
               <div className="bg-cloudo-panel border border-cloudo-border p-4 space-y-3 min-h-[320px] max-h-[500px] overflow-y-auto custom-scrollbar">
                 {stats.liveProcesses.length === 0 ? (
@@ -368,7 +383,10 @@ export default function DashboardPage() {
                   stats.liveProcesses.map((proc: Record<string, unknown>) => (
                     <div
                       key={proc.exec_id as string}
-                      className="bg-cloudo-accent/10 border border-cloudo-border p-3 border-l-2 border-l-cloudo-accent group hover:bg-cloudo-accent/5 transition-all"
+                      className="bg-cloudo-accent/10 border border-cloudo-border p-3 border-l-2 border-l-cloudo-accent group hover:bg-cloudo-accent/5 transition-all cursor-pointer"
+                      onClick={() => {
+                        window.location.href = `/workers`;
+                      }}
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-center gap-2">
@@ -398,7 +416,7 @@ export default function DashboardPage() {
               <div className="grid grid-cols-1 gap-2 pt-4">
                 <QuickLink
                   icon={<HiOutlineDatabase />}
-                  label="Registry"
+                  label="Schemas"
                   href="/schemas"
                 />
                 <QuickLink
