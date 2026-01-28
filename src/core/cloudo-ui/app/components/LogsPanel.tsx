@@ -511,8 +511,8 @@ function LogsPanelContent() {
         <div
           className={`bg-cloudo-panel border border-cloudo-border flex flex-col transition-all duration-500 ease-in-out overflow-hidden ${
             isExpanded
-              ? "fixed inset-4 z-[60] shadow-2xl animate-in zoom-in-95 overflow-y-auto custom-scrollbar"
-              : "flex-1 animate-in slide-in-from-right-4"
+              ? "fixed inset-4 z-[60] shadow-2xl animate-in zoom-in-95 fade-in duration-500 overflow-y-auto custom-scrollbar ring-1 ring-cloudo-accent/20"
+              : "flex-1 animate-in fade-in slide-in-from-right-4 duration-300"
           }`}
         >
           <div className="p-6 border-b border-cloudo-border bg-cloudo-panel-2 flex justify-between items-center">
@@ -568,9 +568,9 @@ function LogsPanelContent() {
                   setSelectedLog(null);
                   setIsExpanded(false);
                 }}
-                className="p-2 text-cloudo-muted hover:text-cloudo-text border border-cloudo-border transition-colors"
+                className="p-2 text-cloudo-muted hover:text-cloudo-text border border-cloudo-border transition-colors group/expand"
               >
-                <HiOutlineX className="w-4 h-4" />
+                <HiOutlineX className="w-4 h-4 transition-transform duration-300 group-hover/expand:rotate-90" />
               </button>
             </div>
           </div>
@@ -668,7 +668,7 @@ function LogsPanelContent() {
 
             {/* Section: Resource Info */}
             {(() => {
-              let info: Record<string, unknown> | null = null;
+              let info: Record<string, unknown> = {};
               if (selectedLog.ResourceInfo) {
                 try {
                   info = JSON.parse(selectedLog.ResourceInfo);
@@ -677,7 +677,12 @@ function LogsPanelContent() {
                 }
               }
 
-              if (info && Object.keys(info).length > 0) {
+              const validEntries = Object.entries(info).filter(
+                ([_, v]) =>
+                  v !== null && v !== undefined && String(v).trim() !== "",
+              );
+
+              if (validEntries.length > 0) {
                 return (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
@@ -687,49 +692,42 @@ function LogsPanelContent() {
                       </h3>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {Object.entries(info)
-                        .filter(
-                          ([_, v]) =>
-                            v !== null &&
-                            v !== undefined &&
-                            String(v).trim() !== "",
-                        )
-                        .map(([k, v]) => {
-                          const isRaw = k === "_raw";
-                          let displayValue = String(v);
+                      {validEntries.map(([k, v]) => {
+                        const isRaw = k === "_raw";
+                        let displayValue = String(v);
 
-                          if (isRaw) {
-                            try {
-                              const parsed =
-                                typeof v === "string" ? JSON.parse(v) : v;
-                              displayValue = JSON.stringify(parsed, null, 2);
-                            } catch {
-                              // fallback
-                            }
+                        if (isRaw) {
+                          try {
+                            const parsed =
+                              typeof v === "string" ? JSON.parse(v) : v;
+                            displayValue = JSON.stringify(parsed, null, 2);
+                          } catch {
+                            // fallback
                           }
+                        }
 
-                          return (
-                            <div
-                              key={k}
-                              className={`bg-cloudo-accent/5 border border-cloudo-border p-3 flex flex-col group gap-2 ${
-                                isRaw ? "md:col-span-2" : ""
+                        return (
+                          <div
+                            key={k}
+                            className={`bg-cloudo-accent/5 border border-cloudo-border p-3 flex flex-col group gap-2 ${
+                              isRaw ? "md:col-span-2" : ""
+                            }`}
+                          >
+                            <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest shrink-0">
+                              {k}
+                            </span>
+                            <span
+                              className={`text-xs font-mono text-cloudo-text group-hover:text-cloudo-accent transition-colors break-all ${
+                                isRaw
+                                  ? "whitespace-pre-wrap text-left"
+                                  : "text-right"
                               }`}
                             >
-                              <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest shrink-0">
-                                {k}
-                              </span>
-                              <span
-                                className={`text-xs font-mono text-cloudo-text group-hover:text-cloudo-accent transition-colors break-all ${
-                                  isRaw
-                                    ? "whitespace-pre-wrap text-left"
-                                    : "text-right"
-                                }`}
-                              >
-                                {displayValue}
-                              </span>
-                            </div>
-                          );
-                        })}
+                              {displayValue}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );

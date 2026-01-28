@@ -203,6 +203,7 @@ function ApprovalsPageContent() {
         Worker?: string;
         OnCall?: string;
         Initiator?: string;
+        ResourceInfo?: string;
       }[];
 
       const terminalIds = new Set(
@@ -248,6 +249,7 @@ function ApprovalsPageContent() {
             Runbook: e.Runbook || "Unknown",
             RequestedAt: e.RequestedAt,
             Status: status === "accepted" ? "running" : "pending",
+            ResourceInfo: e.ResourceInfo,
           };
           pendingMap.set(id, enriched);
         }
@@ -400,7 +402,7 @@ function ApprovalsPageContent() {
                   <div
                     className={`bg-cloudo-panel border border-cloudo-border flex flex-col transition-all duration-500 ease-in-out overflow-hidden ${
                       isExpanded
-                        ? "fixed inset-4 z-[60] shadow-2xl animate-in zoom-in-95 overflow-y-auto custom-scrollbar"
+                        ? "fixed inset-4 z-[60] shadow-2xl animate-in zoom-in-95 fade-in duration-500 overflow-y-auto custom-scrollbar ring-1 ring-cloudo-warn/20"
                         : "sticky top-8 animate-in fade-in slide-in-from-right-4 duration-300"
                     }`}
                   >
@@ -455,9 +457,9 @@ function ApprovalsPageContent() {
                             setSelectedExec(null);
                             setIsExpanded(false);
                           }}
-                          className="p-2 text-cloudo-muted hover:text-cloudo-text transition-colors border border-cloudo-border"
+                          className="p-2 text-cloudo-muted hover:text-cloudo-text transition-colors border border-cloudo-border group/expand"
                         >
-                          <HiOutlineX className="w-5 h-5" />
+                          <HiOutlineX className="w-5 h-5 transition-transform duration-300 group-hover/expand:rotate-90" />
                         </button>
                       </div>
                     </div>

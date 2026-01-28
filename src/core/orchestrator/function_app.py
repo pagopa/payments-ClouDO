@@ -1457,6 +1457,8 @@ def approve(
                 ensure_ascii=False,
             ),
             oncall=schema.oncall,
+            initiator=payload.get("initiator"),
+            resource_info=resource_info,
             monitor_condition=monitor_condition,
             severity=severity,
             approval_required=True,
@@ -1716,6 +1718,8 @@ def reject(
             {"message": f"Rejected by approver: {approver}"}, ensure_ascii=False
         ),
         oncall=schema.oncall,
+        initiator=payload.get("initiator"),
+        resource_info=resource_info,
         monitor_condition=monitor_condition,
         severity=severity,
         approval_required=True,
