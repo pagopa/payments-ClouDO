@@ -10,7 +10,7 @@ output "cloudo_orchestrator_key" {
 }
 
 output "cloudo_ui_url" {
-  value       = length(module.cloudo_ui) > 0 ? "https://${module.cloudo_ui[0].default_hostname}" : null
+  value       = length(module.cloudo_ui) > 0 ? "https://${module.cloudo_ui[0].default_site_hostname}" : null
   description = "The URL of the Cloudo UI"
 }
 
