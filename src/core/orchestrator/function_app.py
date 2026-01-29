@@ -288,7 +288,14 @@ def _notify_slack_decision(
 
     if not token:
         return
+
     emoji = "✅" if decision == "approved" else "❌"
+
+    # UI Base URL
+    ui_base = (os.getenv("NEXTJS_URL") or "http://localhost:3000").rstrip("/")
+    partition_key = datetime.now(timezone.utc).strftime("%Y%m%d")
+    ui_url = f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
+
     try:
         send_slack_execution(
             token=token,
@@ -296,27 +303,65 @@ def _notify_slack_decision(
             message=f"[{exec_id}] {emoji} {decision.upper()} - {schema_id}",
             blocks=[
                 {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f"Gate Decision: {decision.upper()} {emoji}",
+                        "emoji": True,
+                    },
+                },
+                {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": (
-                            f"*{decision.capitalize()}*\n"
-                            f"*ExecId:* `{exec_id}`\n"
-                            f"*SchemaId:* `{schema_id}`\n"
-                            f"*By:* {approver}"
-                        ),
+                        "text": f"The execution request for *{schema_id}* has been *{decision.upper()}*.",
                     },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": f"*Schema:*\n`{schema_id}`"},
+                        {"type": "mrkdwn", "text": f"*Decision By:*\n`{approver}`"},
+                        {"type": "mrkdwn", "text": f"*ExecId:*\n`{exec_id}`"},
+                        {"type": "mrkdwn", "text": f"*Status:*\n`{decision.upper()}`"},
+                    ],
                 },
                 *(
                     [
                         {
-                            "type": "context",
-                            "elements": [{"type": "mrkdwn", "text": extra}],
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"*Reason/Details:*\n{extra}",
+                            },
                         }
                     ]
                     if extra
                     else []
                 ),
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "View Execution 🔍",
+                                "emoji": True,
+                            },
+                            "url": ui_url,
+                        }
+                    ],
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"Timestamp: <!date^{int(datetime.now(timezone.utc).timestamp())}^{{date_short}} {{time}}|now> | System: `cloudo-orchestrator`",
+                        }
+                    ],
+                },
             ],
         )
     except Exception as e:
@@ -849,24 +894,32 @@ def Trigger(
             slack_channel = routing_info.get("slack_channel")
             if slack_token:
                 try:
+                    # UI Base URL
+                    ui_base = (
+                        os.getenv("NEXTJS_URL") or "http://localhost:3000"
+                    ).rstrip("/")
+                    ui_url = f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
+
                     send_slack_execution(
                         token=slack_token,
                         channel=slack_channel,
-                        message=f"[{exec_id}] APPROVAL REQUIRED: {schema.name}",
+                        message=f"[{exec_id}] ⚠️ APPROVAL REQUIRED: {schema.name}",
                         blocks=[
+                            {
+                                "type": "header",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "Gate Approval Required ⚠️",
+                                    "emoji": True,
+                                },
+                            },
                             {
                                 "type": "section",
                                 "text": {
                                     "type": "mrkdwn",
                                     "text": (
-                                        f"*Approval required* <!here>\n"
-                                        f"*Name:* {schema.name}\n"
-                                        f"*Id:* `{schema.id}`\n"
-                                        f"*ExecId:* `{exec_id}`\n"
-                                        f"*Severity:* {severity or '-'}\n"
-                                        f"*Worker:* `{schema.worker or 'unknow(?)'}`\n"
-                                        f"*Runbook:* `{schema.runbook or '-'}`\n"
-                                        f"*Args:* ```{(schema.run_args or '').strip() or '-'}```"
+                                        f"<!here> *{schema.name}* is requesting permission to execute a restricted runbook.\n"
+                                        f"> *Description:* {schema.description or 'No description provided.'}"
                                     ),
                                 },
                             },
@@ -875,29 +928,78 @@ def Trigger(
                                 "fields": [
                                     {
                                         "type": "mrkdwn",
-                                        "text": f"*Worker:* {schema.worker or 'unknow(?)'}",
-                                    }
+                                        "text": f"*SchemaId:*\n`{schema.id}`",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Severity:*\n`{severity or '-'}`",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Runbook:*\n`{schema.runbook or '-'}`",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Worker:*\n`{schema.worker or 'unknown'}`",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Initiator:*\n`{requester_username or 'SYSTEM'}`",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*On Call:*\n`{schema.oncall}`",
+                                    },
                                 ],
+                            },
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": f"*Arguments:*\n```{(schema.run_args or '').strip() or 'None'}```",
+                                },
                             },
                             {
                                 "type": "actions",
                                 "elements": [
                                     {
                                         "type": "button",
+                                        "style": "primary",
                                         "text": {
                                             "type": "plain_text",
                                             "text": "Approve ✅",
+                                            "emoji": True,
                                         },
                                         "url": approve_url,
                                     },
                                     {
                                         "type": "button",
+                                        "style": "danger",
                                         "text": {
                                             "type": "plain_text",
                                             "text": "Reject ❌",
+                                            "emoji": True,
                                         },
                                         "url": reject_url,
                                     },
+                                    {
+                                        "type": "button",
+                                        "text": {
+                                            "type": "plain_text",
+                                            "text": "Full Context 🔍",
+                                            "emoji": True,
+                                        },
+                                        "url": ui_url,
+                                    },
+                                ],
+                            },
+                            {
+                                "type": "context",
+                                "elements": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"ExecId: `{exec_id}` | Requested: <!date^{int(datetime.now(timezone.utc).timestamp())}^{{date_short}} {{time}}|now>",
+                                    }
                                 ],
                             },
                         ],
@@ -1922,11 +2024,19 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
             "routed": "🧭",
             "error": "❌",
             "failed": "❌",
+            "accepted": "📩",
+            "pending": "⏳",
         }
         status_emoji = status_emojis.get(status_label, "ℹ️")
+
+        # UI Base URL
+        ui_base = (os.getenv("NEXTJS_URL") or "http://localhost:3000").rstrip("/")
+        partition_key = datetime.now(timezone.utc).strftime("%Y%m%d")
+        ui_url = f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
+
         payload = {
             "slack": {
-                "message": f"[{exec_id}] Status: {status_label}: {body.get('name')}",
+                "message": f"[{exec_id}] {status_emoji} {status_label.upper()}: {body.get('name')}",
                 "blocks": [
                     {
                         "type": "header",
@@ -1938,35 +2048,39 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                     },
                     {
                         "type": "section",
-                        "fields": [
-                            {"type": "mrkdwn", "text": f"*Name:*\n{body.get('name')}"},
-                            {"type": "mrkdwn", "text": f"*Id:*\n{body.get('id')}"},
-                            {"type": "mrkdwn", "text": f"*ExecId:*\n{exec_id}"},
-                            {"type": "mrkdwn", "text": f"*Status:*\n{status_label}"},
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Severity:*\n{body.get('severity')}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*OnCall:*\n{body.get('oncall')}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Worker*:\n{body.get('worker') or 'unknown(?)'}",
-                            },
-                        ],
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                f"Execution *{body.get('name')}* has transitioned to status: *{status_label.upper()}*."
+                            ),
+                        },
                     },
                     {
                         "type": "section",
                         "fields": [
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Runbook:*\n{body.get('runbook')}",
+                                "text": f"*SchemaId:*\n`{body.get('id')}`",
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*MonitorCondition:*\n{body.get('monitor_condition')}",
+                                "text": f"*Severity:*\n`{body.get('severity') or '-'}`",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Worker:*\n`{body.get('worker') or 'unknown'}`",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Runbook:*\n`{body.get('runbook') or '-'}`",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Initiator:*\n`{body.get('initiator') or 'SYSTEM'}`",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*On Call:*\n`{body.get('oncall') or '-'}`",
                             },
                         ],
                     },
@@ -1974,34 +2088,39 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Run Args:*\n```{body.get('run_args')}```",
+                            "text": f"*Arguments:*\n```{(body.get('run_args') or '').strip() or 'None'}```",
                         },
                     },
                     {
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Logs (truncated):*\n```{(logs_raw or '')[:1500]}```",
+                            "text": f"*Telemetry Output:*\n```{(logs_raw or '')[:1500] or 'No telemetry available'}```",
                         },
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "View Full Execution 🔍",
+                                    "emoji": True,
+                                },
+                                "url": ui_url,
+                            }
+                        ],
                     },
                     {
                         "type": "context",
                         "elements": [
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Severity:* {body.get('severity')}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Teams:* {', '.join(dict.fromkeys(a.team for a in decision.actions if getattr(a, 'team', None)))}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"Timestamp: <!date^{int(__import__('time').time())}^{{date_short}} {{time}}|now>",
-                            },
+                                "text": f"ExecId: `{exec_id}` | Event: <!date^{int(datetime.now(timezone.utc).timestamp())}^{{date_short}} {{time}}|now>",
+                            }
                         ],
                     },
-                    {"type": "divider"},
                 ],
             },
             "opsgenie": {
