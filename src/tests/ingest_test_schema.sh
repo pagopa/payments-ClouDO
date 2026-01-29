@@ -1,21 +1,57 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONN_STR="${AZURITE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;}"
-TABLE_NAME="RunbookSchemas"
+CONN_STR="${AZURITE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;}"
+declare -a TABLE_NAME=(
+  "RunbookSchemas"
+  "RunbookLogs"
+  "WorkersRegistry"
+  "CloudoAuditLogs"
+  "CloudoSchedules"
+  "CloudoSettings"
+  "CloudoUsers"
+)
+declare -a QUEUE_NAME=(
+  "local"
+  "alert"
+)
 WORKER="${1:-worker}"
 
 command -v az >/dev/null 2>&1 || { echo "Error: 'az' not found in PATH"; exit 1; }
 
-echo "Creating table '${TABLE_NAME}' (idempotent)..."
-az storage table create \
-  --name "${TABLE_NAME}" \
+for i in "${TABLE_NAME[@]}"
+do
+  echo "Creating table '${i}' (idempotent)..."
+  az storage table create \
+    --name "${i}" \
+    --connection-string "${CONN_STR}" \
+    --only-show-errors >/dev/null
+done
+
+for i in "${QUEUE_NAME[@]}"
+do
+  echo "Creating queue '${i}' (idempotent)..."
+  az storage queue create \
+    --name "${i}" \
+    --connection-string "${CONN_STR}" \
+    --only-show-errors >/dev/null
+done
+
+echo "Add mock admin credential"
+az storage entity insert \
+  --table-name "CloudoUsers" \
+  --entity \
+    PartitionKey=Operator \
+    RowKey=admin \
+    password="admin" \
+    role="ADMIN" \
+  --if-exists merge \
   --connection-string "${CONN_STR}" \
   --only-show-errors >/dev/null
 
 echo "Upserting test entity PK='test' RK='test-0001'..."
 az storage entity insert \
-  --table-name "${TABLE_NAME}" \
+  --table-name "RunbookSchemas" \
   --entity \
     PartitionKey=test \
     RowKey=test-0001 \
@@ -33,7 +69,7 @@ az storage entity insert \
 
 echo "Upserting test entity PK='test-2' RK='test-0002'..."
 az storage entity insert \
-  --table-name "${TABLE_NAME}" \
+  --table-name "RunbookSchemas" \
   --entity \
     PartitionKey=test-2 \
     RowKey=test-0002 \
@@ -51,7 +87,7 @@ az storage entity insert \
 
 echo "Upserting test entity PK='test-3' RK='test-0003'..."
 az storage entity insert \
-  --table-name "${TABLE_NAME}" \
+  --table-name "RunbookSchemas" \
   --entity \
     PartitionKey=test-3 \
     RowKey=test-0003 \
