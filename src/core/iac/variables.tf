@@ -96,7 +96,7 @@ variable "vnet_rg" {
   default     = null
 }
 
-variable "private_endpoint_dns_zone_id" {
+variable "private_endpoint_dns_zone_name" {
   type = string
 }
 
