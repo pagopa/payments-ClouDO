@@ -511,12 +511,20 @@ function LogsPanelContent() {
                   <HiOutlineFingerPrint className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
-                    className="input input-icon pl-10 relative w-full"
+                    className="input input-icon pl-10 pr-10 relative w-full"
                     placeholder="Execution ID..."
                     value={execId}
                     onChange={(e) => setExecId(e.target.value)}
                     onKeyDown={handleKeyDown}
                   />
+                  {execId && (
+                    <button
+                      onClick={() => setExecId("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-cloudo-muted hover:text-cloudo-accent transition-colors z-20"
+                    >
+                      <HiOutlineX className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -528,12 +536,20 @@ function LogsPanelContent() {
                   <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
-                    className="input input-icon pl-10 relative w-full"
+                    className="input input-icon pl-10 pr-10 relative w-full"
                     placeholder="Keywords in logs..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
                   />
+                  {query && (
+                    <button
+                      onClick={() => setQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-cloudo-muted hover:text-cloudo-accent transition-colors z-20"
+                    >
+                      <HiOutlineX className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 

@@ -236,10 +236,18 @@ export default function UsersPage() {
             <input
               type="text"
               placeholder="Search user..."
-              className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
+              className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50 pr-10"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-cloudo-muted hover:text-cloudo-accent transition-colors"
+              >
+                <HiOutlineX className="w-4 h-4" />
+              </button>
+            )}
           </div>
           {!isViewer && currentUser?.role === "ADMIN" && (
             <button

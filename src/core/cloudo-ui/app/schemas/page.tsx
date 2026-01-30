@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { cloudoFetch } from "@/lib/api";
 import {
   HiOutlinePlus,
@@ -53,6 +53,52 @@ export default function SchemasPage() {
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Load filters from localStorage on mount
+  useEffect(() => {
+    const savedFilters = localStorage.getItem("cloudo_schema_filters");
+    if (savedFilters) {
+      try {
+        const filters = JSON.parse(savedFilters);
+        if (filters.searchQuery) setSearchQuery(filters.searchQuery);
+        if (filters.activeFilter) setActiveFilter(filters.activeFilter);
+        if (filters.workerFilter) setWorkerFilter(filters.workerFilter);
+        if (filters.approvalFilter) setApprovalFilter(filters.approvalFilter);
+        if (filters.oncallFilter) setOncallFilter(filters.oncallFilter);
+        if (filters.tagFilter) setTagFilter(filters.tagFilter);
+        if (filters.viewMode) setViewMode(filters.viewMode);
+      } catch (e) {
+        console.error("Failed to parse saved filters", e);
+      }
+    }
+    setIsInitialized(true);
+  }, []);
+
+  // Save filters to localStorage when they change
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const filters = {
+      searchQuery,
+      activeFilter,
+      workerFilter,
+      approvalFilter,
+      oncallFilter,
+      tagFilter,
+      viewMode,
+    };
+    localStorage.setItem("cloudo_schema_filters", JSON.stringify(filters));
+  }, [
+    searchQuery,
+    activeFilter,
+    workerFilter,
+    approvalFilter,
+    oncallFilter,
+    tagFilter,
+    viewMode,
+    isInitialized,
+  ]);
 
   const [modalMode, setModalMode] = useState<"create" | "edit" | "view" | null>(
     null,
@@ -378,10 +424,18 @@ export default function SchemasPage() {
               <input
                 type="text"
                 placeholder="Search schemas..."
-                className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
+                className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50 pr-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-cloudo-muted hover:text-cloudo-accent transition-colors"
+                >
+                  <HiOutlineX className="w-4 h-4" />
+                </button>
+              )}
             </div>
             {!isViewer &&
               (user?.role === "ADMIN" || user?.role === "OPERATOR") && (

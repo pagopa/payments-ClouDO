@@ -53,7 +53,7 @@ export default function RootLayout({
     const isPublicPage = pathname === "/login" || pathname === "/register";
 
     if (!authed && !isPublicPage) {
-      router.push("/login");
+      router.push(`/login?callbackUrl=${encodeURIComponent(pathname)}`);
     }
   }, [pathname, router, isAuthenticated]);
 

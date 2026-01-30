@@ -457,6 +457,26 @@ def build_headers(
     return headers
 
 
+def _format_compact_resource_info(resource_info: Optional[dict]) -> Optional[str]:
+    """Formats resource_info into a compact mrkdwn string, excluding _raw and resource_id."""
+    if not resource_info:
+        return None
+
+    # Filter out _raw, resource_id and empty/null values
+    filtered = {
+        k: v
+        for k, v in resource_info.items()
+        if k not in ["_raw", "resource_id"] and v is not None and str(v).strip() != ""
+    }
+
+    if not filtered:
+        return None
+
+    # Format as a single line or compact list
+    items = [f"*{k}*: `{v}`" for k, v in filtered.items()]
+    return " | ".join(items)
+
+
 def build_response_body(
     status_code: int,
     schema: "Schema",
@@ -952,6 +972,19 @@ def Trigger(
                                     },
                                 ],
                             },
+                            *(
+                                [
+                                    {
+                                        "type": "section",
+                                        "text": {
+                                            "type": "mrkdwn",
+                                            "text": f"*Resource Context:*\n{_format_compact_resource_info(resource_info)}",
+                                        },
+                                    }
+                                ]
+                                if _format_compact_resource_info(resource_info)
+                                else []
+                            ),
                             {
                                 "type": "section",
                                 "text": {
@@ -2084,6 +2117,19 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                             },
                         ],
                     },
+                    *(
+                        [
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": f"*Resource Context:*\n{_format_compact_resource_info(resource_info)}",
+                                },
+                            }
+                        ]
+                        if _format_compact_resource_info(resource_info)
+                        else []
+                    ),
                     {
                         "type": "section",
                         "text": {

@@ -286,10 +286,18 @@ export default function SchedulesPage() {
             <input
               type="text"
               placeholder="Search schedules..."
-              className="input input-icon"
+              className="input input-icon pr-10"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-cloudo-muted hover:text-cloudo-accent transition-colors"
+              >
+                <HiOutlineX className="w-4 h-4" />
+              </button>
+            )}
           </div>
           <button
             onClick={() => {
