@@ -225,7 +225,7 @@ function LoginForm({ googleSsoEnabled }: { googleSsoEnabled: boolean }) {
       localStorage.removeItem("cloudo_expires_at");
       localStorage.removeItem("cloudo_token");
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("cloudo_theme") as "dark" | "light";

@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  HiOutlineFilter,
-  HiOutlineX,
-  HiOutlineShieldCheck,
-  HiOutlineUserGroup,
-  HiOutlineChip,
-} from "react-icons/hi";
+import { HiOutlineX } from "react-icons/hi";
 import { SiTerraform } from "react-icons/si";
 
 interface SchemaFiltersProps {
@@ -121,7 +115,9 @@ export function SchemaFilters({
           </span>
           <select
             value={approvalFilter}
-            onChange={(e) => setApprovalFilter(e.target.value as any)}
+            onChange={(e) =>
+              setApprovalFilter(e.target.value as "all" | "required" | "auto")
+            }
             className="bg-cloudo-dark border border-cloudo-border text-cloudo-text text-[10px] font-black px-2 py-1 outline-none focus:border-cloudo-accent/50 transition-colors"
           >
             <option value="all">ALL_STATUS</option>
@@ -137,7 +133,9 @@ export function SchemaFilters({
           </span>
           <select
             value={oncallFilter}
-            onChange={(e) => setOncallFilter(e.target.value as any)}
+            onChange={(e) =>
+              setOncallFilter(e.target.value as "all" | "active" | "inactive")
+            }
             className="bg-cloudo-dark border border-cloudo-border text-cloudo-text text-[10px] font-black px-2 py-1 outline-none focus:border-cloudo-accent/50 transition-colors"
           >
             <option value="all">ALL_FLOWS</option>

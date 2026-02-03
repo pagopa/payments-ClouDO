@@ -198,7 +198,10 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-cloudo-dark text-cloudo-text font-mono selection:bg-cloudo-accent/30">
+    <div
+      className="flex flex-col h-full bg-cloudo-dark text-cloudo-text font-mono selection:bg-cloudo-accent/30"
+      data-user-role={user?.role || undefined}
+    >
       {/* Header Bar */}
       <div className="flex items-center justify-between px-8 py-4 border-b border-cloudo-border bg-cloudo-panel sticky top-0 z-20">
         <div className="flex items-center gap-4 shrink-0">

@@ -1067,7 +1067,7 @@ function LogsPanelContent() {
                 }
 
                 const validEntries = Object.entries(info).filter(
-                  ([_, v]) =>
+                  ([__unused, v]) =>
                     v !== null && v !== undefined && String(v).trim() !== "",
                 );
 

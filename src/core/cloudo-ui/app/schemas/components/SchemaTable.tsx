@@ -52,7 +52,7 @@ export function SchemaTable({
   } | null>(null);
 
   const sortedSchemas = useMemo(() => {
-    let sortableItems = [...schemas];
+    const sortableItems = [...schemas];
     if (sortConfig !== null) {
       sortableItems.sort((a, b) => {
         const aValue = a[sortConfig.key] || "";
