@@ -8,7 +8,7 @@ resource "random_password" "internal_auth_token" {
 
 # Orchestrator Function
 module "cloudo_orchestrator" {
-  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=a065466aa740278f591260ced27957dac1f6b6ae"
+  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=420ca008174e36667fe6bf80444facf7238b3be8"
   env                                      = var.env
   idh_resource_tier                        = var.cluodo_function_tier
   location                                 = var.location
@@ -37,6 +37,7 @@ module "cloudo_orchestrator" {
       "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
       "APPROVAL_SECRET"                     = var.approval_runbook.secret
       "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
+      "NEXTJS_URL"                          = "${var.prefix}-cloudo-ui.${data.azurerm_private_dns_zone.this.name}"
     },
     local.orchestrator_smart_routing_app_settings
   )
@@ -51,7 +52,8 @@ module "cloudo_orchestrator" {
 
   # which subnet is allowed to reach this app service
   allowed_subnet_ids           = [var.vpn_subnet_id]
-  private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
+  allowed_service_tags         = ["ActionGroup"]
+  private_endpoint_dns_zone_id = data.azurerm_private_dns_zone.this.id
 
   embedded_subnet = {
     enabled      = true
@@ -91,6 +93,7 @@ module "cloudo_ui" {
     "API_URL"                             = "https://${module.cloudo_orchestrator.default_hostname}/api"
     "FUNCTION_KEY"                        = module.cloudo_orchestrator.default_key
     "CLOUDO_KEY"                          = random_password.internal_auth_token.result
+    "GOOGLE_CLIENT_ID"                    = var.cloudo_google_sso_integration_client_id
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
   }
 
@@ -103,7 +106,7 @@ module "cloudo_ui" {
 
   # which subnet is allowed to reach this app service
   allowed_subnet_ids           = [var.vpn_subnet_id]
-  private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
+  private_endpoint_dns_zone_id = data.azurerm_private_dns_zone.this.id
 
   embedded_subnet = {
     enabled      = true
@@ -168,7 +171,7 @@ module "cloudo_worker" {
 
   # which subnet is allowed to reach this app service
   allowed_subnet_ids           = [var.vpn_subnet_id]
-  private_endpoint_dns_zone_id = var.private_endpoint_dns_zone_id
+  private_endpoint_dns_zone_id = data.azurerm_private_dns_zone.this.id
 
   embedded_subnet = {
     enabled      = true

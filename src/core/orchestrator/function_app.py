@@ -160,7 +160,13 @@ def _get_authenticated_user(
         # Check global secret
         expected_global_key = os.environ.get("CLOUDO_SECRET_KEY")
         if expected_global_key and cloudo_key == expected_global_key:
-            return {"user": "api", "username": "api", "role": "OPERATOR"}, None
+            # If authenticated via global key, we might have a forwarded user from UI proxy or a direct caller
+            forwarded_user = req.headers.get("x-cloudo-user")
+            return {
+                "user": forwarded_user or "api",
+                "username": forwarded_user or "api",
+                "role": "OPERATOR",
+            }, None
 
         # Check personal API tokens
         try:
@@ -253,13 +259,43 @@ def _only_pending_for_exec(rows: list[dict], exec_id: str) -> bool:
 def _notify_slack_decision(
     exec_id: str, schema_id: str, decision: str, approver: str, extra: str = ""
 ) -> None:
+    from azure.data.tables import TableClient
     from escalation import send_slack_execution
 
-    token = (os.environ.get("SLACK_TOKEN") or "").strip()
-    channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
+    # Fetch settings from Table Storage
+    conn_str = os.environ.get(STORAGE_CONN)
+    table_client = TableClient.from_connection_string(
+        conn_str, table_name=TABLE_SETTINGS
+    )
+
+    try:
+        # Get SLACK_TOKEN_DEFAULT and SLACK_CHANNEL from GlobalConfig
+        token_entity = table_client.get_entity(
+            partition_key="GlobalConfig", row_key="SLACK_TOKEN_DEFAULT"
+        )
+        token = token_entity.get("value", "").strip()
+
+        channel_entity = table_client.get_entity(
+            partition_key="GlobalConfig", row_key="SLACK_CHANNEL"
+        )
+        channel = channel_entity.get("value", "").strip() or "#cloudo-test"
+    except Exception as e:
+        logging.warning(
+            f"Failed to fetch Slack settings from Table Storage, falling back to ENV: {e}"
+        )
+        token = (os.environ.get("SLACK_TOKEN_DEFAULT") or "").strip()
+        channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
+
     if not token:
         return
+
     emoji = "✅" if decision == "approved" else "❌"
+
+    # UI Base URL
+    ui_base = (os.getenv("NEXTJS_URL") or "http://localhost:3000").rstrip("/")
+    partition_key = datetime.now(timezone.utc).strftime("%Y%m%d")
+    ui_url = f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
+
     try:
         send_slack_execution(
             token=token,
@@ -267,27 +303,65 @@ def _notify_slack_decision(
             message=f"[{exec_id}] {emoji} {decision.upper()} - {schema_id}",
             blocks=[
                 {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f"Gate Decision: {decision.upper()} {emoji}",
+                        "emoji": True,
+                    },
+                },
+                {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": (
-                            f"*{decision}*\n"
-                            f"*ExecId:* `{exec_id}`\n"
-                            f"*SchemaId:* `{schema_id}`\n"
-                            f"*By:* {approver}"
-                        ),
+                        "text": f"The execution request for *{schema_id}* has been *{decision.upper()}*.",
                     },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": f"*Schema:*\n`{schema_id}`"},
+                        {"type": "mrkdwn", "text": f"*Decision By:*\n`{approver}`"},
+                        {"type": "mrkdwn", "text": f"*ExecId:*\n`{exec_id}`"},
+                        {"type": "mrkdwn", "text": f"*Status:*\n`{decision.upper()}`"},
+                    ],
                 },
                 *(
                     [
                         {
-                            "type": "context",
-                            "elements": [{"type": "mrkdwn", "text": extra}],
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"*Reason/Details:*\n{extra}",
+                            },
                         }
                     ]
                     if extra
                     else []
                 ),
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "View Execution 🔍",
+                                "emoji": True,
+                            },
+                            "url": ui_url,
+                        }
+                    ],
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"Timestamp: <!date^{int(datetime.now(timezone.utc).timestamp())}^{{date_short}} {{time}}|now> | System: `cloudo-orchestrator`",
+                        }
+                    ],
+                },
             ],
         )
     except Exception as e:
@@ -383,6 +457,26 @@ def build_headers(
     return headers
 
 
+def _format_compact_resource_info(resource_info: Optional[dict]) -> Optional[str]:
+    """Formats resource_info into a compact mrkdwn string, excluding _raw and resource_id."""
+    if not resource_info:
+        return None
+
+    # Filter out _raw, resource_id and empty/null values
+    filtered = {
+        k: v
+        for k, v in resource_info.items()
+        if k not in ["_raw", "resource_id"] and v is not None and str(v).strip() != ""
+    }
+
+    if not filtered:
+        return None
+
+    # Format as a single line or compact list
+    items = [f"*{k}*: `{v}`" for k, v in filtered.items()]
+    return " | ".join(items)
+
+
 def build_response_body(
     status_code: int,
     schema: "Schema",
@@ -438,6 +532,8 @@ def build_log_entry(
     oncall: Optional[str],
     monitor_condition: Optional[str],
     severity: Optional[str],
+    initiator: Optional[str] = None,
+    resource_info: Optional[dict[str, Any]] = None,
     approval_required: Optional[bool] = None,
     approval_expires_at: Optional[str] = None,
     approval_decision_by: Optional[str] = None,
@@ -456,6 +552,10 @@ def build_log_entry(
         "Worker": worker,
         "Log": log_msg,
         "OnCall": oncall,
+        "Initiator": initiator,
+        "ResourceInfo": json.dumps(resource_info, ensure_ascii=False)
+        if resource_info
+        else None,
         "MonitorCondition": monitor_condition,
         "Severity": severity,
         "ApprovalRequired": approval_required,
@@ -489,6 +589,7 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
         "worker": payload.get("worker"),
         "status": status,
         "oncall": payload.get("oncall"),
+        "initiator": payload.get("initiator"),
         "monitor_condition": payload.get("monitor_condition"),
         "severity": payload.get("severity"),
         "resource_info": payload.get("resource_info"),
@@ -791,6 +892,8 @@ def Trigger(
                     ensure_ascii=False,
                 ),
                 oncall=schema.oncall,
+                initiator=requester_username,
+                resource_info=resource_info,
                 monitor_condition=monitor_condition,
                 severity=severity,
                 approval_required=True,
@@ -811,24 +914,32 @@ def Trigger(
             slack_channel = routing_info.get("slack_channel")
             if slack_token:
                 try:
+                    # UI Base URL
+                    ui_base = (
+                        os.getenv("NEXTJS_URL") or "http://localhost:3000"
+                    ).rstrip("/")
+                    ui_url = f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
+
                     send_slack_execution(
                         token=slack_token,
                         channel=slack_channel,
-                        message=f"[{exec_id}] APPROVAL REQUIRED: {schema.name}",
+                        message=f"[{exec_id}] ⚠️ APPROVAL REQUIRED: {schema.name}",
                         blocks=[
+                            {
+                                "type": "header",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "Gate Approval Required ⚠️",
+                                    "emoji": True,
+                                },
+                            },
                             {
                                 "type": "section",
                                 "text": {
                                     "type": "mrkdwn",
                                     "text": (
-                                        f"*Approval required* <!here>\n"
-                                        f"*Name:* {schema.name}\n"
-                                        f"*Id:* `{schema.id}`\n"
-                                        f"*ExecId:* `{exec_id}`\n"
-                                        f"*Severity:* {severity or '-'}\n"
-                                        f"*Worker:* `{schema.worker or 'unknow(?)'}`\n"
-                                        f"*Runbook:* `{schema.runbook or '-'}`\n"
-                                        f"*Args:* ```{(schema.run_args or '').strip() or '-'}```"
+                                        f"<!here> *{schema.name}* is requesting permission to execute a restricted runbook.\n"
+                                        f"> *Description:* {schema.description or 'No description provided.'}"
                                     ),
                                 },
                             },
@@ -837,29 +948,91 @@ def Trigger(
                                 "fields": [
                                     {
                                         "type": "mrkdwn",
-                                        "text": f"*Worker:* {schema.worker or 'unknow(?)'}",
-                                    }
+                                        "text": f"*SchemaId:*\n`{schema.id}`",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Severity:*\n`{severity or '-'}`",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Runbook:*\n`{schema.runbook or '-'}`",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Worker:*\n`{schema.worker or 'unknown'}`",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*Initiator:*\n`{requester_username or 'SYSTEM'}`",
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"*On Call:*\n`{schema.oncall}`",
+                                    },
                                 ],
+                            },
+                            *(
+                                [
+                                    {
+                                        "type": "section",
+                                        "text": {
+                                            "type": "mrkdwn",
+                                            "text": f"*Resource Context:*\n{_format_compact_resource_info(resource_info)}",
+                                        },
+                                    }
+                                ]
+                                if _format_compact_resource_info(resource_info)
+                                else []
+                            ),
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": f"*Arguments:*\n```{(schema.run_args or '').strip() or 'None'}```",
+                                },
                             },
                             {
                                 "type": "actions",
                                 "elements": [
                                     {
                                         "type": "button",
+                                        "style": "primary",
                                         "text": {
                                             "type": "plain_text",
                                             "text": "Approve ✅",
+                                            "emoji": True,
                                         },
                                         "url": approve_url,
                                     },
                                     {
                                         "type": "button",
+                                        "style": "danger",
                                         "text": {
                                             "type": "plain_text",
                                             "text": "Reject ❌",
+                                            "emoji": True,
                                         },
                                         "url": reject_url,
                                     },
+                                    {
+                                        "type": "button",
+                                        "text": {
+                                            "type": "plain_text",
+                                            "text": "Full Context 🔍",
+                                            "emoji": True,
+                                        },
+                                        "url": ui_url,
+                                    },
+                                ],
+                            },
+                            {
+                                "type": "context",
+                                "elements": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": f"ExecId: `{exec_id}` | Requested: <!date^{int(datetime.now(timezone.utc).timestamp())}^{{date_short}} {{time}}|now>",
+                                    }
                                 ],
                             },
                         ],
@@ -975,6 +1148,7 @@ def Trigger(
             oncall=schema.oncall,
             monitor_condition=monitor_condition,
             severity=severity,
+            resource_info=resource_info,
         )
         log_table.set(json.dumps(start_log, ensure_ascii=False))
 
@@ -1222,8 +1396,6 @@ def approve(
     workers: str,
 ) -> func.HttpResponse:
     import utils
-    from escalation import send_slack_execution
-    from frontend import render_template
     from worker_routing import worker_routing
 
     if req.method == "OPTIONS":
@@ -1258,13 +1430,25 @@ def approve(
     if os.getenv("FEATURE_DEV", "false").lower() != "true":
         session, error_res = _get_authenticated_user(req)
         if error_res:
-            # Fallback for Slack/Email links: if no session, we might still allow it if p and s are valid
-            # and the payload is signed. But it's better to log who did it if they are logged in.
-            approver = req.headers.get("X-Approver") or "anonymous-link"
+            # Fallback for Slack/Email links
+            approver = (
+                req.headers.get("x-cloudo-user")
+                or req.headers.get("X-Approver")
+                or "anonymous-link"
+            )
         else:
             approver = session.get("username")
     else:
-        approver = req.headers.get("X-Approver") or "unknown"
+        # Trust headers in FEATURE_DEV
+        approver = (
+            req.headers.get("x-cloudo-user")
+            or req.headers.get("X-Approver")
+            or "unknown"
+        )
+        # Try to get session if available anyway
+        session, _ = _get_authenticated_user(req)
+        if session:
+            approver = session.get("username")
 
     if not execId:
         return func.HttpResponse(
@@ -1295,7 +1479,6 @@ def approve(
     schema_id = payload.get("schemaId") or ""
     resource_info = payload.get("resource_info") or None
     routing_info = payload.get("routing_info") or None
-    func_key = payload.get("code") or ""
     monitor_condition = payload.get("monitorCondition") or ""
     severity = payload.get("severity") or ""
 
@@ -1403,13 +1586,15 @@ def approve(
             worker=schema.worker,
             log_msg=json.dumps(
                 {
-                    "message": "Approved and executed",
+                    "message": f"Approved and executed by {approver}",
                     "response": api_body,
                     "resource_info": resource_info,
                 },
                 ensure_ascii=False,
             ),
             oncall=schema.oncall,
+            initiator=payload.get("initiator"),
+            resource_info=resource_info,
             monitor_condition=monitor_condition,
             severity=severity,
             approval_required=True,
@@ -1421,7 +1606,7 @@ def approve(
             user=approver,
             action="RUNBOOK_APPROVE",
             target=execId,
-            details=f"Runbook: {schema.runbook}, Schema: {schema.id}",
+            details=f"Runbook: {schema.runbook}, Schema: {schema.id}, Approver: {approver}",
         )
 
         # smart routing notification (if routing module available)
@@ -1442,80 +1627,36 @@ def approve(
             }
             decision = route_alert(ctx)
             logging.debug(f"[{execId}] Approval: {decision}")
+
+            # Notify Slack directly (bypassing smart routing for Slack as requested)
+            _notify_slack_decision(
+                exec_id=execId,
+                schema_id=schema_id,
+                decision="approved",
+                approver=approver,
+            )
+
+            # We still execute other actions via smart routing if any (excluding Slack)
             payload = {
-                "slack": {
-                    "message": f"[{execId}] 🚀 Approved - {schema_id}",
-                    "blocks": [
-                        {
-                            "type": "header",
-                            "text": {
-                                "type": "plain_text",
-                                "text": f"🚀 Approved - {schema_id}",
-                                "emoji": True,
-                            },
-                        },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": (
-                                    f"*ExecId:* `{execId}`\n"
-                                    f"*SchemaId:* `{schema_id}`\n"
-                                    f"*By:* {approver}"
-                                ),
-                            },
-                        },
-                        *(
-                            [
-                                {
-                                    "type": "context",
-                                    "elements": [
-                                        {
-                                            "type": "mrkdwn",
-                                            "text": f"*Status:* {status_label}",
-                                        }
-                                    ],
-                                }
-                            ]
-                            if status_label
-                            else []
-                        ),
-                    ],
-                }
+                "slack": None  # Skip slack in execute_actions
             }
             try:
-                execute_actions(
-                    decision,
-                    payload,
-                    send_slack_fn=lambda token, channel, **kw: send_slack_execution(
-                        token=token, channel=channel, **kw
-                    ),
-                )
+                execute_actions(decision, payload, send_slack_fn=None)
             except Exception as e:
-                logging.error(f"[{execId}] smart routing approval failed: {e}")
-
-        html = render_template(
-            "approve.html",
-            {
-                "status_label": status_label,
-                "execId": execId,
-                "schema_id": schema.id,
-                "schema_name": schema.name or "-",
-                "schema_runbook": schema.runbook or "-",
-                "schema_run_args": (schema.run_args or "-"),
-                "severity": severity or "-",
-                "requested_at": requested_at,
-                "partition_key": partition_key,
-                "func_key": func_key,
-            },
-        )
+                logging.error(f"[{execId}] smart routing approval actions failed: {e}")
 
         return func.HttpResponse(
-            html,
+            json.dumps(
+                {
+                    "message": f"Approved and executed by {approver}",
+                    "response": api_body,
+                    "resource_info": resource_info,
+                }
+            ),
             status_code=200,
-            mimetype="text/html",
+            mimetype="application/json",
             headers={
-                "Content-Type": "text/html",
+                "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
             },
         )
@@ -1543,7 +1684,7 @@ def approve(
         _notify_slack_decision(
             execId,
             schema_id,
-            f"approved {execId}",
+            f"approved {execId} by {approver}",
             approver,
             extra=f"*Error:* {str(e)}",
         )
@@ -1582,8 +1723,6 @@ def reject(
     req: func.HttpRequest, log_table: func.Out[str], schemas: str, today_logs: str
 ) -> func.HttpResponse:
     import utils
-    from escalation import send_slack_execution
-    from frontend import render_template
 
     if req.method == "OPTIONS":
         return create_cors_response()
@@ -1632,11 +1771,24 @@ def reject(
         session, error_res = _get_authenticated_user(req)
         if error_res:
             # Fallback for Slack/Email links
-            approver = req.headers.get("X-Approver") or "anonymous-link"
+            approver = (
+                req.headers.get("x-cloudo-user")
+                or req.headers.get("X-Approver")
+                or "anonymous-link"
+            )
         else:
             approver = session.get("username")
     else:
-        approver = req.headers.get("X-Approver") or "unknown"
+        # Trust headers in FEATURE_DEV
+        approver = (
+            req.headers.get("x-cloudo-user")
+            or req.headers.get("X-Approver")
+            or "unknown"
+        )
+        # Try to get session if available anyway
+        session, _ = _get_authenticated_user(req)
+        if session:
+            approver = session.get("username")
 
     if not execId:
         return func.HttpResponse(
@@ -1698,8 +1850,12 @@ def reject(
         runbook=schema.runbook,
         run_args=schema.run_args,
         worker=schema.worker,
-        log_msg=json.dumps({"message": "Rejected by approver"}, ensure_ascii=False),
+        log_msg=json.dumps(
+            {"message": f"Rejected by approver: {approver}"}, ensure_ascii=False
+        ),
         oncall=schema.oncall,
+        initiator=payload.get("initiator"),
+        resource_info=resource_info,
         monitor_condition=monitor_condition,
         severity=severity,
         approval_required=True,
@@ -1712,6 +1868,11 @@ def reject(
         action="RUNBOOK_REJECT",
         target=execId,
         details=f"Runbook: {schema.runbook}, Schema: {schema.id}",
+    )
+
+    # Notify Slack directly
+    _notify_slack_decision(
+        exec_id=execId, schema_id=schema_id, decision="rejected", approver=approver
     )
 
     # smart routing notification (if routing module available)
@@ -1734,70 +1895,19 @@ def reject(
         logging.debug(f"[{execId}] Reject: {decision}")
 
         payload = {
-            "slack": {
-                "message": f"[{execId}] ⛔️ Rejected - {schema_id}",
-                "blocks": [
-                    {
-                        "type": "header",
-                        "text": {
-                            "type": "plain_text",
-                            "text": f"⛔️ Rejected - {schema_id}",
-                            "emoji": True,
-                        },
-                    },
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": (
-                                f"*ExecId:* `{execId}`\n"
-                                f"*SchemaId:* `{schema_id}`\n"
-                                f"*By:* {approver}"
-                            ),
-                        },
-                    },
-                    *(
-                        [
-                            {
-                                "type": "context",
-                                "elements": [
-                                    {"type": "mrkdwn", "text": "*Status:* rejected"}
-                                ],
-                            }
-                        ]
-                        if "rejected"
-                        else []
-                    ),
-                ],
-            }
+            "slack": None  # Skip slack in execute_actions
         }
         try:
-            execute_actions(
-                decision,
-                payload,
-                send_slack_fn=lambda token, channel, **kw: send_slack_execution(
-                    token=token, channel=channel, **kw
-                ),
-            )
+            execute_actions(decision, payload, send_slack_fn=None)
         except Exception as e:
-            logging.error(f"[{execId}] smart routing approval failed: {e}")
-
-    html = render_template(
-        "reject.html",
-        {
-            "execId": execId,
-            "schema_id": schema_id,
-            "approver": approver or "-",
-            "requested_at": requested_at,
-        },
-    )
+            logging.error(f"[{execId}] smart routing rejection failed: {e}")
 
     return func.HttpResponse(
-        html,
+        json.dumps({"message": f"Rejected by approver: {approver}"}),
         status_code=200,
-        mimetype="text/html",
+        mimetype="application/json",
         headers={
-            "Content-Type": "text/html",
+            "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
         },
     )
@@ -1853,6 +1963,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                 "Runbook": body.get("runbook"),
                 "Run_Args": body.get("run_args"),
                 "OnCall": body.get("oncall"),
+                "Initiator": body.get("initiator"),
                 "MonitorCondition": body.get("monitor_condition"),
                 "Severity": body.get("severity"),
             }
@@ -1882,6 +1993,8 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
         worker=body.get("worker"),
         log_msg=utils._truncate_for_table(logs_raw, MAX_TABLE_CHARS),
         oncall=body.get("oncall"),
+        initiator=body.get("initiator"),
+        resource_info=body.get("resource_info"),
         monitor_condition=body.get("monitor_condition"),
         severity=body.get("severity"),
     )
@@ -1945,11 +2058,19 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
             "routed": "🧭",
             "error": "❌",
             "failed": "❌",
+            "accepted": "📩",
+            "pending": "⏳",
         }
         status_emoji = status_emojis.get(status_label, "ℹ️")
+
+        # UI Base URL
+        ui_base = (os.getenv("NEXTJS_URL") or "http://localhost:3000").rstrip("/")
+        partition_key = datetime.now(timezone.utc).strftime("%Y%m%d")
+        ui_url = f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
+
         payload = {
             "slack": {
-                "message": f"[{exec_id}] Status: {status_label}: {body.get('name')}",
+                "message": f"[{exec_id}] {status_emoji} {status_label.upper()}: {body.get('name')}",
                 "blocks": [
                     {
                         "type": "header",
@@ -1961,70 +2082,92 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                     },
                     {
                         "type": "section",
-                        "fields": [
-                            {"type": "mrkdwn", "text": f"*Name:*\n{body.get('name')}"},
-                            {"type": "mrkdwn", "text": f"*Id:*\n{body.get('id')}"},
-                            {"type": "mrkdwn", "text": f"*ExecId:*\n{exec_id}"},
-                            {"type": "mrkdwn", "text": f"*Status:*\n{status_label}"},
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Severity:*\n{body.get('severity')}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*OnCall:*\n{body.get('oncall')}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Worker*:\n{body.get('worker') or 'unknown(?)'}",
-                            },
-                        ],
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                f"Execution *{body.get('name')}* has transitioned to status: *{status_label.upper()}*."
+                            ),
+                        },
                     },
                     {
                         "type": "section",
                         "fields": [
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Runbook:*\n{body.get('runbook')}",
+                                "text": f"*SchemaId:*\n`{body.get('id')}`",
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*MonitorCondition:*\n{body.get('monitor_condition')}",
+                                "text": f"*Severity:*\n`{body.get('severity') or '-'}`",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Worker:*\n`{body.get('worker') or 'unknown'}`",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Runbook:*\n`{body.get('runbook') or '-'}`",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Initiator:*\n`{body.get('initiator') or 'SYSTEM'}`",
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*On Call:*\n`{body.get('oncall') or '-'}`",
                             },
                         ],
                     },
+                    *(
+                        [
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": f"*Resource Context:*\n{_format_compact_resource_info(resource_info)}",
+                                },
+                            }
+                        ]
+                        if _format_compact_resource_info(resource_info)
+                        else []
+                    ),
                     {
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Run Args:*\n```{body.get('run_args')}```",
+                            "text": f"*Arguments:*\n```{(body.get('run_args') or '').strip() or 'None'}```",
                         },
                     },
                     {
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Logs (truncated):*\n```{(logs_raw or '')[:1500]}```",
+                            "text": f"*Telemetry Output:*\n```{(logs_raw or '')[:1500] or 'No telemetry available'}```",
                         },
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "View Full Execution 🔍",
+                                    "emoji": True,
+                                },
+                                "url": ui_url,
+                            }
+                        ],
                     },
                     {
                         "type": "context",
                         "elements": [
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Severity:* {body.get('severity')}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Teams:* {', '.join(dict.fromkeys(a.team for a in decision.actions if getattr(a, 'team', None)))}",
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"Timestamp: <!date^{int(__import__('time').time())}^{{date_short}} {{time}}|now>",
-                            },
+                                "text": f"ExecId: `{exec_id}` | Event: <!date^{int(datetime.now(timezone.utc).timestamp())}^{{date_short}} {{time}}|now>",
+                            }
                         ],
                     },
-                    {"type": "divider"},
                 ],
             },
             "opsgenie": {
@@ -2135,130 +2278,6 @@ def get_log(req: func.HttpRequest, log_entity: str) -> func.HttpResponse:
         status_code=200,
         mimetype="application/json",
     )
-
-
-# =========================
-# HTTP Function: Logs UI
-# =========================
-
-
-# @app.route(route="logs", auth_level=func.AuthLevel.ANONYMOUS)
-# @app.table_input(
-#     arg_name="workers", table_name="WorkersRegistry", connection=STORAGE_CONNECTION
-# )
-# # ruff: noqa
-# def logs_frontend(req: func.HttpRequest, workers: str) -> func.HttpResponse:
-#     from frontend import render_template
-#     from requests import request
-#
-#     # --- 1. Key Extraction ---
-#     candidate_key = req.headers.get("x-functions-key") or req.params.get("code")
-#
-#     if not candidate_key:
-#         cookie_header = req.headers.get("Cookie")
-#         if cookie_header:
-#             parts = cookie_header.split(";")
-#             for part in parts:
-#                 clean_part = part.strip()
-#                 if clean_part.startswith("x-functions-key="):
-#                     candidate_key = clean_part.split("=", 1)[1]
-#                     break
-#
-#     # --- 2. Key Validation ---
-#     is_valid = False
-#
-#     if candidate_key:
-#         # Build the test URL
-#         # req.url is the full current URL. Remove everything after /api/
-#         base_url = str(req.url).split("/api/")[0]
-#         if "localhost:7071" in base_url:
-#             base_url = base_url.replace(":7071", ":80")
-#
-#         check_url = f"{base_url}/api/healthz"
-#
-#         try:
-#             res = request(
-#                 method="GET",
-#                 url=check_url,
-#                 headers={"x-functions-key": candidate_key},
-#                 timeout=5,
-#             )
-#             if res.status_code == 200:
-#                 is_valid = True
-#             else:
-#                 logging.warning(f"Key present but invalid. Status: {res.status_code}")
-#         except Exception as e:
-#             logging.error(f"Key validation error: {e}")
-#
-#     # --- 3. Response ---
-#
-#     if is_valid:
-#         try:
-#             workers = json.loads(workers) if isinstance(workers, str) else workers
-#             workers = list({w.get("RowKey") for w in workers if w.get("RowKey")})
-#         except Exception as e:
-#             logging.warning(f"Error parsing workers: {e}")
-#         code_js = json.dumps(candidate_key or "")
-#         html = render_template(
-#             "logs.html",
-#             {
-#                 "code_js": code_js,
-#                 "workers": workers,
-#             },
-#         )
-#         return func.HttpResponse(html, status_code=200, mimetype="text/html")
-#
-#     else:
-#         error_msg = ""
-#         if candidate_key:
-#             error_msg = (
-#                 "<p style='color: red; font-weight: bold;'>Invalid or expired key.</p>"
-#             )
-#
-#         login_html = f"""
-#         <!DOCTYPE html>
-#         <html lang="en">
-#         <head>
-#             <meta charset="UTF-8">
-#             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-#             <title>Login Required</title>
-#             <style>
-#                 body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f4f4f4; margin: 0; }}
-#                 .login-box {{ background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; width: 300px; }}
-#                 input {{ width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }}
-#                 button {{ width: 100%; padding: 10px; background-color: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }}
-#                 button:hover {{ background-color: #0063b1; }}
-#             </style>
-#         </head>
-#         <body>
-#             <div class="login-box">
-#                 <h2>Access Logs</h2>
-#                 {error_msg}
-#                 <form onsubmit="doLogin(event)">
-#                     <input type="password" id="key" placeholder="Function Key" required>
-#                     <button type="submit">Login</button>
-#                 </form>
-#             </div>
-#             <script>
-#                 function doLogin(e) {{
-#                     e.preventDefault();
-#                     const val = document.getElementById('key').value;
-#
-#                     const d = new Date();
-#                     d.setTime(d.getTime() + (1*24*60*60*100)); // 1 day
-#
-#                     // Fix for localhost vs Azure
-#                     const isSecure = window.location.protocol === 'https:' ? '; Secure' : '';
-#
-#                     document.cookie = "x-functions-key=" + val + "; expires=" + d.toUTCString() + "; path=/; SameSite=Lax" + isSecure;
-#
-#                     window.location.reload();
-#                 }}
-#             </script>
-#         </body>
-#         </html>
-#         """
-#         return func.HttpResponse(login_html, status_code=200, mimetype="text/html")
 
 
 # TODO Manage empty partitions

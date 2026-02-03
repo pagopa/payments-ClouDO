@@ -126,6 +126,9 @@ rules:
   - apiGroups: [""]
     resources: ["pods","pods/log","pods/exec","services","configmaps","secrets","endpoints","persistentvolumeclaims","replicationcontrollers","events"]
     verbs: ["get","list","watch","create","update","patch","delete"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

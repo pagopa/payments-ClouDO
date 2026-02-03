@@ -31,3 +31,8 @@ resource "random_password" "admin_password" {
   special          = true
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
+
+# Private DNS Zone
+data "azurerm_private_dns_zone" "this" {
+  name = var.private_endpoint_dns_zone_name
+}

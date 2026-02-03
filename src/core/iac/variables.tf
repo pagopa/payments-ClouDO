@@ -96,7 +96,7 @@ variable "vnet_rg" {
   default     = null
 }
 
-variable "private_endpoint_dns_zone_id" {
+variable "private_endpoint_dns_zone_name" {
   type = string
 }
 
@@ -142,6 +142,11 @@ variable "ui_image" {
 variable "cluodo_ui_tier" {
   type    = string
   default = "basic"
+}
+
+variable "cloudo_google_sso_integration_client_id" {
+  type        = string
+  description = "Cloudo SSO google client id."
 }
 
 variable "cluodo_function_tier" {

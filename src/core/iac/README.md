@@ -76,6 +76,9 @@ module "cloudo" {
     disk_quota_mb         = 35
   }
 
+  # (Optional) EXAMPLE Team integration and key routing
+  # This is required if UI is not installed.
+  # ==========================================
   slack_integration = {
     channel = "#your_slack_channel"
     token   = "APP_TOKEN"
@@ -90,13 +93,13 @@ module "cloudo" {
     "team-2" = "<token-team2-here>"
     "team-3" = "<token-team3-here>"
   }
-
   opsgenie_api_key = "API_KEY_OPSGENIE"
   team_opsgenie_api_keys = {
     "team-1" = "<api-key-team1-here>"
     "team-2" = "<api-key-team2-here>"
     "team-3" = "<api-key-team3-here>"
   }
+  # ==========================================
 
   schemas = file("YOUR_PATH/schemas.json.tpl")
 
@@ -120,7 +123,19 @@ module "cloudo" {
     registry_password = data.azurerm_key_vault_secret.github_pat.value
   }
 
+  # (Optional) Enable ClouDO UI to manage. (Default: true)
+  enable_ui = true
+  ui_image = {
+    image_name        = var.cloudo_ui.image_name
+    image_tag         = var.cloudo_ui.image_tag
+    registry_url      = var.cloudo_ui.registry_url
+    registry_username = var.cloudo_ui.registry_username
+    registry_password = data.azurerm_key_vault_secret.github_pat.value
+  }
+
   # (Optional) EXAMPLE Routing configs
+  # This is required if UI is not installed.
+  # ==========================================
   routing_config = {
     teams = {
       payments = {
@@ -138,7 +153,6 @@ module "cloudo" {
         slack = { channel = "#cloudo-test" }
       }
     }
-
     rules = [
       {
         when = { resourceGroup = "rg-payments" }
@@ -187,6 +201,7 @@ module "cloudo" {
       }
     ]
   }
+  # ==========================================
 
   tags = module.tag_config.tags
 }

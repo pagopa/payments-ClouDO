@@ -83,6 +83,8 @@ services:
       - FUNCTIONS_WORKER_RUNTIME=python
       - DOTNET_RUNNING_IN_CONTAINER=true
       - CLOUDO_SECRET_KEY=local
+      - QUEUE_NAME=local
+      - WORKER_CAPABILITY=local
       - WEBSITE_SITE_NAME=worker-local
     volumes:
       - ./src/runbooks:/work/runbooks:ro

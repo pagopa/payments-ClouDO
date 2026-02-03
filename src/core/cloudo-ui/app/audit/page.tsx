@@ -17,6 +17,7 @@ import {
   HiOutlineTerminal,
   HiOutlineChevronLeft,
   HiOutlineChevronRight,
+  HiOutlineX,
 } from "react-icons/hi";
 
 interface AuditLog {
@@ -46,6 +47,53 @@ export default function AuditPage() {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Load filters from localStorage on mount
+  useEffect(() => {
+    const savedFilters = localStorage.getItem("cloudo_audit_filters");
+    if (savedFilters) {
+      try {
+        const filters = JSON.parse(savedFilters);
+        if (filters.searchQuery) setSearchQuery(filters.searchQuery);
+        if (filters.activeFilter) setActiveFilter(filters.activeFilter);
+        if (filters.actionTypeFilter)
+          setActionTypeFilter(filters.actionTypeFilter);
+        if (filters.fromDate) setFromDate(filters.fromDate);
+        if (filters.toDate) setToDate(filters.toDate);
+        if (filters.fetchLimit) setFetchLimit(filters.fetchLimit);
+        if (filters.pageSize) setPageSize(filters.pageSize);
+      } catch (e) {
+        console.error("Failed to parse saved audit filters", e);
+      }
+    }
+    setIsInitialized(true);
+  }, []);
+
+  // Save filters to localStorage when they change
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const filters = {
+      searchQuery,
+      activeFilter,
+      actionTypeFilter,
+      fromDate,
+      toDate,
+      fetchLimit,
+      pageSize,
+    };
+    localStorage.setItem("cloudo_audit_filters", JSON.stringify(filters));
+  }, [
+    searchQuery,
+    activeFilter,
+    actionTypeFilter,
+    fromDate,
+    toDate,
+    fetchLimit,
+    pageSize,
+    isInitialized,
+  ]);
 
   useEffect(() => {
     const userData = localStorage.getItem("cloudo_user");
@@ -216,10 +264,18 @@ export default function AuditPage() {
               <input
                 type="text"
                 placeholder="Search audit trail..."
-                className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50"
+                className="input input-icon w-64 h-10 border-cloudo-border/50 focus:border-cloudo-accent/50 pr-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-cloudo-muted hover:text-cloudo-accent transition-colors"
+                >
+                  <HiOutlineX className="w-4 h-4" />
+                </button>
+              )}
             </div>
             <button
               onClick={fetchLogs}

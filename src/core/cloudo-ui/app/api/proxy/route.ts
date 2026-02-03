@@ -64,6 +64,31 @@ async function handleRequest(request: NextRequest) {
   headers.set("x-cloudo-key", cloudoKey);
   headers.set("x-functions-key", functionKey);
 
+  // Forward user information from the session if available in the Authorization header
+  const authHeader = request.headers.get("authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const token = authHeader.split(" ")[1];
+      const parts = token.split(".");
+      // Our internal tokens are 2 parts (payload.sig), standard JWTs are 3 parts (header.payload.sig)
+      const payloadB64 = parts.length === 2 ? parts[0] : parts[1];
+
+      if (payloadB64) {
+        const payload = JSON.parse(
+          Buffer.from(
+            payloadB64.replace(/-/g, "+").replace(/_/g, "/"),
+            "base64",
+          ).toString(),
+        );
+        if (payload.username || payload.email) {
+          headers.set("x-cloudo-user", payload.username || payload.email);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not extract user from token:", e);
+    }
+  }
+
   try {
     const body = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)
       ? await request.text()

@@ -129,11 +129,13 @@ function GoogleLoginButton({
   setIsLoading,
   setError,
   router,
+  searchParams,
 }: {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   setError: (error: string) => void;
   router: ReturnType<typeof useRouter>;
+  searchParams: ReturnType<typeof useSearchParams>;
 }) {
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
@@ -158,7 +160,8 @@ function GoogleLoginButton({
           if (data.token) {
             localStorage.setItem("cloudo_token", data.token);
           }
-          router.push("/");
+          const callbackUrl = searchParams.get("callbackUrl") || "/";
+          router.push(callbackUrl);
         } else {
           setError(data.error || "Google SSO failed.");
           setIsLoading(false);
@@ -208,7 +211,8 @@ function LoginForm({ googleSsoEnabled }: { googleSsoEnabled: boolean }) {
       const now = new Date();
       const expirationDate = new Date(expiresAt);
       if (now < expirationDate) {
-        router.push("/");
+        const callbackUrl = searchParams.get("callbackUrl") || "/";
+        router.push(callbackUrl);
       } else {
         localStorage.removeItem("cloudo_auth");
         localStorage.removeItem("cloudo_user");
@@ -221,7 +225,7 @@ function LoginForm({ googleSsoEnabled }: { googleSsoEnabled: boolean }) {
       localStorage.removeItem("cloudo_expires_at");
       localStorage.removeItem("cloudo_token");
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("cloudo_theme") as "dark" | "light";
@@ -260,7 +264,8 @@ function LoginForm({ googleSsoEnabled }: { googleSsoEnabled: boolean }) {
         if (data.token) {
           localStorage.setItem("cloudo_token", data.token);
         }
-        router.push("/");
+        const callbackUrl = searchParams.get("callbackUrl") || "/";
+        router.push(callbackUrl);
       } else if (res.ok && data.success && !data.expires_at) {
         setError(
           "Login successful but no expiration provided. Security protocol violated.",
@@ -468,6 +473,7 @@ function LoginForm({ googleSsoEnabled }: { googleSsoEnabled: boolean }) {
                   setIsLoading={setIsLoading}
                   setError={setError}
                   router={router}
+                  searchParams={searchParams}
                 />
               )}
             </div>
