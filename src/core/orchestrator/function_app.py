@@ -1148,6 +1148,7 @@ def Trigger(
             oncall=schema.oncall,
             monitor_condition=monitor_condition,
             severity=severity,
+            resource_info=resource_info,
         )
         log_table.set(json.dumps(start_log, ensure_ascii=False))
 

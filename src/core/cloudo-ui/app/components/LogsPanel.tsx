@@ -1052,9 +1052,17 @@ function LogsPanelContent() {
                 let info: Record<string, unknown> = {};
                 if (selectedLog.ResourceInfo) {
                   try {
-                    info = JSON.parse(selectedLog.ResourceInfo);
+                    const parsed = JSON.parse(selectedLog.ResourceInfo);
+                    if (parsed && typeof parsed === "object") {
+                      info = parsed as Record<string, unknown>;
+                    } else {
+                      // Fallback: show raw string if JSON is not an object
+                      info = { _raw: selectedLog.ResourceInfo };
+                    }
                   } catch (e) {
                     console.warn("Failed to parse ResourceInfo:", e);
+                    // Ensure we still display the raw content if parsing fails
+                    info = { _raw: selectedLog.ResourceInfo };
                   }
                 }
 
