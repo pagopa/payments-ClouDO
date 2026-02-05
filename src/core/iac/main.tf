@@ -76,7 +76,7 @@ module "cloudo_orchestrator" {
 # UI App Service
 module "cloudo_ui" {
   count               = var.enable_ui ? 1 : 0
-  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=a065466aa740278f591260ced27957dac1f6b6ae"
+  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=91f7e70706ce328dc819a908d6e953f0b7b0fed3"
   env                 = var.env
   idh_resource_tier   = var.cluodo_ui_tier
   location            = var.location
