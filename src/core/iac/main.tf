@@ -8,7 +8,7 @@ resource "random_password" "internal_auth_token" {
 
 # Orchestrator Function
 module "cloudo_orchestrator" {
-  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=420ca008174e36667fe6bf80444facf7238b3be8"
+  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090"
   env                                      = var.env
   idh_resource_tier                        = var.cluodo_function_tier
   location                                 = var.location
@@ -76,7 +76,7 @@ module "cloudo_orchestrator" {
 # UI App Service
 module "cloudo_ui" {
   count               = var.enable_ui ? 1 : 0
-  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=91f7e70706ce328dc819a908d6e953f0b7b0fed3"
+  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090"
   env                 = var.env
   idh_resource_tier   = var.cluodo_ui_tier
   location            = var.location
@@ -125,7 +125,7 @@ module "cloudo_ui" {
 
 # Workers Function Module
 module "cloudo_worker" {
-  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=a065466aa740278f591260ced27957dac1f6b6ae"
+  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090"
   for_each = var.workers_config.workers
 
   env                                      = var.env
@@ -191,7 +191,7 @@ module "cloudo_worker" {
 }
 
 module "storage_account" {
-  source = "git::https://github.com/pagopa/terraform-azurerm-v4.git//storage_account?ref=8265f125b07251a5efe7b9ff57707109de8b46ba"
+  source = "git::https://github.com/pagopa/terraform-azurerm-v4.git//storage_account?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090"
 
   name                          = replace("${var.prefix}cloudosa", "-", "")
   location                      = var.location
