@@ -138,17 +138,8 @@ def send_slack_execution(
 ) -> bool:
     """
     Send an alert to a Slack channel using the Slack SDK.
-
-    Args:
-        token (str): Slack Bot User OAuth Token
-        channel (str): Channel ID or name to send the message to
-        message (str): Message text to send
-        blocks (list, optional): Slack blocks for advanced message formatting
-
-    Returns:
-        bool: True if a message was sent successfully, False otherwise
+    Includes fallback to plain text if blocks are invalid.
     """
-    # Skip call if a token or channel are missing/empty
     if not token or not str(token).strip():
         logging.warning("Slack: missing or empty token, skipping message send.")
         return False
@@ -158,12 +149,43 @@ def send_slack_execution(
 
     try:
         client = WebClient(token=token)
+
+        # Validate URLs in blocks (if any)
+        if blocks:
+            for block in blocks:
+                if block.get("type") == "actions":
+                    for element in block.get("elements", []):
+                        if element.get("type") == "button" and "url" in element:
+                            url = str(element["url"])
+                            if not url.startswith("http"):
+                                logging.warning(
+                                    "Slack: fixed invalid button URL by adding http fallback"
+                                )
+                                element["url"] = (
+                                    f"http://{url}" if url else "http://localhost:3000"
+                                )
+
+        # Try sending with blocks
         response = client.chat_postMessage(channel=channel, text=message, blocks=blocks)
         return True if response["ok"] else False
 
     except SlackApiError as e:
-        logging.error(f"Error sending Slack alert: {str(e.response['error'])}")
+        error_code = e.response.get("error")
+        # Log the full error for debugging
+        logging.error(f"Slack API Error: {error_code}. Response: {e.response}")
+
+        # Fallback if blocks are invalid
+        if error_code == "invalid_blocks" and blocks:
+            logging.warning(
+                f"Retrying Slack send for channel {channel} without blocks due to 'invalid_blocks' error. Message: {message[:100]}..."
+            )
+            try:
+                response = client.chat_postMessage(channel=channel, text=message)
+                return True if response["ok"] else False
+            except Exception as retry_err:
+                logging.error(f"Slack retry failed: {retry_err}")
+                return False
         return False
     except Exception as e:
-        logging.error(f"Error sending Slack alert: {str(e)}")
+        logging.error(f"Unexpected error sending Slack alert: {str(e)}")
         return False

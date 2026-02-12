@@ -292,9 +292,16 @@ def _notify_slack_decision(
     emoji = "✅" if decision == "approved" else "❌"
 
     # UI Base URL
-    ui_base = (os.getenv("NEXTJS_URL") or "http://localhost:3000").rstrip("/")
+    ui_base = (os.getenv("NEXTJS_URL") or "http://localhost:3000").strip().rstrip("/")
+    if not ui_base.startswith("http"):
+        ui_base = f"https://{ui_base}" if ui_base else "http://localhost:3000"
     partition_key = datetime.now(timezone.utc).strftime("%Y%m%d")
     ui_url = f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
+
+    # Truncate extra to avoid Slack invalid_blocks (max 3000 chars for mrkdwn sections)
+    extra_truncated = (extra or "").strip()
+    if len(extra_truncated) > 1500:
+        extra_truncated = extra_truncated[:1500] + "\n... (truncated)"
 
     try:
         send_slack_execution(
@@ -314,16 +321,14 @@ def _notify_slack_decision(
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"The execution request for *{schema_id}* has been *{decision.upper()}*.",
+                        "text": f"Execution request for *{schema_id}* has been *{decision.upper()}* by *{approver}*.",
                     },
                 },
                 {
                     "type": "section",
                     "fields": [
                         {"type": "mrkdwn", "text": f"*Schema:*\n`{schema_id}`"},
-                        {"type": "mrkdwn", "text": f"*Decision By:*\n`{approver}`"},
                         {"type": "mrkdwn", "text": f"*ExecId:*\n`{exec_id}`"},
-                        {"type": "mrkdwn", "text": f"*Status:*\n`{decision.upper()}`"},
                     ],
                 },
                 *(
@@ -332,11 +337,11 @@ def _notify_slack_decision(
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": f"*Reason/Details:*\n{extra}",
+                                "text": f"*Reason/Details:*\n{extra_truncated}",
                             },
                         }
                     ]
-                    if extra
+                    if extra_truncated
                     else []
                 ),
                 {
@@ -916,9 +921,33 @@ def Trigger(
                 try:
                     # UI Base URL
                     ui_base = (
-                        os.getenv("NEXTJS_URL") or "http://localhost:3000"
-                    ).rstrip("/")
+                        (os.getenv("NEXTJS_URL") or "http://localhost:3000")
+                        .strip()
+                        .rstrip("/")
+                    )
+                    if not ui_base.startswith("http"):
+                        ui_base = (
+                            f"https://{ui_base}" if ui_base else "http://localhost:3000"
+                        )
                     ui_url = f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
+
+                    # Truncate description and compact resource info to avoid Slack limits
+                    description_truncated = (
+                        schema.description or "No description provided."
+                    ).strip()
+                    if len(description_truncated) > 400:
+                        description_truncated = description_truncated[:400] + "..."
+
+                    resource_info_compact = (
+                        _format_compact_resource_info(resource_info) or ""
+                    )
+                    if len(resource_info_compact) > 600:
+                        resource_info_compact = resource_info_compact[:600] + "..."
+
+                    # Truncate arguments for better Slack display
+                    args_truncated = (schema.run_args or "").strip()
+                    if len(args_truncated) > 800:
+                        args_truncated = args_truncated[:800] + "\n... (truncated)"
 
                     send_slack_execution(
                         token=slack_token,
@@ -939,7 +968,7 @@ def Trigger(
                                     "type": "mrkdwn",
                                     "text": (
                                         f"<!here> *{schema.name}* is requesting permission to execute a restricted runbook.\n"
-                                        f"> *Description:* {schema.description or 'No description provided.'}"
+                                        f"> *Description:* {description_truncated}"
                                     ),
                                 },
                             },
@@ -948,27 +977,27 @@ def Trigger(
                                 "fields": [
                                     {
                                         "type": "mrkdwn",
-                                        "text": f"*SchemaId:*\n`{schema.id}`",
+                                        "text": f"*SchemaId:* `{schema.id}`",
                                     },
                                     {
                                         "type": "mrkdwn",
-                                        "text": f"*Severity:*\n`{severity or '-'}`",
+                                        "text": f"*Severity:* `{severity or '-'}`",
                                     },
                                     {
                                         "type": "mrkdwn",
-                                        "text": f"*Runbook:*\n`{schema.runbook or '-'}`",
+                                        "text": f"*Runbook:* `{schema.runbook or '-'}`",
                                     },
                                     {
                                         "type": "mrkdwn",
-                                        "text": f"*Worker:*\n`{schema.worker or 'unknown'}`",
+                                        "text": f"*Worker:* `{schema.worker or 'unknown'}`",
                                     },
                                     {
                                         "type": "mrkdwn",
-                                        "text": f"*Initiator:*\n`{requester_username or 'SYSTEM'}`",
+                                        "text": f"*Initiator:* `{requester_username or 'SYSTEM'}`",
                                     },
                                     {
                                         "type": "mrkdwn",
-                                        "text": f"*On Call:*\n`{schema.oncall}`",
+                                        "text": f"*On Call:* `{schema.oncall}`",
                                     },
                                 ],
                             },
@@ -978,18 +1007,18 @@ def Trigger(
                                         "type": "section",
                                         "text": {
                                             "type": "mrkdwn",
-                                            "text": f"*Resource Context:*\n{_format_compact_resource_info(resource_info)}",
+                                            "text": f"*Resource Context:*\n{resource_info_compact}",
                                         },
                                     }
                                 ]
-                                if _format_compact_resource_info(resource_info)
+                                if resource_info_compact
                                 else []
                             ),
                             {
                                 "type": "section",
                                 "text": {
                                     "type": "mrkdwn",
-                                    "text": f"*Arguments:*\n```{(schema.run_args or '').strip() or 'None'}```",
+                                    "text": f"*Arguments:*\n```{(args_truncated or 'None')}```",
                                 },
                             },
                             {
@@ -2064,9 +2093,26 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
         status_emoji = status_emojis.get(status_label, "ℹ️")
 
         # UI Base URL
-        ui_base = (os.getenv("NEXTJS_URL") or "http://localhost:3000").rstrip("/")
+        ui_base = (
+            (os.getenv("NEXTJS_URL") or "http://localhost:3000").strip().rstrip("/")
+        )
+        if not ui_base.startswith("http"):
+            ui_base = f"https://{ui_base}" if ui_base else "http://localhost:3000"
         partition_key = datetime.now(timezone.utc).strftime("%Y%m%d")
         ui_url = f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
+
+        # Truncate large fields for Slack blocks to avoid invalid_blocks
+        resource_info_compact = _format_compact_resource_info(resource_info) or ""
+        if len(resource_info_compact) > 600:
+            resource_info_compact = resource_info_compact[:600] + "..."
+
+        args_truncated = (body.get("run_args") or "").strip()
+        if len(args_truncated) > 800:
+            args_truncated = args_truncated[:800] + "\n... (truncated)"
+
+        logs_truncated = (logs_raw or "").strip()
+        if len(logs_truncated) > 1000:
+            logs_truncated = logs_truncated[:1000] + "\n... (truncated)"
 
         payload = {
             "slack": {
@@ -2085,7 +2131,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                         "text": {
                             "type": "mrkdwn",
                             "text": (
-                                f"Execution *{body.get('name')}* has transitioned to status: *{status_label.upper()}*."
+                                f"Execution *{body.get('name')}* transitioned to: *{status_label.upper()}*."
                             ),
                         },
                     },
@@ -2094,27 +2140,27 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                         "fields": [
                             {
                                 "type": "mrkdwn",
-                                "text": f"*SchemaId:*\n`{body.get('id')}`",
+                                "text": f"*SchemaId:* `{body.get('id')}`",
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Severity:*\n`{body.get('severity') or '-'}`",
+                                "text": f"*Severity:* `{body.get('severity') or '-'}`",
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Worker:*\n`{body.get('worker') or 'unknown'}`",
+                                "text": f"*Worker:* `{body.get('worker') or 'unknown'}`",
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Runbook:*\n`{body.get('runbook') or '-'}`",
+                                "text": f"*Runbook:* `{body.get('runbook') or '-'}`",
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*Initiator:*\n`{body.get('initiator') or 'SYSTEM'}`",
+                                "text": f"*Initiator:* `{body.get('initiator') or 'SYSTEM'}`",
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": f"*On Call:*\n`{body.get('oncall') or '-'}`",
+                                "text": f"*On Call:* `{body.get('oncall') or '-'}`",
                             },
                         ],
                     },
@@ -2124,25 +2170,25 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                                 "type": "section",
                                 "text": {
                                     "type": "mrkdwn",
-                                    "text": f"*Resource Context:*\n{_format_compact_resource_info(resource_info)}",
+                                    "text": f"*Resource Context:*\n{resource_info_compact}",
                                 },
                             }
                         ]
-                        if _format_compact_resource_info(resource_info)
+                        if resource_info_compact
                         else []
                     ),
                     {
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Arguments:*\n```{(body.get('run_args') or '').strip() or 'None'}```",
+                            "text": f"*Arguments:*\n```{(args_truncated or 'None')}```",
                         },
                     },
                     {
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*Telemetry Output:*\n```{(logs_raw or '')[:1500] or 'No telemetry available'}```",
+                            "text": f"*Telemetry Output:*\n```{(logs_truncated or 'No telemetry available')}```",
                         },
                     },
                     {

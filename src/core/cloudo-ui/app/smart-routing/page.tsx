@@ -216,40 +216,96 @@ export default function SmartRoutingPage() {
           try {
             const parsed: RoutingConfig = JSON.parse(settings.ROUTING_RULES);
 
-            // Enrich defaults with credentials from settings
-            if (settings.SLACK_TOKEN_DEFAULT) {
+            // Enrich defaults with credentials and channels from settings
+            if (
+              settings.SLACK_TOKEN_DEFAULT !== undefined &&
+              settings.SLACK_TOKEN_DEFAULT !== null
+            ) {
               parsed.defaults.slack = {
-                ...parsed.defaults.slack,
+                ...(parsed.defaults.slack || { channel: "" }),
                 token: settings.SLACK_TOKEN_DEFAULT,
               };
             }
-            if (settings.OPSGENIE_API_KEY_DEFAULT) {
-              parsed.defaults.opsgenie = {
-                ...parsed.defaults.opsgenie,
-                apiKey: settings.OPSGENIE_API_KEY_DEFAULT,
+            if (
+              settings.SLACK_CHANNEL_DEFAULT !== undefined &&
+              settings.SLACK_CHANNEL_DEFAULT !== null
+            ) {
+              parsed.defaults.slack = {
+                ...(parsed.defaults.slack || { channel: "" }),
+                channel: settings.SLACK_CHANNEL_DEFAULT,
+              };
+            } else if (
+              settings.SLACK_CHANNEL !== undefined &&
+              settings.SLACK_CHANNEL !== null
+            ) {
+              parsed.defaults.slack = {
+                ...(parsed.defaults.slack || { channel: "" }),
+                channel: settings.SLACK_CHANNEL,
               };
             }
 
-            // Enrich teams with credentials from settings
+            if (
+              settings.OPSGENIE_API_KEY_DEFAULT !== undefined &&
+              settings.OPSGENIE_API_KEY_DEFAULT !== null
+            ) {
+              parsed.defaults.opsgenie = {
+                ...(parsed.defaults.opsgenie || { team: "" }),
+                apiKey: settings.OPSGENIE_API_KEY_DEFAULT,
+              };
+            }
+            if (
+              settings.OPSGENIE_TEAM_DEFAULT !== undefined &&
+              settings.OPSGENIE_TEAM_DEFAULT !== null
+            ) {
+              parsed.defaults.opsgenie = {
+                ...(parsed.defaults.opsgenie || { team: "" }),
+                team: settings.OPSGENIE_TEAM_DEFAULT,
+              };
+            }
+
+            // Enrich teams with credentials and channels from settings
             if (parsed.teams) {
               for (const teamName of Object.keys(parsed.teams)) {
-                const slackKey = `SLACK_TOKEN_${teamName
-                  .toUpperCase()
-                  .replace(/-/g, "_")}`;
-                const ogKey = `OPSGENIE_API_KEY_${teamName
-                  .toUpperCase()
-                  .replace(/-/g, "_")}`;
+                const teamUpper = teamName.toUpperCase().replace(/-/g, "_");
+                const slackTokenKey = `SLACK_TOKEN_${teamUpper}`;
+                const slackChannelKey = `SLACK_CHANNEL_${teamUpper}`;
+                const ogApiKeyKey = `OPSGENIE_API_KEY_${teamUpper}`;
+                const ogTeamKey = `OPSGENIE_TEAM_${teamUpper}`;
 
-                if (settings[slackKey]) {
+                if (
+                  settings[slackTokenKey] !== undefined &&
+                  settings[slackTokenKey] !== null
+                ) {
                   parsed.teams[teamName].slack = {
                     ...(parsed.teams[teamName].slack || { channel: "" }),
-                    token: settings[slackKey],
+                    token: settings[slackTokenKey],
                   };
                 }
-                if (settings[ogKey]) {
+                if (
+                  settings[slackChannelKey] !== undefined &&
+                  settings[slackChannelKey] !== null
+                ) {
+                  parsed.teams[teamName].slack = {
+                    ...(parsed.teams[teamName].slack || { channel: "" }),
+                    channel: settings[slackChannelKey],
+                  };
+                }
+                if (
+                  settings[ogApiKeyKey] !== undefined &&
+                  settings[ogApiKeyKey] !== null
+                ) {
                   parsed.teams[teamName].opsgenie = {
                     ...(parsed.teams[teamName].opsgenie || { team: "" }),
-                    apiKey: settings[ogKey],
+                    apiKey: settings[ogApiKeyKey],
+                  };
+                }
+                if (
+                  settings[ogTeamKey] !== undefined &&
+                  settings[ogTeamKey] !== null
+                ) {
+                  parsed.teams[teamName].opsgenie = {
+                    ...(parsed.teams[teamName].opsgenie || { team: "" }),
+                    team: settings[ogTeamKey],
                   };
                 }
               }
@@ -278,15 +334,29 @@ export default function SmartRoutingPage() {
       // So we clone the config and strip tokens before stringifying
       const configToSave = JSON.parse(JSON.stringify(config));
 
-      // Handle default credentials
-      if (configToSave.defaults.slack?.token) {
-        settingsPayload.SLACK_TOKEN_DEFAULT = configToSave.defaults.slack.token;
-        delete configToSave.defaults.slack.token;
+      // Handle default credentials and channels
+      if (configToSave.defaults.slack) {
+        if (configToSave.defaults.slack.token) {
+          settingsPayload.SLACK_TOKEN_DEFAULT =
+            configToSave.defaults.slack.token;
+          delete configToSave.defaults.slack.token;
+        }
+        if (configToSave.defaults.slack.channel) {
+          settingsPayload.SLACK_CHANNEL_DEFAULT =
+            configToSave.defaults.slack.channel;
+          settingsPayload.SLACK_CHANNEL = configToSave.defaults.slack.channel;
+        }
       }
-      if (configToSave.defaults.opsgenie?.apiKey) {
-        settingsPayload.OPSGENIE_API_KEY_DEFAULT =
-          configToSave.defaults.opsgenie.apiKey;
-        delete configToSave.defaults.opsgenie.apiKey;
+      if (configToSave.defaults.opsgenie) {
+        if (configToSave.defaults.opsgenie.apiKey) {
+          settingsPayload.OPSGENIE_API_KEY_DEFAULT =
+            configToSave.defaults.opsgenie.apiKey;
+          delete configToSave.defaults.opsgenie.apiKey;
+        }
+        if (configToSave.defaults.opsgenie.team) {
+          settingsPayload.OPSGENIE_TEAM_DEFAULT =
+            configToSave.defaults.opsgenie.team;
+        }
       }
 
       // Clean up empty fields in rules to avoid backend matching issues
@@ -320,20 +390,29 @@ export default function SmartRoutingPage() {
       if (configToSave.teams) {
         for (const teamName of Object.keys(configToSave.teams)) {
           const team = configToSave.teams[teamName];
-          const slackKey = `SLACK_TOKEN_${teamName
-            .toUpperCase()
-            .replace(/-/g, "_")}`;
-          const ogKey = `OPSGENIE_API_KEY_${teamName
-            .toUpperCase()
-            .replace(/-/g, "_")}`;
+          const teamUpper = teamName.toUpperCase().replace(/-/g, "_");
+          const slackTokenKey = `SLACK_TOKEN_${teamUpper}`;
+          const slackChannelKey = `SLACK_CHANNEL_${teamUpper}`;
+          const ogApiKeyKey = `OPSGENIE_API_KEY_${teamUpper}`;
+          const ogTeamKey = `OPSGENIE_TEAM_${teamUpper}`;
 
-          if (team.slack?.token) {
-            settingsPayload[slackKey] = team.slack.token;
-            delete team.slack.token;
+          if (team.slack) {
+            if (team.slack.token) {
+              settingsPayload[slackTokenKey] = team.slack.token;
+              delete team.slack.token;
+            }
+            if (team.slack.channel) {
+              settingsPayload[slackChannelKey] = team.slack.channel;
+            }
           }
-          if (team.opsgenie?.apiKey) {
-            settingsPayload[ogKey] = team.opsgenie.apiKey;
-            delete team.opsgenie.apiKey;
+          if (team.opsgenie) {
+            if (team.opsgenie.apiKey) {
+              settingsPayload[ogApiKeyKey] = team.opsgenie.apiKey;
+              delete team.opsgenie.apiKey;
+            }
+            if (team.opsgenie.team) {
+              settingsPayload[ogTeamKey] = team.opsgenie.team;
+            }
           }
         }
       }
