@@ -159,7 +159,7 @@ def send_slack_execution(
                             url = str(element["url"])
                             if not url.startswith("http"):
                                 logging.warning(
-                                    f"Slack: fixed invalid button URL '{url}' by adding http fallback"
+                                    "Slack: fixed invalid button URL by adding http fallback"
                                 )
                                 element["url"] = (
                                     f"http://{url}" if url else "http://localhost:3000"
