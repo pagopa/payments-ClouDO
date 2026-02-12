@@ -37,7 +37,7 @@ module "cloudo_orchestrator" {
       "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
       "APPROVAL_SECRET"                     = var.approval_runbook.secret
       "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
-      "NEXTJS_URL"                          = "${var.prefix}-cloudo-ui.${data.azurerm_private_dns_zone.this.name}"
+      "NEXTJS_URL"                          = "${var.prefix}-cloudo-ui.azurewebsites.net"
     },
     local.orchestrator_smart_routing_app_settings
   )
