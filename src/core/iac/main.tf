@@ -8,7 +8,7 @@ resource "random_password" "internal_auth_token" {
 
 # Orchestrator Function
 module "cloudo_orchestrator" {
-  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090" #v8.5.1
+  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=2093f55a78bcc673e1671a4ce8b0e88e10d7eb07" #v8.8.1
   env                                      = var.env
   idh_resource_tier                        = var.cloudo_function_tier
   location                                 = var.location
@@ -21,6 +21,7 @@ module "cloudo_orchestrator" {
   storage_account_name       = module.storage_account.name
   storage_account_access_key = module.storage_account.primary_access_key
   app_service_plan_name      = "${var.prefix}-cloudo-orchestrator-service-plan"
+  export_keys                = true
 
   app_settings = merge(
     {
@@ -76,7 +77,7 @@ module "cloudo_orchestrator" {
 # UI App Service
 module "cloudo_ui" {
   count               = var.enable_ui ? 1 : 0
-  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090" #v8.5.1
+  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=2093f55a78bcc673e1671a4ce8b0e88e10d7eb07" #v8.8.1
   env                 = var.env
   idh_resource_tier   = var.cloudo_ui_tier
   location            = var.location
@@ -91,7 +92,7 @@ module "cloudo_ui" {
   app_settings = {
     "ORCHESTRATOR_URL"                    = "https://${module.cloudo_orchestrator.default_hostname}"
     "API_URL"                             = "https://${module.cloudo_orchestrator.default_hostname}/api"
-    "FUNCTION_KEY"                        = data.azurerm_function_app_host_keys.orchestrator_key.default_function_key
+    "FUNCTION_KEY"                        = module.cloudo_orchestrator.default_key
     "CLOUDO_KEY"                          = random_password.internal_auth_token.result
     "GOOGLE_CLIENT_ID"                    = var.cloudo_google_sso_integration_client_id
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
@@ -125,7 +126,7 @@ module "cloudo_ui" {
 
 # Workers Function Module
 module "cloudo_worker" {
-  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090" #v8.5.1
+  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=2093f55a78bcc673e1671a4ce8b0e88e10d7eb07" #v8.8.1
   for_each = var.workers_config.workers
 
   env                                      = var.env
