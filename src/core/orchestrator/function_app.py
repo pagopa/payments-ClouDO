@@ -1026,26 +1026,6 @@ def Trigger(
                                 "elements": [
                                     {
                                         "type": "button",
-                                        "style": "primary",
-                                        "text": {
-                                            "type": "plain_text",
-                                            "text": "Approve ✅",
-                                            "emoji": True,
-                                        },
-                                        "url": approve_url,
-                                    },
-                                    {
-                                        "type": "button",
-                                        "style": "danger",
-                                        "text": {
-                                            "type": "plain_text",
-                                            "text": "Reject ❌",
-                                            "emoji": True,
-                                        },
-                                        "url": reject_url,
-                                    },
-                                    {
-                                        "type": "button",
                                         "text": {
                                             "type": "plain_text",
                                             "text": "Full Context 🔍",
@@ -1209,7 +1189,7 @@ def Trigger(
                                 "type": "header",
                                 "text": {
                                     "type": "plain_text",
-                                    "text": f"Worker Notification {status_emoji}",
+                                    "text": f"{status_emoji}\t{schema.name or ''}\texecution",
                                     "emoji": True,
                                 },
                             },
@@ -2122,7 +2102,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                         "type": "header",
                         "text": {
                             "type": "plain_text",
-                            "text": f"Worker Notification {status_emoji}",
+                            "text": f"{status_emoji}\t{body.get('name')}\texecution",
                             "emoji": True,
                         },
                     },
