@@ -8,7 +8,7 @@ resource "random_password" "internal_auth_token" {
 
 # Orchestrator Function
 module "cloudo_orchestrator" {
-  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090" #v8.5.1
+  source                                   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=fix-slot-idh-app-service-basic" #v8.5.1
   env                                      = var.env
   idh_resource_tier                        = var.cloudo_function_tier
   location                                 = var.location
@@ -76,7 +76,7 @@ module "cloudo_orchestrator" {
 # UI App Service
 module "cloudo_ui" {
   count               = var.enable_ui ? 1 : 0
-  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090" #v8.5.1
+  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=fix-slot-idh-app-service-basic" #v8.5.1
   env                 = var.env
   idh_resource_tier   = var.cloudo_ui_tier
   location            = var.location
@@ -125,7 +125,7 @@ module "cloudo_ui" {
 
 # Workers Function Module
 module "cloudo_worker" {
-  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090" #v8.5.1
+  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=fix-slot-idh-app-service-basic" #v8.5.1
   for_each = var.workers_config.workers
 
   env                                      = var.env
