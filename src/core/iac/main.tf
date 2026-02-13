@@ -91,7 +91,7 @@ module "cloudo_ui" {
   app_settings = {
     "ORCHESTRATOR_URL"                    = "https://${module.cloudo_orchestrator.default_hostname}"
     "API_URL"                             = "https://${module.cloudo_orchestrator.default_hostname}/api"
-    "FUNCTION_KEY"                        = data.azurerm_function_app_host_keys.orchestrator_key.default_function_key
+    "FUNCTION_KEY"                        = module.cloudo_orchestrator.default_key
     "CLOUDO_KEY"                          = random_password.internal_auth_token.result
     "GOOGLE_CLIENT_ID"                    = var.cloudo_google_sso_integration_client_id
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
