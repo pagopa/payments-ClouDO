@@ -77,7 +77,7 @@ module "cloudo_orchestrator" {
 # UI App Service
 module "cloudo_ui" {
   count               = var.enable_ui ? 1 : 0
-  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=fix-slot-idh-app-service-basic" #v8.5.1
+  source              = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_webapp?ref=2093f55a78bcc673e1671a4ce8b0e88e10d7eb07" #v8.8.1
   env                 = var.env
   idh_resource_tier   = var.cloudo_ui_tier
   location            = var.location
@@ -126,7 +126,7 @@ module "cloudo_ui" {
 
 # Workers Function Module
 module "cloudo_worker" {
-  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=fix-slot-idh-app-service-basic" #v8.5.1
+  source   = "git::https://github.com/pagopa/terraform-azurerm-v4//IDH/app_service_function?ref=2093f55a78bcc673e1671a4ce8b0e88e10d7eb07" #v8.8.1
   for_each = var.workers_config.workers
 
   env                                      = var.env
