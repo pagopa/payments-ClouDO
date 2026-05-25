@@ -46,9 +46,7 @@ def send_opsgenie_alert(
     if len(api_key) < 10:
         logging.error(f"Opsgenie: apiKey is suspiciously short ({len(api_key)} chars)")
     else:
-        logging.info(
-            f"Opsgenie: sending alert with apiKey len={len(api_key)}, prefix={api_key[:4]}... suffix=...{api_key[-4:]}"
-        )
+        logging.info("Opsgenie: sending alert with apiKey")
 
     try:
         conf = Configuration()

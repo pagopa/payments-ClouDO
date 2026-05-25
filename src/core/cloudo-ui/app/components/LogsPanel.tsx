@@ -255,23 +255,23 @@ function LogsPanelContent() {
   const getStatusIcon = (status: string) => {
     const s = status.toLowerCase();
     if (s === "succeeded" || s === "completed")
-      return <HiCheckCircle className="w-4 h-4 text-cloudo-ok" />;
+      return <HiCheckCircle className="w-5 h-5 text-cloudo-ok" />;
     if (s === "accepted")
-      return <HiPlay className="w-4 h-4 text-cloudo-accent" />;
+      return <HiPlay className="w-5 h-5 text-cloudo-accent" />;
     if (s === "running")
-      return <HiArrowPath className="w-4 h-4 text-cloudo-accent" />;
+      return <HiArrowPath className="w-5 h-5 text-cloudo-accent" />;
     if (s === "failed" || s === "error")
-      return <HiXCircle className="w-4 h-4 text-cloudo-err" />;
+      return <HiXCircle className="w-5 h-5 text-cloudo-err" />;
     if (s === "rejected")
-      return <HiExclamationCircle className="w-4 h-4 text-cloudo-err" />;
+      return <HiExclamationCircle className="w-5 h-5 text-cloudo-err" />;
     if (s === "pending")
-      return <HiClock className="w-4 h-4 text-cloudo-warn" />;
-    if (s === "stopped") return <HiStop className="w-4 h-4 text-cloudo-warn" />;
+      return <HiClock className="w-5 h-5 text-cloudo-warn" />;
+    if (s === "stopped") return <HiStop className="w-5 h-5 text-cloudo-warn" />;
     if (s === "routed")
       return (
-        <HiOutlineChevronDoubleRight className="w-4 h-4 text-cloudo-accent" />
+        <HiOutlineChevronDoubleRight className="w-5 h-5 text-cloudo-accent" />
       );
-    return <HiOutlineTerminal className="w-4 h-4 text-cloudo-muted" />;
+    return <HiOutlineTerminal className="w-5 h-5 text-cloudo-muted" />;
   };
 
   const getStatusBadgeClass = (status: string) => {
