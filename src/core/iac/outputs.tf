@@ -69,12 +69,12 @@ output "cloudo_action_group_name" {
 
 # API Management Outputs
 output "cloudo_api_name" {
-  value       = module.apim_api_cloudo_api_v1.0.name
+  value       = try(module.apim_api_cloudo_api_v1.0.name, "")
   description = "The name of the Cloudo API in API Management"
 }
 
 output "cloudo_api_id" {
-  value       = module.apim_api_cloudo_api_v1.0.id
+  value       = try(module.apim_api_cloudo_api_v1.0.id, "")
   description = "The ID of the Cloudo API in API Management"
 }
 
