@@ -260,10 +260,16 @@ def _only_pending_for_exec(rows: list[dict], exec_id: str) -> bool:
 
 
 def _notify_slack_decision(
-    exec_id: str, schema_id: str, decision: str, approver: str, extra: str = ""
+    exec_id: str,
+    schema_id: str,
+    decision: str,
+    approver: str,
+    extra: str = "",
+    routing_info: Optional[dict] = None,
 ) -> None:
     from azure.data.tables import TableClient
-    from escalation import send_slack_execution
+    from escalation import send_opsgenie_alert, send_slack_execution
+    from smart_routing import resolve_opsgenie_apikey
 
     # Fetch settings from Table Storage
     conn_str = os.environ.get(STORAGE_CONN)
@@ -373,7 +379,36 @@ def _notify_slack_decision(
             ],
         )
     except Exception as e:
-        logging.error(f"[{exec_id}] Slack notify failed: {e}")
+        logging.error(f"[{exec_id}] Slack decision notify failed: {e}")
+
+    # Opsgenie notify for decision
+    if routing_info:
+        og_token = routing_info.get("opsgenie_token") or resolve_opsgenie_apikey(
+            routing_info.get("team")
+        )
+        if og_token:
+            try:
+                send_opsgenie_alert(
+                    api_key=og_token,
+                    message=f"[{exec_id}] {emoji} GATE {decision.upper()}: {schema_id}",
+                    description=(
+                        f"Execution request for {schema_id} has been {decision.upper()} by {approver}.\n\n"
+                        f"ExecId: {exec_id}\n"
+                        f"Reason/Details: {extra or '-'}\n\n"
+                        f"View Execution: {ui_url}"
+                    ),
+                    priority="P3",
+                    alias=exec_id,
+                    tags=["gate-decision", decision],
+                    details={
+                        "execId": exec_id,
+                        "schemaId": schema_id,
+                        "decision": decision,
+                        "approver": approver,
+                    },
+                )
+            except Exception as e:
+                logging.error(f"[{exec_id}] Opsgenie decision notify failed: {e}")
 
 
 def decode_base64(data: str) -> str:
@@ -1106,20 +1141,22 @@ def Trigger(
             # Optional Slack notify
             slack_token = routing_info.get("slack_token")
             slack_channel = routing_info.get("slack_channel")
+            opsgenie_token = routing_info.get(
+                "opsgenie_token"
+            ) or resolve_opsgenie_apikey(routing_info.get("team"))
+
+            # UI Base URL
+            ui_base = (
+                (os.getenv("NEXTJS_URL") or "http://localhost:3000").strip().rstrip("/")
+            )
+            if not ui_base.startswith("http"):
+                ui_base = f"https://{ui_base}" if ui_base else "http://localhost:3000"
+            ui_url = (
+                f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
+            )
+
             if slack_token:
                 try:
-                    # UI Base URL
-                    ui_base = (
-                        (os.getenv("NEXTJS_URL") or "http://localhost:3000")
-                        .strip()
-                        .rstrip("/")
-                    )
-                    if not ui_base.startswith("http"):
-                        ui_base = (
-                            f"https://{ui_base}" if ui_base else "http://localhost:3000"
-                        )
-                    ui_url = f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
-
                     # Truncate description and compact resource info to avoid Slack limits
                     description_truncated = (
                         schema.description or "No description provided."
@@ -1241,6 +1278,38 @@ def Trigger(
                     )
                 except Exception as e:
                     logging.error(f"[{exec_id}] Slack approval notify failed: {e}")
+
+            if opsgenie_token:
+                try:
+                    og_message = f"[{exec_id}] ⚠️ APPROVAL REQUIRED: {schema.name}"
+                    og_description = (
+                        f"{schema.name} is requesting permission to execute a restricted runbook.\n\n"
+                        f"Description: {schema.description or 'No description provided.'}\n"
+                        f"SchemaId: {schema.id}\n"
+                        f"Severity: {severity or '-'}\n"
+                        f"Runbook: {schema.runbook or '-'}\n"
+                        f"Worker: {schema.worker or 'unknown'}\n"
+                        f"Group: {schema.group}\n"
+                        f"Initiator: {requester_username or 'SYSTEM'}\n"
+                        f"On Call: {schema.oncall}\n\n"
+                        f"Full Context: {ui_url}"
+                    )
+                    send_opsgenie_alert(
+                        api_key=opsgenie_token,
+                        message=og_message,
+                        description=og_description,
+                        priority="P2",
+                        alias=exec_id,
+                        tags=["approval-required", schema.group or "cloudo"],
+                        details={
+                            "execId": exec_id,
+                            "schemaId": schema.id,
+                            "runbook": schema.runbook or "-",
+                            "initiator": requester_username or "SYSTEM",
+                        },
+                    )
+                except Exception as e:
+                    logging.error(f"[{exec_id}] Opsgenie approval notify failed: {e}")
 
             body = json.dumps(
                 {
@@ -1846,6 +1915,7 @@ def approve(
                 schema_id=schema_id,
                 decision="approved",
                 approver=approver,
+                routing_info=routing_info,
             )
 
             # We still execute other actions via smart routing if any (excluding Slack)
@@ -1900,6 +1970,7 @@ def approve(
             f"approved {execId} by {approver}",
             approver,
             extra=f"*Error:* {str(e)}",
+            routing_info=routing_info,
         )
         return func.HttpResponse(
             json.dumps({"error": str(e)}, ensure_ascii=False),
@@ -2086,7 +2157,11 @@ def reject(
 
     # Notify Slack directly
     _notify_slack_decision(
-        exec_id=execId, schema_id=schema_id, decision="rejected", approver=approver
+        exec_id=execId,
+        schema_id=schema_id,
+        decision="rejected",
+        approver=approver,
+        routing_info=routing_info,
     )
 
     # smart routing notification (if routing module available)
