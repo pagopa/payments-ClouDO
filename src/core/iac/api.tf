@@ -3,6 +3,7 @@
 
 module "apim_api_cloudo_api_v1" {
   source = "git::https://github.com/pagopa/terraform-azurerm-v4.git//api_management_api?ref=77e0c671b8f4c11c6568e4b0cc87e30332b62090" #v8.5.1"
+  count  = var.api_management_name != "" && var.api_management_rg != "" ? 1 : 0
 
   # Basic API Configuration
   name                = format("%s-cloudo-api", var.prefix)
@@ -40,11 +41,13 @@ module "apim_api_cloudo_api_v1" {
   subscription_required = var.api_subscription_required
 
   # Version Set
-  version_set_id = azurerm_api_management_api_version_set.api_cloudo.id
+  version_set_id = azurerm_api_management_api_version_set.api_cloudo.0.id
 }
 
 # API Version Set
 resource "azurerm_api_management_api_version_set" "api_cloudo" {
+  count = var.api_management_name != "" && var.api_management_rg != "" ? 1 : 0
+
   name                = "${var.prefix}-cloudo-api-version-set"
   resource_group_name = var.api_management_rg
   api_management_name = var.api_management_name
