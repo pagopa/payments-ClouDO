@@ -7,6 +7,7 @@ requests
 azure-mgmt-compute
 azure-mgmt-storage
 azure-mgmt-resource
+azure-mgmt-apimanagement
 azure-keyvault-secrets
 azure-mgmt-subscription
 azure-storage-blob
