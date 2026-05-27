@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 @dataclass
 class Action:
-    type: str  # "slack" | "opsgenie"
+    type: str  # "slack" | "jsm"
     channel: Optional[str] = None
     token: Optional[str] = None
     team: Optional[str] = None
@@ -25,7 +25,7 @@ class RoutingDecision:
     actions: list[Action]
     matched_rule_index: Optional[int]
     matched_team: Optional[str]
-    reason: str  # "matched" | "fallback_opsgenie"
+    reason: str  # "matched" | "fallback_jsm"
 
 
 # =========================
@@ -37,11 +37,11 @@ def load_routing_config() -> dict[str, Any]:
     """
     Load routing configuration from Azure Table Storage (CloudoSettings/ROUTING_RULES).
     Fallback to env ROUTING_RULES (JSON).
-    If both absent/invalid, return safe fallback with Opsgenie default.
+    If both absent/invalid, return safe fallback with JSM default.
     Do NOT store secrets (tokens/keys) in config JSON: resolve via environment.
     """
     defaults = {
-        "opsgenie": {"team": "default"},  # apiKey resolved via env
+        "jsm": {"team": "default"},  # apiKey resolved via env
         "slack": {
             "channel": os.environ.get("SLACK_CHANNEL_DEFAULT", "#cloudo-default")
         },
@@ -55,7 +55,7 @@ def load_routing_config() -> dict[str, Any]:
                 "when": {"isAlert": "true", "statusIn": ["failed", "error", "routed"]},
                 "then": [
                     {
-                        "type": "opsgenie",
+                        "type": "jsm",
                         "statusIn": ["failed", "error", "routed"],
                     },
                     {"type": "slack"},
@@ -97,8 +97,8 @@ def load_routing_config() -> dict[str, Any]:
     try:
         cfg = json.loads(raw)
         # Soft-merge defaults to ensure required keys exist
-        cfg.setdefault("defaults", {}).setdefault("opsgenie", {}).setdefault(
-            "team", defaults["opsgenie"]["team"]
+        cfg.setdefault("defaults", {}).setdefault("jsm", {}).setdefault(
+            "team", defaults["jsm"]["team"]
         )
         cfg.setdefault("defaults", {}).setdefault("slack", {}).setdefault(
             "channel", defaults["slack"]["channel"]
@@ -317,21 +317,20 @@ def _get_setting(key: str) -> Optional[str]:
     return None
 
 
-def resolve_opsgenie_apikey(team: Optional[str]) -> Optional[str]:
+def resolve_jsm_apikey(team: Optional[str]) -> Optional[str]:
     """
-    Resolve Opsgenie apiKey from table storage or env using naming convention:
-      - OPSGENIE_API_KEY_<TEAM> (preferred)
-      - OPSGENIE_API_KEY_DEFAULT (fallback 1)
-      - OPSGENIE_API_KEY (fallback 2 - legacy)
+    Resolve JSM apiKey from table storage or env using naming convention:
+      - JSM_API_KEY_<TEAM> (preferred)
+      - JSM_API_KEY_DEFAULT (fallback 1)
+      - JSM_API_KEY (fallback 2)
     """
     if team:
-        key_name = f"OPSGENIE_API_KEY_{team}".upper().replace("-", "_")
+        key_name = f"JSM_API_KEY_{team}".upper().replace("-", "_")
         key = _get_setting(key_name)
         if key:
             return key
 
-    # Try DEFAULT first, then legacy
-    return _get_setting("OPSGENIE_API_KEY_DEFAULT") or _get_setting("OPSGENIE_API_KEY")
+    return _get_setting("JSM_API_KEY_DEFAULT") or _get_setting("JSM_API_KEY")
 
 
 def resolve_slack_token(team: Optional[str]) -> Optional[str]:
@@ -380,9 +379,9 @@ def normalize_context(raw_ctx: dict[str, Any]) -> dict[str, Any]:
 
 def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     """
-    Decide the actions to execute (Slack/Opsgenie) based on routing rules.
+    Decide the actions to execute (Slack/JSM) based on routing rules.
     Returns a RoutingDecision with the ordered list of actions.
-    If nothing matches, returns Opsgenie fallback (only for final outcomes).
+    If nothing matches, returns JSM fallback (only for final outcomes).
     """
     cfg = load_routing_config()
     ctx = normalize_context(raw_ctx)
@@ -394,15 +393,13 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
     # Avoid logging sensitive information such as API keys or tokens
     safe_routing_info = {
-        k: v
-        for k, v in routing_info.items()
-        if k not in {"slack_token", "opsgenie_token"}
+        k: v for k, v in routing_info.items() if k not in {"slack_token", "jsm_token"}
     }
     logging.info("Routing info (redacted): %s", safe_routing_info)
     ri_team = (routing_info.get("team") or "").strip() or None
     ri_slack_token = routing_info.get("slack_token") or None
     ri_slack_channel = routing_info.get("slack_channel") or None
-    ri_opsgenie_token = routing_info.get("opsgenie_token") or None
+    ri_jsm_token = routing_info.get("jsm_token") or None
 
     status = (ctx.get("status") or "").strip().lower()
     exec_id = ctx.get("execId", "unknown")
@@ -420,7 +417,10 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
         for t in rule.get("then", []):
             atype = t.get("type")
-            if atype not in ("slack", "opsgenie"):
+            # support legacy "opsgenie" type in existing configs
+            if atype == "opsgenie":
+                atype = "jsm"
+            if atype not in ("slack", "jsm"):
                 logging.warning(f"Ignoring unsupported action type: {atype}")
                 continue
             logging.info(f"Executing action: {atype} for {t.get('team')}")
@@ -443,23 +443,21 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
                     Action(type="slack", channel=channel, token=token, team=team_name)
                 )
 
-            elif atype == "opsgenie":
-                og_team = (
+            elif atype == "jsm":
+                jsm_team = (
                     team_name
-                    or (team_conf.get("opsgenie", {}) or {}).get("team")
-                    or (defaults.get("opsgenie", {}) or {}).get("team")
+                    or (team_conf.get("jsm", {}) or {}).get("team")
+                    or (defaults.get("jsm", {}) or {}).get("team")
                     or ri_team
                 )
                 api_key = (
-                    t.get("apiKey")
-                    or resolve_opsgenie_apikey(og_team)
-                    or ri_opsgenie_token
+                    t.get("apiKey") or resolve_jsm_apikey(jsm_team) or ri_jsm_token
                 )
                 if api_key:
                     api_key = str(api_key).strip().strip('"').strip("'")
 
                 resolved_actions.append(
-                    Action(type="opsgenie", team=og_team, apiKey=api_key)
+                    Action(type="jsm", team=jsm_team, apiKey=api_key)
                 )
 
         action_types_in_rule = {a.type for a in resolved_actions}
@@ -486,22 +484,17 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
                         )
                     )
 
-        if "opsgenie" in action_types_in_rule and (ri_team or ri_opsgenie_token):
-            og_extra_team = ri_team or (defaults.get("opsgenie", {}) or {}).get("team")
-            already_og_for_team = any(
-                a.type == "opsgenie" and a.team == og_extra_team
-                for a in resolved_actions
+        if "jsm" in action_types_in_rule and (ri_team or ri_jsm_token):
+            jsm_extra_team = ri_team or (defaults.get("jsm", {}) or {}).get("team")
+            already_jsm_for_team = any(
+                a.type == "jsm" and a.team == jsm_extra_team for a in resolved_actions
             )
-            if not already_og_for_team:
-                extra_api_key = ri_opsgenie_token or resolve_opsgenie_apikey(
-                    og_extra_team
-                )
+            if not already_jsm_for_team:
+                extra_api_key = ri_jsm_token or resolve_jsm_apikey(jsm_extra_team)
                 if extra_api_key:
                     extra_api_key = str(extra_api_key).strip().strip('"').strip("'")
                     resolved_actions.append(
-                        Action(
-                            type="opsgenie", team=og_extra_team, apiKey=extra_api_key
-                        )
+                        Action(type="jsm", team=jsm_extra_team, apiKey=extra_api_key)
                     )
 
         if resolved_actions:
@@ -518,16 +511,16 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     # Fallback only for final outcomes
     final_statuses = {"error", "failed", "timeout", "routed", "scheduled"}
     if status in final_statuses:
-        og_team = ri_team or (defaults.get("opsgenie", {}) or {}).get("team")
-        api_key = ri_opsgenie_token or resolve_opsgenie_apikey(og_team)
+        jsm_team = ri_team or (defaults.get("jsm", {}) or {}).get("team")
+        api_key = ri_jsm_token or resolve_jsm_apikey(jsm_team)
         logging.info(
-            f"[{exec_id}] Routing: no rule matched, using Opsgenie fallback (final outcome)"
+            f"[{exec_id}] Routing: no rule matched, using JSM fallback (final outcome)"
         )
         return RoutingDecision(
-            actions=[Action(type="opsgenie", team=og_team, apiKey=api_key)],
+            actions=[Action(type="jsm", team=jsm_team, apiKey=api_key)],
             matched_rule_index=None,
             matched_team=None,
-            reason="fallback_opsgenie",
+            reason="fallback_jsm",
         )
 
     logging.warning(
@@ -550,14 +543,15 @@ def execute_actions(
     decision: RoutingDecision,
     payload: dict[str, Any],
     send_slack_fn=None,
-    send_opsgenie_fn=None,
+    send_jsm_fn=None,
 ) -> None:
     """
     Execute the decided actions in order.
     - If any action succeeds, continue executing others (fan-out).
-    - If all actions fail, attempt a final Opsgenie fallback using a default env key.
+    - If all actions fail, attempt a final JSM fallback using a default env key.
     """
     any_success = False
+    jsm_payload_key = "jsm"
 
     for a in decision.actions:
         try:
@@ -569,10 +563,10 @@ def execute_actions(
                 send_slack_fn(token=a.token, channel=a.channel, **payload["slack"])
                 any_success = True
 
-            elif a.type == "opsgenie":
+            elif a.type in ("jsm"):
                 if not a.apiKey:
-                    raise ValueError("Missing Opsgenie apiKey")
-                send_opsgenie_fn(api_key=a.apiKey, **payload["opsgenie"])
+                    raise ValueError("Missing JSM apiKey")
+                send_jsm_fn(api_key=a.apiKey, **payload[jsm_payload_key])
                 any_success = True
 
         except Exception as e:
@@ -580,34 +574,29 @@ def execute_actions(
             continue
 
     if not any_success and decision.reason != "no_action_non_final":
-        # Final safety net for critical failures or failed matched actions
         try:
-            # Fallback only if we really should have notified but couldn't
-            # or if it's a final error that matched nothing.
-            api_key = resolve_opsgenie_apikey(None)
+            api_key = resolve_jsm_apikey(None)
             if api_key:
                 logging.info(
-                    f"Attempting final Opsgenie fallback (reason={decision.reason})"
+                    f"Attempting final JSM fallback (reason={decision.reason})"
                 )
                 try:
-                    ok = send_opsgenie_fn(api_key=api_key, **payload["opsgenie"])
+                    ok = send_jsm_fn(api_key=api_key, **payload[jsm_payload_key])
                     if not ok:
-                        logging.error("Final Opsgenie fallback did not confirm success")
+                        logging.error("Final JSM fallback did not confirm success")
                 except Exception as send_err:
-                    logging.error(
-                        f"Final Opsgenie fallback failed during send: {send_err}"
-                    )
+                    logging.error(f"Final JSM fallback failed during send: {send_err}")
             else:
-                logging.error("Final fallback skipped: OPSGENIE_API_KEY not set")
+                logging.error("Final fallback skipped: JSM_API_KEY not set")
 
             status_msg = (
-                "Escalation finished with errors; Opsgenie fallback attempted"
+                "Escalation finished with errors; JSM fallback attempted"
                 if api_key
-                else "Escalation finished with errors; Opsgenie fallback skipped"
+                else "Escalation finished with errors; JSM fallback skipped"
             )
             logging.warning(status_msg)
         except Exception as e:
-            logging.error(f"Final Opsgenie fallback handling encountered an error: {e}")
+            logging.error(f"Final JSM fallback handling encountered an error: {e}")
             logging.warning(
                 "Escalation finished with errors; fallback handling error was logged"
             )

@@ -268,8 +268,8 @@ def _notify_slack_decision(
     routing_info: Optional[dict] = None,
 ) -> None:
     from azure.data.tables import TableClient
-    from escalation import send_opsgenie_alert, send_slack_execution
-    from smart_routing import resolve_opsgenie_apikey
+    from escalation import send_jsm_alert, send_slack_execution
+    from smart_routing import resolve_jsm_apikey
 
     # Fetch settings from Table Storage
     conn_str = os.environ.get(STORAGE_CONN)
@@ -381,15 +381,17 @@ def _notify_slack_decision(
     except Exception as e:
         logging.error(f"[{exec_id}] Slack decision notify failed: {e}")
 
-    # Opsgenie notify for decision
+    # JSM notify for decision
     if routing_info:
-        og_token = routing_info.get("opsgenie_token") or resolve_opsgenie_apikey(
-            routing_info.get("team")
+        jsm_token = (
+            routing_info.get("jsm_token")
+            or routing_info.get("opsgenie_token")
+            or resolve_jsm_apikey(routing_info.get("team"))
         )
-        if og_token:
+        if jsm_token:
             try:
-                send_opsgenie_alert(
-                    api_key=og_token,
+                send_jsm_alert(
+                    api_key=jsm_token,
                     message=f"[{exec_id}] {emoji} GATE {decision.upper()}: {schema_id}",
                     description=(
                         f"Execution request for {schema_id} has been {decision.upper()} by {approver}.\n\n"
@@ -408,7 +410,7 @@ def _notify_slack_decision(
                     },
                 )
             except Exception as e:
-                logging.error(f"[{exec_id}] Opsgenie decision notify failed: {e}")
+                logging.error(f"[{exec_id}] JSM decision notify failed: {e}")
 
 
 def decode_base64(data: str) -> str:
@@ -792,11 +794,7 @@ def Trigger(
     import detection
     import utils
     from azure.storage.queue import QueueClient, TextBase64EncodePolicy
-    from escalation import (
-        format_opsgenie_description,
-        send_opsgenie_alert,
-        send_slack_execution,
-    )
+    from escalation import format_jsm_description, send_jsm_alert, send_slack_execution
     from worker_routing import worker_routing
 
     try:
@@ -815,7 +813,7 @@ def Trigger(
     try:
         from smart_routing import (
             execute_actions,
-            resolve_opsgenie_apikey,
+            resolve_jsm_apikey,
             resolve_slack_token,
             route_alert,
         )
@@ -826,7 +824,7 @@ def Trigger(
         def resolve_slack_token(_):
             return None
 
-        def resolve_opsgenie_apikey(_):
+        def resolve_jsm_apikey(_):
             return None
 
     # Init payload variables to None
@@ -892,8 +890,9 @@ def Trigger(
             "slack_channel": req.params.get("slack_channel")
             or channel
             or (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip(),
-            "opsgenie_token": req.params.get("opsgenie_api_key")
-            or resolve_opsgenie_apikey(route_params.get("team") or ""),
+            "jsm_token": req.params.get("jsm_api_key")
+            or req.params.get("opsgenie_api_key")
+            or resolve_jsm_apikey(route_params.get("team") or ""),
         }
     else:
         (
@@ -934,8 +933,9 @@ def Trigger(
             "slack_channel": req.params.get("slack_channel")
             or channel
             or (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip(),
-            "opsgenie_token": req.params.get("opsgenie_api_key")
-            or resolve_opsgenie_apikey(route_params.get("team") or ""),
+            "jsm_token": req.params.get("jsm_api_key")
+            or req.params.get("opsgenie_api_key")
+            or resolve_jsm_apikey(route_params.get("team") or ""),
         }
         logging.debug(f"[{exec_id}] Resource info: %s", resource_info)
 
@@ -1141,9 +1141,11 @@ def Trigger(
             # Optional Slack notify
             slack_token = routing_info.get("slack_token")
             slack_channel = routing_info.get("slack_channel")
-            opsgenie_token = routing_info.get(
-                "opsgenie_token"
-            ) or resolve_opsgenie_apikey(routing_info.get("team"))
+            jsm_token = (
+                routing_info.get("jsm_token")
+                or routing_info.get("opsgenie_token")
+                or resolve_jsm_apikey(routing_info.get("team"))
+            )
 
             # UI Base URL
             ui_base = (
@@ -1279,10 +1281,10 @@ def Trigger(
                 except Exception as e:
                     logging.error(f"[{exec_id}] Slack approval notify failed: {e}")
 
-            if opsgenie_token:
+            if jsm_token:
                 try:
-                    og_message = f"[{exec_id}] ⚠️ APPROVAL REQUIRED: {schema.name}"
-                    og_description = (
+                    jsm_message = f"[{exec_id}] ⚠️ APPROVAL REQUIRED: {schema.name}"
+                    jsm_description = (
                         f"{schema.name} is requesting permission to execute a restricted runbook.\n\n"
                         f"Description: {schema.description or 'No description provided.'}\n"
                         f"SchemaId: {schema.id}\n"
@@ -1294,10 +1296,10 @@ def Trigger(
                         f"On Call: {schema.oncall}\n\n"
                         f"Full Context: {ui_url}"
                     )
-                    send_opsgenie_alert(
-                        api_key=opsgenie_token,
-                        message=og_message,
-                        description=og_description,
+                    send_jsm_alert(
+                        api_key=jsm_token,
+                        message=jsm_message,
+                        description=jsm_description,
                         priority="P2",
                         alias=exec_id,
                         tags=["approval-required", schema.group or "cloudo"],
@@ -1309,7 +1311,7 @@ def Trigger(
                         },
                     )
                 except Exception as e:
-                    logging.error(f"[{exec_id}] Opsgenie approval notify failed: {e}")
+                    logging.error(f"[{exec_id}] JSM approval notify failed: {e}")
 
             body = json.dumps(
                 {
@@ -1541,7 +1543,7 @@ def Trigger(
                             {"type": "divider"},
                         ],
                     },
-                    "opsgenie": {
+                    "jsm": {
                         "message": f"[{schema.id}] [{severity}] {schema.name}",
                         "priority": f"P{int(str(severity).strip().lower().replace('sev', '') or '4') + 1}",
                         "alias": schema.id,
@@ -1565,7 +1567,7 @@ def Trigger(
                                 )
                             ),
                         },
-                        "description": f"{format_opsgenie_description(exec_id, resource_info, api_body)}",
+                        "description": f"{format_jsm_description(exec_id, resource_info, api_body)}",
                     },
                 }
                 try:
@@ -1575,7 +1577,7 @@ def Trigger(
                         send_slack_fn=lambda token, channel, **kw: send_slack_execution(
                             token=token, channel=channel, **kw
                         ),
-                        send_opsgenie_fn=lambda api_key, **kw: send_opsgenie_alert(
+                        send_jsm_fn=lambda api_key, **kw: send_jsm_alert(
                             api_key=api_key, **kw
                         ),
                     )
@@ -2217,11 +2219,7 @@ def reject(
 )
 def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
     import utils
-    from escalation import (
-        format_opsgenie_description,
-        send_opsgenie_alert,
-        send_slack_execution,
-    )
+    from escalation import format_jsm_description, send_jsm_alert, send_slack_execution
 
     try:
         from smart_routing import execute_actions, route_alert
@@ -2498,7 +2496,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                     },
                 ],
             },
-            "opsgenie": {
+            "jsm": {
                 "message": f"[{status_label.upper()}] [{body.get('id')}] [{body.get('severity')}] {body.get('name')}",
                 "priority": f"P{int(str(body.get('severity') or '').strip().lower().replace('sev', '') or '4') + 1}",
                 "alias": body.get("id"),
@@ -2521,7 +2519,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                         )
                     ),
                 },
-                "description": f"{format_opsgenie_description(exec_id, resource_info, utils._truncate_for_table(logs_raw, MAX_TABLE_CHARS or ''))}",
+                "description": f"{format_jsm_description(exec_id, resource_info, utils._truncate_for_table(logs_raw, MAX_TABLE_CHARS or ''))}",
             },
         }
         try:
@@ -2531,9 +2529,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
                 send_slack_fn=lambda token, channel, **kw: send_slack_execution(
                     token=token, channel=channel, **kw
                 ),
-                send_opsgenie_fn=lambda api_key, **kw: send_opsgenie_alert(
-                    api_key=api_key, **kw
-                ),
+                send_jsm_fn=lambda api_key, **kw: send_jsm_alert(api_key=api_key, **kw),
             )
         except Exception as e:
             logging.error(f"[{exec_id}] smart routing failed: {e}")

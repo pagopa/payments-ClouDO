@@ -426,7 +426,7 @@ def _run_script(
     env["CLOUDO_ENVIRONMENT_SHORT"] = os.getenv("CLOUDO_ENVIRONMENT", "0")[0]
 
     if payload:
-        env["CLOUDO_PAYLOAD"] = json.dumps(payload)
+        env["CLOUDO_PAYLOAD"] = json.dumps(payload.get("resource_info") or {})
         env["CLOUDO_EXEC_ID"] = to_str(payload.get("exec_id"))
         env["CLOUDO_REQUESTED_AT"] = to_str(
             payload.get("requestedAt") or payload.get("requested_at")

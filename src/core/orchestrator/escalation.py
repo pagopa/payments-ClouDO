@@ -1,14 +1,7 @@
 import json
 import logging
-import os
 
-from opsgenie_sdk import (
-    AlertApi,
-    ApiClient,
-    CloseAlertPayload,
-    Configuration,
-    CreateAlertPayload,
-)
+import requests
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
@@ -18,9 +11,13 @@ from slack_sdk.errors import SlackApiError
 
 
 # =========================
-# OPSGENIE
+# JSM (Jira Service Management)
 # =========================
-def send_opsgenie_alert(
+
+JSM_ALERTS_URL = "https://api.atlassian.com/jsm/ops/integration/v2/alerts"
+
+
+def send_jsm_alert(
     api_key: str,
     message: str,
     description: str = None,
@@ -31,75 +28,71 @@ def send_opsgenie_alert(
     monitor_condition: str = None,
 ) -> bool:
     """
-    Create or close an Opsgenie alert using the Opsgenie SDK.
+    Create or close a JSM Ops alert via the official v2 integration API.
     - On 'Resolved', close the existing alert by alias (requires alias).
     - Otherwise, create (or de-duplicate) the alert.
     """
     if not api_key or not str(api_key).strip():
-        logging.warning("Opsgenie: missing or empty apiKey, skipping alert send.")
+        logging.warning("JSM: missing or empty apiKey, skipping alert send.")
         return False
 
-    # Defensive trim and sanitization
     api_key = str(api_key).strip().strip('"').strip("'")
 
-    # Validation and logging (safe)
-    if len(api_key) < 10:
-        logging.error(f"Opsgenie: apiKey is suspiciously short ({len(api_key)} chars)")
-    else:
-        logging.info("Opsgenie: sending alert with apiKey")
+    headers = {
+        "Authorization": f"GenieKey {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
 
     try:
-        conf = Configuration()
-        # Handle EU region if the key prefix suggests it or via environment
-        if (
-            api_key.startswith("eu_")
-            or os.environ.get("OPSGENIE_REGION", "").upper() == "EU"
-        ):
-            conf.host = "https://api.eu.opsgenie.com"
-            logging.info("Opsgenie: using EU region endpoint")
-
-        conf.api_key["Authorization"] = api_key
-        client = ApiClient(configuration=conf)
-        alert_api = AlertApi(api_client=client)
-
-        # Close path for resolved signals
         if (monitor_condition or "").strip().lower() == "resolved":
             if not alias:
-                logging.warning(
-                    "Opsgenie: cannot close alert without alias when resolved."
-                )
+                logging.warning("JSM: cannot close alert without alias when resolved.")
                 return False
-            try:
-                cap = CloseAlertPayload(user="cloudo", note="Auto-closed on resolve")
-                alert_api.close_alert_with_http_info(
-                    identifier=alias, identifier_type="alias", close_alert_payload=cap
-                )
-                logging.info(f"Opsgenie: closed alert with alias={alias}")
-                return True
-            except Exception as e:
-                logging.error(f"Opsgenie: close_alert failed for alias={alias}: {e}")
-                return False
+            url = f"{JSM_ALERTS_URL}/{alias}/close"
+            payload = {"user": "cloudo", "note": "Auto-closed on resolve"}
+            resp = requests.post(
+                url,
+                json=payload,
+                headers=headers,
+                params={"identifierType": "alias"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            logging.info(f"JSM: closed alert with alias={alias}")
+            return True
 
-        # Create alert (de-dup su alias se presente)
-        body = CreateAlertPayload(
-            message=message,
-            description=description,
-            priority=priority,
-            alias=alias,
-            tags=tags or [],
-            details=details or {},
-        )
-        response = alert_api.create_alert(body)
-        return True if response else False
+        payload = {
+            "message": message,
+            "priority": priority,
+            "source": "cloudo",
+        }
+        if description:
+            payload["description"] = description
+        if alias:
+            payload["alias"] = alias
+        if tags:
+            payload["tags"] = tags
+        if details:
+            payload["details"] = details
 
-    except Exception as e:
+        resp = requests.post(JSM_ALERTS_URL, json=payload, headers=headers, timeout=10)
+        resp.raise_for_status()
+        logging.info(f"JSM: alert created/updated (alias={alias})")
+        return True
+
+    except requests.HTTPError as e:
         logging.error(
-            f"Opsgenie: unexpected error while sending/closing alert: {str(e)}"
+            f"JSM: HTTP error while sending/closing alert: {e} — {e.response.text if e.response else ''}"
         )
+        return False
+    except Exception as e:
+        logging.error(f"JSM: unexpected error while sending/closing alert: {e}")
         return False
 
 
-def format_opsgenie_description(exec_id: str, resource_info: dict, api_body) -> str:
+def format_jsm_description(exec_id: str, resource_info: dict, api_body) -> str:
+    # deprecated: use format_jsm_description instead
     raw_val = resource_info.get("_raw") or ""
     alert_data = {}
     try:
