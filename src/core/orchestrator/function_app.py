@@ -2251,7 +2251,16 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
         receiver_prefix = _build_exec_log_prefix(
             body.get("exec_id"), body.get("initiator")
         )
-        logging.warning(f"[Receiver] {receiver_prefix} Message received: {body}")
+        body_for_log = dict(body)
+        if isinstance(body.get("routing_info"), dict):
+            body_for_log["routing_info"] = {
+                "team": body["routing_info"].get("team"),
+                "slack_channel": body["routing_info"].get("slack_channel"),
+                "redacted": True,
+            }
+        logging.warning(
+            f"[Receiver] {receiver_prefix} Message received: {body_for_log}"
+        )
     except Exception as e:
         logging.error(f"[Receiver] Invalid queue message: {e}")
         return
