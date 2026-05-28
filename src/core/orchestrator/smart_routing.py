@@ -403,8 +403,9 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
     status = (ctx.get("status") or "").strip().lower()
     exec_id = ctx.get("execId", "unknown")
+    safe_exec_id = "".join(ch for ch in str(exec_id) if ch.isalnum() or ch in {"_", "-"})[:64] or "unknown"
     logging.info(
-        f"[{exec_id}] Routing: evaluating {len(rules)} rules for status={status}"
+        f"[{safe_exec_id}] Routing: evaluating {len(rules)} rules for status={status}"
     )
 
     for idx, rule in enumerate(rules):
@@ -499,7 +500,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
         if resolved_actions:
             logging.info(
-                f"[{exec_id}] Routing: matched rule #{idx} (team={matched_team}) with {len(resolved_actions)} action(s)"
+                f"[{safe_exec_id}] Routing: matched rule #{idx} (team={matched_team}) with {len(resolved_actions)} action(s)"
             )
             return RoutingDecision(
                 actions=resolved_actions,
@@ -514,7 +515,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
         jsm_team = ri_team or (defaults.get("jsm", {}) or {}).get("team")
         api_key = ri_jsm_token or resolve_jsm_apikey(jsm_team)
         logging.info(
-            f"[{exec_id}] Routing: no rule matched, using JSM fallback (final outcome)"
+            f"[{safe_exec_id}] Routing: no rule matched, using JSM fallback (final outcome)"
         )
         return RoutingDecision(
             actions=[Action(type="jsm", team=jsm_team, apiKey=api_key)],
@@ -524,7 +525,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
         )
 
     logging.warning(
-        f"[{exec_id}] Routing: non-final status and no rule matched, no actions executed"
+        f"[{safe_exec_id}] Routing: non-final status and no rule matched, no actions executed"
     )
     return RoutingDecision(
         actions=[],
