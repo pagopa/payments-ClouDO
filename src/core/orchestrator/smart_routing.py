@@ -512,7 +512,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
         if resolved_actions:
             logging.info(
-                f"[{safe_exec_id}] Routing: matched rule #{idx} (team={matched_team}) with {len(resolved_actions)} action(s)"
+                f"[{safe_exec_id}] Routing: matched rule #{idx} with {len(resolved_actions)} action(s)"
             )
             return RoutingDecision(
                 actions=resolved_actions,
