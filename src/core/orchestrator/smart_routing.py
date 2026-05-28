@@ -401,7 +401,19 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     ri_slack_channel = routing_info.get("slack_channel") or None
     ri_jsm_token = routing_info.get("jsm_token") or None
 
-    status = (ctx.get("status") or "").strip().lower()
+    raw_status = (ctx.get("status") or "").strip().lower()
+    safe_status = "".join(ch for ch in str(raw_status) if ch.isalnum() or ch in {"_", "-"})[:32]
+    allowed_statuses = {
+        "accepted",
+        "succeeded",
+        "error",
+        "failed",
+        "timeout",
+        "routed",
+        "scheduled",
+    }
+    status = safe_status if safe_status in allowed_statuses else "unknown"
+
     exec_id = ctx.get("execId", "unknown")
     safe_exec_id = "".join(ch for ch in str(exec_id) if ch.isalnum() or ch in {"_", "-"})[:64] or "unknown"
     logging.info(
