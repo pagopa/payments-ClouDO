@@ -417,7 +417,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
     log_correlation_id = uuid.uuid4().hex[:12]
     logging.info(
-        f"[{log_correlation_id}] Routing: evaluating {len(rules)} rules for status={status}"
+        f"[{log_correlation_id}] Routing: evaluating {len(rules)} rules"
     )
 
     for idx, rule in enumerate(rules):
