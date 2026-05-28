@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import uuid
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -414,10 +415,9 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     }
     status = safe_status if safe_status in allowed_statuses else "unknown"
 
-    exec_id = ctx.get("execId", "unknown")
-    safe_exec_id = "".join(ch for ch in str(exec_id) if ch.isalnum() or ch in {"_", "-"})[:64] or "unknown"
+    log_correlation_id = uuid.uuid4().hex[:12]
     logging.info(
-        f"[{safe_exec_id}] Routing: evaluating {len(rules)} rules for status={status}"
+        f"[{log_correlation_id}] Routing: evaluating {len(rules)} rules for status={status}"
     )
 
     for idx, rule in enumerate(rules):
@@ -512,7 +512,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
         if resolved_actions:
             logging.info(
-                f"[{safe_exec_id}] Routing: matched rule #{idx} with {len(resolved_actions)} action(s)"
+                f"[{log_correlation_id}] Routing: matched rule #{idx} with {len(resolved_actions)} action(s)"
             )
             return RoutingDecision(
                 actions=resolved_actions,
@@ -527,7 +527,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
         jsm_team = ri_team or (defaults.get("jsm", {}) or {}).get("team")
         api_key = ri_jsm_token or resolve_jsm_apikey(jsm_team)
         logging.info(
-            f"[{safe_exec_id}] Routing: no rule matched, using JSM fallback (final outcome)"
+            f"[{log_correlation_id}] Routing: no rule matched, using JSM fallback (final outcome)"
         )
         return RoutingDecision(
             actions=[Action(type="jsm", team=jsm_team, apiKey=api_key)],
@@ -537,7 +537,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
         )
 
     logging.warning(
-        f"[{safe_exec_id}] Routing: non-final status and no rule matched, no actions executed"
+        f"[{log_correlation_id}] Routing: non-final status and no rule matched, no actions executed"
     )
     return RoutingDecision(
         actions=[],
