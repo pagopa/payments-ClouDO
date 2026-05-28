@@ -226,14 +226,14 @@ variable "slack_integration" {
   }
 }
 
-variable "opsgenie_api_key" {
-  description = "(Optional) The API key used for OpsGenie integration to create and manage alerts. If not provided, OpsGenie integration will be disabled."
+variable "jsm_api_key" {
+  description = "(Optional) The API key used for JSM integration to create and manage alerts. If not provided, JSM integration will be disabled."
   type        = string
   default     = ""
 }
 
-variable "team_opsgenie_api_keys" {
-  description = "Team maps -> Opsgenie API key (OPSGENIE_API_KEY_<TEAM>)"
+variable "team_jsm_api_keys" {
+  description = "Team maps -> JSM API key (JSM_API_KEY_<TEAM>)"
   type        = map(string)
   default     = {}
   sensitive   = true
@@ -256,8 +256,8 @@ variable "routing_config" {
   description = "Routing configuration: defaults, teams and rules (when/then)"
   type = object({
     teams = optional(map(object({
-      slack    = optional(object({ channel = optional(string) }))
-      opsgenie = optional(object({ team = optional(string) }))
+      slack = optional(object({ channel = optional(string) }))
+      jsm   = optional(object({ team = optional(string) }))
     })), {})
     rules = list(object({
       when = object({
@@ -276,7 +276,7 @@ variable "routing_config" {
         severityMax         = optional(string) # "Sev0..Sev4"
       })
       then = list(object({
-        type    = string # "slack" | "opsgenie"
+        type    = string # "slack" | "jsm"
         team    = optional(string)
         channel = optional(string)
         token   = optional(string)

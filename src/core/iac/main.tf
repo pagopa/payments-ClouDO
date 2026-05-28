@@ -30,7 +30,7 @@ module "cloudo_orchestrator" {
       "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
       "SLACK_TOKEN_DEFAULT"                 = var.slack_integration.token
       "SLACK_CHANNEL_DEFAULT"               = var.slack_integration.channel
-      "OPSGENIE_API_KEY_DEFAULT"            = var.opsgenie_api_key
+      "JSM_API_KEY_DEFAULT"                 = var.jsm_api_key
       "GITHUB_REPO"                         = var.github_repo_info.repo_name
       "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
       "GITHUB_TOKEN"                        = var.orchestrator_image.registry_password

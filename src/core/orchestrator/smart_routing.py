@@ -3,8 +3,10 @@
 import json
 import logging
 import os
+import re
+import uuid
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Optional, cast
 
 # =========================
 # Routing: models
@@ -13,7 +15,7 @@ from typing import Any, Optional
 
 @dataclass
 class Action:
-    type: str  # "slack" | "opsgenie"
+    type: str  # "slack" | "jsm"
     channel: Optional[str] = None
     token: Optional[str] = None
     team: Optional[str] = None
@@ -25,7 +27,52 @@ class RoutingDecision:
     actions: list[Action]
     matched_rule_index: Optional[int]
     matched_team: Optional[str]
-    reason: str  # "matched" | "fallback_opsgenie"
+    reason: str  # "matched" | "fallback_jsm"
+
+
+_SAFE_TEAM_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_SAFE_CHANNEL_RE = re.compile(r"^#[A-Za-z0-9._-]{1,80}$")
+_SAFE_STATUS_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+_SAFE_ENV_KEY_RE = re.compile(r"^[A-Z0-9_]{1,96}$")
+
+
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _sanitize_team(team: Optional[str]) -> Optional[str]:
+    if team is None:
+        return None
+    t = str(team).strip()
+    if not t:
+        return None
+    if _SAFE_TEAM_RE.fullmatch(t):
+        return t
+    logging.warning("Rejected unsafe team identifier")
+    return None
+
+
+def _sanitize_channel(channel: Optional[str]) -> Optional[str]:
+    if channel is None:
+        return None
+    c = str(channel).strip()
+    if not c:
+        return None
+    if _SAFE_CHANNEL_RE.fullmatch(c):
+        return c
+    logging.warning("Rejected unsafe Slack channel format")
+    return None
+
+
+def _safe_for_log(value: Any, max_len: int = 128) -> str:
+    # Remove control chars/newlines to reduce log injection surface.
+    txt = str(value or "")
+    txt = "".join(ch if ch.isprintable() and ch not in "\r\n\t" else "?" for ch in txt)
+    return txt[:max_len]
 
 
 # =========================
@@ -37,11 +84,11 @@ def load_routing_config() -> dict[str, Any]:
     """
     Load routing configuration from Azure Table Storage (CloudoSettings/ROUTING_RULES).
     Fallback to env ROUTING_RULES (JSON).
-    If both absent/invalid, return safe fallback with Opsgenie default.
+    If both absent/invalid, return safe fallback with JSM default.
     Do NOT store secrets (tokens/keys) in config JSON: resolve via environment.
     """
     defaults = {
-        "opsgenie": {"team": "default"},  # apiKey resolved via env
+        "jsm": {"team": "default"},  # apiKey resolved via env
         "slack": {
             "channel": os.environ.get("SLACK_CHANNEL_DEFAULT", "#cloudo-default")
         },
@@ -55,7 +102,7 @@ def load_routing_config() -> dict[str, Any]:
                 "when": {"isAlert": "true", "statusIn": ["failed", "error", "routed"]},
                 "then": [
                     {
-                        "type": "opsgenie",
+                        "type": "jsm",
                         "statusIn": ["failed", "error", "routed"],
                     },
                     {"type": "slack"},
@@ -97,8 +144,8 @@ def load_routing_config() -> dict[str, Any]:
     try:
         cfg = json.loads(raw)
         # Soft-merge defaults to ensure required keys exist
-        cfg.setdefault("defaults", {}).setdefault("opsgenie", {}).setdefault(
-            "team", defaults["opsgenie"]["team"]
+        cfg.setdefault("defaults", {}).setdefault("jsm", {}).setdefault(
+            "team", defaults["jsm"]["team"]
         )
         cfg.setdefault("defaults", {}).setdefault("slack", {}).setdefault(
             "channel", defaults["slack"]["channel"]
@@ -292,6 +339,11 @@ def _get_setting(key: str) -> Optional[str]:
     """
     Helper to get a setting from Azure Table Storage or Environment.
     """
+    # Prevent unsafe environment/table key lookups from dynamic input.
+    if not _SAFE_ENV_KEY_RE.fullmatch(str(key or "")):
+        logging.warning("Rejected unsafe setting key lookup")
+        return None
+
     # Try Table Storage
     try:
         from azure.data.tables import TableClient
@@ -317,21 +369,21 @@ def _get_setting(key: str) -> Optional[str]:
     return None
 
 
-def resolve_opsgenie_apikey(team: Optional[str]) -> Optional[str]:
+def resolve_jsm_apikey(team: Optional[str]) -> Optional[str]:
     """
-    Resolve Opsgenie apiKey from table storage or env using naming convention:
-      - OPSGENIE_API_KEY_<TEAM> (preferred)
-      - OPSGENIE_API_KEY_DEFAULT (fallback 1)
-      - OPSGENIE_API_KEY (fallback 2 - legacy)
+    Resolve JSM apiKey from table storage or env using naming convention:
+      - JSM_API_KEY_<TEAM> (preferred)
+      - JSM_API_KEY_DEFAULT (fallback 1)
+      - JSM_API_KEY (fallback 2)
     """
+    team = _sanitize_team(team)
     if team:
-        key_name = f"OPSGENIE_API_KEY_{team}".upper().replace("-", "_")
+        key_name = f"JSM_API_KEY_{team}".upper().replace("-", "_")
         key = _get_setting(key_name)
         if key:
             return key
 
-    # Try DEFAULT first, then legacy
-    return _get_setting("OPSGENIE_API_KEY_DEFAULT") or _get_setting("OPSGENIE_API_KEY")
+    return _get_setting("JSM_API_KEY_DEFAULT") or _get_setting("JSM_API_KEY")
 
 
 def resolve_slack_token(team: Optional[str]) -> Optional[str]:
@@ -340,6 +392,7 @@ def resolve_slack_token(team: Optional[str]) -> Optional[str]:
       - SLACK_TOKEN_<TEAM> (preferred)
       - SLACK_TOKEN_DEFAULT (default)
     """
+    team = _sanitize_team(team)
     if team:
         key_name = f"SLACK_TOKEN_{team}".upper().replace("-", "_")
         tok = _get_setting(key_name)
@@ -380,9 +433,9 @@ def normalize_context(raw_ctx: dict[str, Any]) -> dict[str, Any]:
 
 def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     """
-    Decide the actions to execute (Slack/Opsgenie) based on routing rules.
+    Decide the actions to execute (Slack/JSM) based on routing rules.
     Returns a RoutingDecision with the ordered list of actions.
-    If nothing matches, returns Opsgenie fallback (only for final outcomes).
+    If nothing matches, returns JSM fallback (only for final outcomes).
     """
     cfg = load_routing_config()
     ctx = normalize_context(raw_ctx)
@@ -391,24 +444,50 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     teams_cfg = cfg.get("teams", {})
 
     routing_info = ctx.get("routing_info") or {}
+    allow_runtime_secrets = _as_bool(
+        os.environ.get("ALLOW_ROUTING_INFO_SECRETS"), default=False
+    )
+    allow_inline_rule_secrets = _as_bool(
+        os.environ.get("ALLOW_INLINE_ROUTING_SECRETS"), default=False
+    )
 
     # Avoid logging sensitive information such as API keys or tokens
     safe_routing_info = {
-        k: v
-        for k, v in routing_info.items()
-        if k not in {"slack_token", "opsgenie_token"}
+        k: v for k, v in routing_info.items() if k not in {"slack_token", "jsm_token"}
     }
-    logging.info("Routing info (redacted): %s", safe_routing_info)
-    ri_team = (routing_info.get("team") or "").strip() or None
-    ri_slack_token = routing_info.get("slack_token") or None
-    ri_slack_channel = routing_info.get("slack_channel") or None
-    ri_opsgenie_token = routing_info.get("opsgenie_token") or None
-
-    status = (ctx.get("status") or "").strip().lower()
-    exec_id = ctx.get("execId", "unknown")
     logging.info(
-        f"[{exec_id}] Routing: evaluating {len(rules)} rules for status={status}"
+        "Routing info (redacted): %s",
+        {k: _safe_for_log(v) for k, v in safe_routing_info.items()},
     )
+    ri_team = _sanitize_team(routing_info.get("team"))
+    ri_slack_channel = _sanitize_channel(routing_info.get("slack_channel"))
+    # Secrets from runtime payload are disabled by default to avoid injection.
+    ri_slack_token = (
+        str(routing_info.get("slack_token") or "").strip() or None
+        if allow_runtime_secrets
+        else None
+    )
+    ri_jsm_token = (
+        str(routing_info.get("jsm_token") or "").strip() or None
+        if allow_runtime_secrets
+        else None
+    )
+
+    raw_status = (ctx.get("status") or "").strip().lower()
+    safe_status = raw_status if _SAFE_STATUS_RE.fullmatch(raw_status) else "unknown"
+    allowed_statuses = {
+        "accepted",
+        "succeeded",
+        "error",
+        "failed",
+        "timeout",
+        "routed",
+        "scheduled",
+    }
+    status = safe_status if safe_status in allowed_statuses else "unknown"
+
+    log_correlation_id = uuid.uuid4().hex[:12]
+    logging.info(f"[{log_correlation_id}] Routing: evaluating {len(rules)} rules")
 
     for idx, rule in enumerate(rules):
         when = rule.get("when", {})
@@ -420,46 +499,64 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 
         for t in rule.get("then", []):
             atype = t.get("type")
-            if atype not in ("slack", "opsgenie"):
+            # support legacy "opsgenie" type in existing configs
+            if atype == "opsgenie":
+                atype = "jsm"
+            if atype not in ("slack", "jsm"):
                 logging.warning(f"Ignoring unsupported action type: {atype}")
                 continue
-            logging.info(f"Executing action: {atype} for {t.get('team')}")
+            logging.info(
+                "Executing action: %s for %s",
+                _safe_for_log(atype, max_len=16),
+                _safe_for_log(t.get("team"), max_len=64),
+            )
 
-            team_name = t.get("team") or ri_team
+            team_name = _sanitize_team(t.get("team")) or ri_team
             team_conf = teams_cfg.get(team_name, {}) if team_name else {}
             matched_team = matched_team or team_name
 
             if atype == "slack":
                 channel = (
-                    t.get("channel")
+                    _sanitize_channel(t.get("channel"))
                     or (team_conf.get("slack", {}) or {}).get("channel")
                     or (defaults.get("slack", {}) or {}).get("channel")
                     or ri_slack_channel
                 )
+                channel = _sanitize_channel(channel)
+                inline_rule_token = (
+                    (str(t.get("token") or "").strip() or None)
+                    if allow_inline_rule_secrets
+                    else None
+                )
                 token = (
-                    t.get("token") or resolve_slack_token(team_name) or ri_slack_token
+                    inline_rule_token
+                    or resolve_slack_token(team_name)
+                    or ri_slack_token
                 )
                 resolved_actions.append(
                     Action(type="slack", channel=channel, token=token, team=team_name)
                 )
 
-            elif atype == "opsgenie":
-                og_team = (
+            elif atype == "jsm":
+                jsm_team = (
                     team_name
-                    or (team_conf.get("opsgenie", {}) or {}).get("team")
-                    or (defaults.get("opsgenie", {}) or {}).get("team")
+                    or _sanitize_team((team_conf.get("jsm", {}) or {}).get("team"))
+                    or _sanitize_team((defaults.get("jsm", {}) or {}).get("team"))
                     or ri_team
                 )
+                inline_rule_apikey = (
+                    (str(t.get("apiKey") or "").strip() or None)
+                    if allow_inline_rule_secrets
+                    else None
+                )
                 api_key = (
-                    t.get("apiKey")
-                    or resolve_opsgenie_apikey(og_team)
-                    or ri_opsgenie_token
+                    inline_rule_apikey or resolve_jsm_apikey(jsm_team) or ri_jsm_token
                 )
                 if api_key:
                     api_key = str(api_key).strip().strip('"').strip("'")
 
                 resolved_actions.append(
-                    Action(type="opsgenie", team=og_team, apiKey=api_key)
+                    Action(type="jsm", team=jsm_team, apiKey=api_key)
                 )
 
         action_types_in_rule = {a.type for a in resolved_actions}
@@ -486,27 +583,22 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
                         )
                     )
 
-        if "opsgenie" in action_types_in_rule and (ri_team or ri_opsgenie_token):
-            og_extra_team = ri_team or (defaults.get("opsgenie", {}) or {}).get("team")
-            already_og_for_team = any(
-                a.type == "opsgenie" and a.team == og_extra_team
-                for a in resolved_actions
+        if "jsm" in action_types_in_rule and (ri_team or ri_jsm_token):
+            jsm_extra_team = ri_team or (defaults.get("jsm", {}) or {}).get("team")
+            already_jsm_for_team = any(
+                a.type == "jsm" and a.team == jsm_extra_team for a in resolved_actions
             )
-            if not already_og_for_team:
-                extra_api_key = ri_opsgenie_token or resolve_opsgenie_apikey(
-                    og_extra_team
-                )
+            if not already_jsm_for_team:
+                extra_api_key = ri_jsm_token or resolve_jsm_apikey(jsm_extra_team)
                 if extra_api_key:
                     extra_api_key = str(extra_api_key).strip().strip('"').strip("'")
                     resolved_actions.append(
-                        Action(
-                            type="opsgenie", team=og_extra_team, apiKey=extra_api_key
-                        )
+                        Action(type="jsm", team=jsm_extra_team, apiKey=extra_api_key)
                     )
 
         if resolved_actions:
             logging.info(
-                f"[{exec_id}] Routing: matched rule #{idx} (team={matched_team}) with {len(resolved_actions)} action(s)"
+                f"[{log_correlation_id}] Routing: matched rule #{idx} with {len(resolved_actions)} action(s)"
             )
             return RoutingDecision(
                 actions=resolved_actions,
@@ -518,20 +610,20 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     # Fallback only for final outcomes
     final_statuses = {"error", "failed", "timeout", "routed", "scheduled"}
     if status in final_statuses:
-        og_team = ri_team or (defaults.get("opsgenie", {}) or {}).get("team")
-        api_key = ri_opsgenie_token or resolve_opsgenie_apikey(og_team)
+        jsm_team = ri_team or (defaults.get("jsm", {}) or {}).get("team")
+        api_key = ri_jsm_token or resolve_jsm_apikey(jsm_team)
         logging.info(
-            f"[{exec_id}] Routing: no rule matched, using Opsgenie fallback (final outcome)"
+            f"[{log_correlation_id}] Routing: no rule matched, using JSM fallback (final outcome)"
         )
         return RoutingDecision(
-            actions=[Action(type="opsgenie", team=og_team, apiKey=api_key)],
+            actions=[Action(type="jsm", team=jsm_team, apiKey=api_key)],
             matched_rule_index=None,
             matched_team=None,
-            reason="fallback_opsgenie",
+            reason="fallback_jsm",
         )
 
     logging.warning(
-        f"[{exec_id}] Routing: non-final status and no rule matched, no actions executed"
+        f"[{log_correlation_id}] Routing: non-final status and no rule matched, no actions executed"
     )
     return RoutingDecision(
         actions=[],
@@ -549,30 +641,53 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 def execute_actions(
     decision: RoutingDecision,
     payload: dict[str, Any],
-    send_slack_fn=None,
-    send_opsgenie_fn=None,
+    send_slack_fn: Optional[Callable[..., Any]] = None,
+    send_jsm_fn: Optional[Callable[..., Any]] = None,
 ) -> None:
     """
     Execute the decided actions in order.
     - If any action succeeds, continue executing others (fan-out).
-    - If all actions fail, attempt a final Opsgenie fallback using a default env key.
+    - If all actions fail, attempt a final JSM fallback using a default env key.
     """
     any_success = False
+    jsm_payload_key = "jsm"
+
+    if send_slack_fn is None or not callable(send_slack_fn):
+        logging.error("Invalid send_slack_fn: expected callable")
+        send_slack_fn = None
+    if send_jsm_fn is None or not callable(send_jsm_fn):
+        logging.error("Invalid send_jsm_fn: expected callable")
+        send_jsm_fn = None
+
+    slack_sender = send_slack_fn
+    jsm_sender = send_jsm_fn
 
     for a in decision.actions:
         try:
             if a.type == "slack":
+                if slack_sender is None:
+                    raise ValueError("Slack sender not configured")
+                slack_sender_safe = cast(Callable[..., Any], slack_sender)
                 if not a.token:
                     raise ValueError("Missing Slack token")
                 if not a.channel:
                     raise ValueError("Missing Slack channel")
-                send_slack_fn(token=a.token, channel=a.channel, **payload["slack"])
+                slack_payload = payload.get("slack")
+                if not isinstance(slack_payload, dict):
+                    raise ValueError("Missing/invalid Slack payload")
+                slack_sender_safe(token=a.token, channel=a.channel, **slack_payload)
                 any_success = True
 
-            elif a.type == "opsgenie":
+            elif a.type in ("jsm"):
+                if jsm_sender is None:
+                    raise ValueError("JSM sender not configured")
+                jsm_sender_safe = cast(Callable[..., Any], jsm_sender)
                 if not a.apiKey:
-                    raise ValueError("Missing Opsgenie apiKey")
-                send_opsgenie_fn(api_key=a.apiKey, **payload["opsgenie"])
+                    raise ValueError("Missing JSM apiKey")
+                jsm_payload = payload.get(jsm_payload_key)
+                if not isinstance(jsm_payload, dict):
+                    raise ValueError("Missing/invalid JSM payload")
+                jsm_sender_safe(api_key=a.apiKey, **jsm_payload)
                 any_success = True
 
         except Exception as e:
@@ -580,34 +695,36 @@ def execute_actions(
             continue
 
     if not any_success and decision.reason != "no_action_non_final":
-        # Final safety net for critical failures or failed matched actions
         try:
-            # Fallback only if we really should have notified but couldn't
-            # or if it's a final error that matched nothing.
-            api_key = resolve_opsgenie_apikey(None)
+            if jsm_sender is None:
+                logging.error("Final fallback skipped: JSM sender not configured")
+                return
+            jsm_sender_safe = cast(Callable[..., Any], jsm_sender)
+            api_key = resolve_jsm_apikey(None)
             if api_key:
                 logging.info(
-                    f"Attempting final Opsgenie fallback (reason={decision.reason})"
+                    f"Attempting final JSM fallback (reason={decision.reason})"
                 )
                 try:
-                    ok = send_opsgenie_fn(api_key=api_key, **payload["opsgenie"])
+                    jsm_payload = payload.get(jsm_payload_key)
+                    if not isinstance(jsm_payload, dict):
+                        raise ValueError("Missing/invalid JSM payload")
+                    ok = jsm_sender_safe(api_key=api_key, **jsm_payload)
                     if not ok:
-                        logging.error("Final Opsgenie fallback did not confirm success")
+                        logging.error("Final JSM fallback did not confirm success")
                 except Exception as send_err:
-                    logging.error(
-                        f"Final Opsgenie fallback failed during send: {send_err}"
-                    )
+                    logging.error(f"Final JSM fallback failed during send: {send_err}")
             else:
-                logging.error("Final fallback skipped: OPSGENIE_API_KEY not set")
+                logging.error("Final fallback skipped: JSM_API_KEY not set")
 
             status_msg = (
-                "Escalation finished with errors; Opsgenie fallback attempted"
+                "Escalation finished with errors; JSM fallback attempted"
                 if api_key
-                else "Escalation finished with errors; Opsgenie fallback skipped"
+                else "Escalation finished with errors; JSM fallback skipped"
             )
             logging.warning(status_msg)
         except Exception as e:
-            logging.error(f"Final Opsgenie fallback handling encountered an error: {e}")
+            logging.error(f"Final JSM fallback handling encountered an error: {e}")
             logging.warning(
                 "Escalation finished with errors; fallback handling error was logged"
             )

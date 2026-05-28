@@ -66,6 +66,7 @@ def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
         "Content-Type": "application/json",
         "Status": status,
         "OnCall": payload.get("oncall"),
+        "Initiator": payload.get("initiator"),
         "MonitorCondition": payload.get("monitor_condition"),
         "Severity": payload.get("severity"),
         "ResourceInfo": payload.get("resource_info"),
@@ -136,6 +137,7 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
         "group": headers.get("Group"),
         "status": headers.get("Status"),
         "oncall": headers.get("OnCall"),
+        "initiator": headers.get("Initiator"),
         "monitor_condition": headers.get("MonitorCondition"),
         "severity": headers.get("Severity"),
         "resource_info": headers.get("ResourceInfo"),
@@ -426,7 +428,7 @@ def _run_script(
     env["CLOUDO_ENVIRONMENT_SHORT"] = os.getenv("CLOUDO_ENVIRONMENT", "0")[0]
 
     if payload:
-        env["CLOUDO_PAYLOAD"] = json.dumps(payload)
+        env["CLOUDO_PAYLOAD"] = json.dumps(payload.get("resource_info") or {})
         env["CLOUDO_EXEC_ID"] = to_str(payload.get("exec_id"))
         env["CLOUDO_REQUESTED_AT"] = to_str(
             payload.get("requestedAt") or payload.get("requested_at")
@@ -617,10 +619,13 @@ def _inspect_duplicate_runs(items: list[Any], payload: Any) -> Optional[str]:
 @app.queue_trigger(arg_name="msg", queue_name=QUEUE_NAME, connection=STORAGE_CONNECTION)
 def process_runbook(msg: func.QueueMessage) -> None:
     payload = json.loads(msg.get_body().decode("utf-8"))
-    logging.info(f"[{payload.get('exec_id')}] Job started: %s", payload)
+    exec_id = payload.get("exec_id") or ""
+    initiator = str(payload.get("initiator") or payload.get("oncall") or "SYSTEM")
+    log_prefix = f"[{exec_id}] [initiator={initiator}]"
+
+    logging.info(f"{log_prefix} Job started: %s", payload)
 
     started_at = _format_requested_at()
-    exec_id = payload.get("exec_id") or ""
 
     from azure.storage.queue import QueueClient, TextBase64EncodePolicy
 
@@ -636,7 +641,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
         skip_reason = _inspect_duplicate_runs(items, payload)
         if skip_reason:
             log_msg = f"Execution {exec_id} skipped: {skip_reason}"
-            logging.info(f"[{payload.get('exec_id')}] {log_msg}")
+            logging.info(f"{log_prefix} {log_msg}")
             q_client.send_message(
                 _post_status(payload, status="skipped", log_message=log_msg)
             )
@@ -652,15 +657,16 @@ def process_runbook(msg: func.QueueMessage) -> None:
             "run_args": payload.get("run_args"),
             "worker": payload.get("worker"),
             "group": payload.get("group"),
+            "initiator": payload.get("initiator"),
             "requestedAt": payload.get("requestedAt"),
             "startedAt": started_at,
             "resource_info": payload.get("resource_info") or {},
             "status": "running",
         }
 
-    log_msg = f"[{exec_id}] Job {payload.get('name')} started"
+    log_msg = f"{log_prefix} Job {payload.get('name')} started"
     q_client.send_message(_post_status(payload, status="running", log_message=log_msg))
-    logging.info(f"[{exec_id}] Receiver response: status=running")
+    logging.info(f"{log_prefix} Receiver response: status=running")
 
     # Local environment to avoid race conditions in multithreading
     env = os.environ.copy()
@@ -688,10 +694,10 @@ def process_runbook(msg: func.QueueMessage) -> None:
                 kubeconfig_path = _run_aks_login(
                     info, payload, env=env, temp_dir=execution_temp_dir
                 )
-                logging.info(f"[{exec_id}] AKS login completed successfully")
+                logging.info(f"{log_prefix} AKS login completed successfully")
             except Exception as e:
                 # Report error and stop processing
-                err_msg = f"[{exec_id}] AKS login failed: {type(e).__name__}: {e}"
+                err_msg = f"{log_prefix} AKS login failed: {type(e).__name__}: {e}"
                 q_client.send_message(
                     _post_status(payload, status="error", log_message=err_msg)
                 )
@@ -731,10 +737,10 @@ def process_runbook(msg: func.QueueMessage) -> None:
                 _post_status(payload, status="failed", log_message=error_message)
             )
             logging.error(
-                f"[{exec_id}] Receiver response: status=queued",
+                f"{log_prefix} Receiver response: status=queued",
             )
         finally:
-            logging.error(f"[{exec_id}] {error_message}")
+            logging.error(f"{log_prefix} {error_message}")
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
         try:
@@ -742,23 +748,23 @@ def process_runbook(msg: func.QueueMessage) -> None:
                 _post_status(payload, status="error", log_message=err_msg)
             )
             logging.error(
-                f"[{exec_id}] Receiver response: status=queued",
+                f"{log_prefix} Receiver response: status=queued",
             )
         finally:
-            logging.error(f"[{exec_id}] Unexpected error: %s", err_msg)
+            logging.error(f"{log_prefix} Unexpected error: %s", err_msg)
     finally:
         try:
             if os.path.isdir(execution_temp_dir):
                 shutil.rmtree(execution_temp_dir, ignore_errors=True)
         except Exception as e:
             logging.warning(
-                f"[{exec_id}] failed to cleanup temp dir {execution_temp_dir}: {e}"
+                f"{log_prefix} failed to cleanup temp dir {execution_temp_dir}: {e}"
             )
 
         # Remove from the registry: no longer "in progress"
         logging.info(
-            "[%s] Job complete (requested at %s)",
-            exec_id,
+            "%s Job complete (requested at %s)",
+            log_prefix,
             payload.get("requestedAt"),
         )
         with _ACTIVE_LOCK:
@@ -929,6 +935,7 @@ def stop_process(
                 "exec_id": run_info.get("exec_id"),
                 "worker": run_info.get("worker"),
                 "group": run_info.get("group"),
+                "initiator": run_info.get("initiator"),
                 "oncall": None,
                 "monitor_condition": None,
                 "severity": None,

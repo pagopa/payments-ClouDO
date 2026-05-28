@@ -801,6 +801,14 @@ function LogsPanelContent() {
                         {log.Runbook}
                       </div>
                     </div>
+                    <div className="space-y-0.5">
+                      <div className="text-[9px] font-black text-cloudo-muted uppercase tracking-widest">
+                        Initiator
+                      </div>
+                      <div className="text-[10px] font-black text-cloudo-text uppercase tracking-widest truncate">
+                        {log.Initiator || "SYSTEM"}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between mt-1">
@@ -1005,23 +1013,6 @@ function LogsPanelContent() {
                     label="Group"
                     value={selectedLog.Group || "default"}
                     icon={<HiOutlineTag />}
-                  />
-                  <DetailItem
-                    label="Requested At"
-                    value={new Date(selectedLog.RequestedAt).toLocaleString(
-                      [],
-                      {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                        hour12: false,
-                      },
-                    )}
-                    icon={<HiOutlineCalendar />}
-                    className="md:col-span-4"
                   />
                 </div>
               </div>

@@ -34,7 +34,7 @@ interface Rule {
     any?: string;
   };
   then: {
-    type: "slack" | "opsgenie";
+    type: "slack" | "jsm";
     team?: string;
     channel?: string;
     statusIn?: string[];
@@ -43,7 +43,7 @@ interface Rule {
 
 interface TeamConfig {
   slack?: { channel: string; token?: string };
-  opsgenie?: { team: string; apiKey?: string };
+  jsm?: { team: string; apiKey?: string };
 }
 
 interface Notification {
@@ -55,7 +55,7 @@ interface Notification {
 interface RoutingConfig {
   version: number;
   defaults: {
-    opsgenie: { team: string; apiKey?: string };
+    jsm: { team: string; apiKey?: string };
     slack: { channel: string; token?: string };
   };
   teams: Record<string, TeamConfig>;
@@ -160,7 +160,7 @@ export default function SmartRoutingPage() {
   const [config, setConfig] = useState<RoutingConfig>({
     version: 1,
     defaults: {
-      opsgenie: { team: "default", apiKey: "" },
+      jsm: { team: "default", apiKey: "" },
       slack: { channel: "#cloudo-default", token: "" },
     },
     teams: {},
@@ -216,6 +216,18 @@ export default function SmartRoutingPage() {
           try {
             const parsed: RoutingConfig = JSON.parse(settings.ROUTING_RULES);
 
+            // Migrate legacy opsgenie key to jsm
+            const legacy = (parsed.defaults as Record<string, unknown>)[
+              "opsgenie"
+            ] as { team?: string; apiKey?: string } | undefined;
+            if (legacy && !parsed.defaults.jsm) {
+              parsed.defaults.jsm = {
+                team: legacy.team || "",
+                apiKey: legacy.apiKey,
+              };
+            }
+            parsed.defaults.jsm = parsed.defaults.jsm || { team: "" };
+
             // Enrich defaults with credentials and channels from settings
             if (
               settings.SLACK_TOKEN_DEFAULT !== undefined &&
@@ -245,22 +257,37 @@ export default function SmartRoutingPage() {
             }
 
             if (
-              settings.OPSGENIE_API_KEY_DEFAULT !== undefined &&
-              settings.OPSGENIE_API_KEY_DEFAULT !== null
+              settings.JSM_API_KEY_DEFAULT !== undefined &&
+              settings.JSM_API_KEY_DEFAULT !== null
             ) {
-              parsed.defaults.opsgenie = {
-                ...(parsed.defaults.opsgenie || { team: "" }),
-                apiKey: settings.OPSGENIE_API_KEY_DEFAULT,
+              parsed.defaults.jsm = {
+                ...(parsed.defaults.jsm || { team: "" }),
+                apiKey: settings.JSM_API_KEY_DEFAULT,
               };
             }
             if (
-              settings.OPSGENIE_TEAM_DEFAULT !== undefined &&
-              settings.OPSGENIE_TEAM_DEFAULT !== null
+              settings.JSM_TEAM_DEFAULT !== undefined &&
+              settings.JSM_TEAM_DEFAULT !== null
             ) {
-              parsed.defaults.opsgenie = {
-                ...(parsed.defaults.opsgenie || { team: "" }),
-                team: settings.OPSGENIE_TEAM_DEFAULT,
+              parsed.defaults.jsm = {
+                ...(parsed.defaults.jsm || { team: "" }),
+                team: settings.JSM_TEAM_DEFAULT,
               };
+            }
+
+            // Migrate legacy opsgenie team configs to jsm
+            if (parsed.teams) {
+              for (const teamName of Object.keys(parsed.teams)) {
+                const teamLegacy = (
+                  parsed.teams[teamName] as Record<string, unknown>
+                )["opsgenie"] as { team?: string; apiKey?: string } | undefined;
+                if (teamLegacy && !parsed.teams[teamName].jsm) {
+                  parsed.teams[teamName].jsm = {
+                    team: teamLegacy.team || "",
+                    apiKey: teamLegacy.apiKey,
+                  };
+                }
+              }
             }
 
             // Enrich teams with credentials and channels from settings
@@ -269,8 +296,8 @@ export default function SmartRoutingPage() {
                 const teamUpper = teamName.toUpperCase().replace(/-/g, "_");
                 const slackTokenKey = `SLACK_TOKEN_${teamUpper}`;
                 const slackChannelKey = `SLACK_CHANNEL_${teamUpper}`;
-                const ogApiKeyKey = `OPSGENIE_API_KEY_${teamUpper}`;
-                const ogTeamKey = `OPSGENIE_TEAM_${teamUpper}`;
+                const jsmApiKeyKey = `JSM_API_KEY_${teamUpper}`;
+                const jsmTeamKey = `JSM_TEAM_${teamUpper}`;
 
                 if (
                   settings[slackTokenKey] !== undefined &&
@@ -291,21 +318,21 @@ export default function SmartRoutingPage() {
                   };
                 }
                 if (
-                  settings[ogApiKeyKey] !== undefined &&
-                  settings[ogApiKeyKey] !== null
+                  settings[jsmApiKeyKey] !== undefined &&
+                  settings[jsmApiKeyKey] !== null
                 ) {
-                  parsed.teams[teamName].opsgenie = {
-                    ...(parsed.teams[teamName].opsgenie || { team: "" }),
-                    apiKey: settings[ogApiKeyKey],
+                  parsed.teams[teamName].jsm = {
+                    ...(parsed.teams[teamName].jsm || { team: "" }),
+                    apiKey: settings[jsmApiKeyKey],
                   };
                 }
                 if (
-                  settings[ogTeamKey] !== undefined &&
-                  settings[ogTeamKey] !== null
+                  settings[jsmTeamKey] !== undefined &&
+                  settings[jsmTeamKey] !== null
                 ) {
-                  parsed.teams[teamName].opsgenie = {
-                    ...(parsed.teams[teamName].opsgenie || { team: "" }),
-                    team: settings[ogTeamKey],
+                  parsed.teams[teamName].jsm = {
+                    ...(parsed.teams[teamName].jsm || { team: "" }),
+                    team: settings[jsmTeamKey],
                   };
                 }
               }
@@ -347,15 +374,14 @@ export default function SmartRoutingPage() {
           settingsPayload.SLACK_CHANNEL = configToSave.defaults.slack.channel;
         }
       }
-      if (configToSave.defaults.opsgenie) {
-        if (configToSave.defaults.opsgenie.apiKey) {
-          settingsPayload.OPSGENIE_API_KEY_DEFAULT =
-            configToSave.defaults.opsgenie.apiKey;
-          delete configToSave.defaults.opsgenie.apiKey;
+      if (configToSave.defaults.jsm) {
+        if (configToSave.defaults.jsm.apiKey) {
+          settingsPayload.JSM_API_KEY_DEFAULT =
+            configToSave.defaults.jsm.apiKey;
+          delete configToSave.defaults.jsm.apiKey;
         }
-        if (configToSave.defaults.opsgenie.team) {
-          settingsPayload.OPSGENIE_TEAM_DEFAULT =
-            configToSave.defaults.opsgenie.team;
+        if (configToSave.defaults.jsm.team) {
+          settingsPayload.JSM_TEAM_DEFAULT = configToSave.defaults.jsm.team;
         }
       }
 
@@ -393,8 +419,8 @@ export default function SmartRoutingPage() {
           const teamUpper = teamName.toUpperCase().replace(/-/g, "_");
           const slackTokenKey = `SLACK_TOKEN_${teamUpper}`;
           const slackChannelKey = `SLACK_CHANNEL_${teamUpper}`;
-          const ogApiKeyKey = `OPSGENIE_API_KEY_${teamUpper}`;
-          const ogTeamKey = `OPSGENIE_TEAM_${teamUpper}`;
+          const jsmApiKeyKey = `JSM_API_KEY_${teamUpper}`;
+          const jsmTeamKey = `JSM_TEAM_${teamUpper}`;
 
           if (team.slack) {
             if (team.slack.token) {
@@ -405,13 +431,13 @@ export default function SmartRoutingPage() {
               settingsPayload[slackChannelKey] = team.slack.channel;
             }
           }
-          if (team.opsgenie) {
-            if (team.opsgenie.apiKey) {
-              settingsPayload[ogApiKeyKey] = team.opsgenie.apiKey;
-              delete team.opsgenie.apiKey;
+          if (team.jsm) {
+            if (team.jsm.apiKey) {
+              settingsPayload[jsmApiKeyKey] = team.jsm.apiKey;
+              delete team.jsm.apiKey;
             }
-            if (team.opsgenie.team) {
-              settingsPayload[ogTeamKey] = team.opsgenie.team;
+            if (team.jsm.team) {
+              settingsPayload[jsmTeamKey] = team.jsm.team;
             }
           }
         }
@@ -533,8 +559,8 @@ export default function SmartRoutingPage() {
     setConfig((prev) => {
       const newRules = [...prev.rules];
       [newRules[index + 1], newRules[index]] = [
-        newRules[index],
         newRules[index + 1],
+        newRules[index],
       ];
       return { ...prev, rules: newRules };
     });
@@ -735,18 +761,18 @@ export default function SmartRoutingPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest">
-                  Default Opsgenie Team
+                  Default JSM Team
                 </label>
                 <input
                   type="text"
-                  value={config.defaults.opsgenie.team}
+                  value={config.defaults.jsm.team}
                   onChange={(e) =>
                     setConfig((prev) => ({
                       ...prev,
                       defaults: {
                         ...prev.defaults,
-                        opsgenie: {
-                          ...prev.defaults.opsgenie,
+                        jsm: {
+                          ...prev.defaults.jsm,
                           team: e.target.value,
                         },
                       },
@@ -757,19 +783,19 @@ export default function SmartRoutingPage() {
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest">
-                  Default Opsgenie API Key
+                  Default JSM API Key
                 </label>
                 <input
                   type="password"
-                  placeholder="OPSGENIE_API_KEY_DEFAULT"
-                  value={config.defaults.opsgenie.apiKey || ""}
+                  placeholder="JSM_API_KEY_DEFAULT"
+                  value={config.defaults.jsm.apiKey || ""}
                   onChange={(e) =>
                     setConfig((prev) => ({
                       ...prev,
                       defaults: {
                         ...prev.defaults,
-                        opsgenie: {
-                          ...prev.defaults.opsgenie,
+                        jsm: {
+                          ...prev.defaults.jsm,
                           apiKey: e.target.value,
                         },
                       },
@@ -841,10 +867,10 @@ export default function SmartRoutingPage() {
                   </div>
                   <div className="space-y-1">
                     <p className="text-[8px] font-black text-cloudo-muted uppercase tracking-widest">
-                      Opsgenie
+                      JSM
                     </p>
                     <p className="text-[10px] font-bold text-cloudo-text truncate">
-                      {teamCfg.opsgenie?.team || "NOT_SET"}
+                      {teamCfg.jsm?.team || "NOT_SET"}
                     </p>
                   </div>
                 </div>
@@ -1165,7 +1191,7 @@ export default function SmartRoutingPage() {
                                 className="w-full bg-cloudo-dark border border-cloudo-border px-3 py-1.5 text-xs outline-none"
                               >
                                 <option value="slack">SLACK</option>
-                                <option value="opsgenie">OPSGENIE</option>
+                                <option value="jsm">JSM</option>
                               </select>
                             </div>
                             <div className="space-y-2 flex-1">
@@ -1546,7 +1572,7 @@ function RuleModal({
                         className="w-full bg-cloudo-dark border border-cloudo-border px-3 py-1.5 text-xs outline-none focus:border-cloudo-accent"
                       >
                         <option value="slack">Slack</option>
-                        <option value="opsgenie">Opsgenie</option>
+                        <option value="jsm">JSM</option>
                       </select>
                     </div>
                     <div className="space-y-2">
@@ -1634,7 +1660,7 @@ function TeamModal({
       ? JSON.parse(JSON.stringify(config.teams[teamName]))
       : {
           slack: { channel: "" },
-          opsgenie: { team: "" },
+          jsm: { team: "" },
         },
   );
 
@@ -1726,7 +1752,7 @@ function TeamModal({
 
             <div className="space-y-4">
               <p className="text-[9px] font-black text-cloudo-accent uppercase tracking-widest border-b border-cloudo-accent/20 pb-1">
-                Opsgenie Integration
+                JSM Integration
               </p>
               <div className="space-y-2">
                 <label className="text-[8px] font-black text-cloudo-muted uppercase tracking-widest">
@@ -1735,12 +1761,12 @@ function TeamModal({
                 <input
                   type="text"
                   placeholder="team-name"
-                  value={data.opsgenie?.team || ""}
+                  value={data.jsm?.team || ""}
                   onChange={(e) =>
                     setData({
                       ...data,
-                      opsgenie: {
-                        ...(data.opsgenie || { team: "" }),
+                      jsm: {
+                        ...(data.jsm || { team: "" }),
                         team: e.target.value,
                       },
                     })
@@ -1754,13 +1780,13 @@ function TeamModal({
                 </label>
                 <input
                   type="password"
-                  placeholder="genie-api-key"
-                  value={data.opsgenie?.apiKey || ""}
+                  placeholder="jsm-api-key"
+                  value={data.jsm?.apiKey || ""}
                   onChange={(e) =>
                     setData({
                       ...data,
-                      opsgenie: {
-                        ...(data.opsgenie || { team: "" }),
+                      jsm: {
+                        ...(data.jsm || { team: "" }),
                         apiKey: e.target.value,
                       },
                     })

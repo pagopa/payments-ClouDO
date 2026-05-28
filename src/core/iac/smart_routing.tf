@@ -36,7 +36,7 @@ locals {
     tname => merge(
       {},
       try(t.slack, null) != null ? { slack = t.slack } : {},
-      try(t.opsgenie, null) != null ? { opsgenie = t.opsgenie } : {}
+      try(t.jsm, null) != null ? { jsm = t.jsm } : {}
     )
   }
 
