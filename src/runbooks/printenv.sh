@@ -8,3 +8,5 @@ while [ $SECONDS -lt $end ]; do
     echo "Test message at second: $SECONDS"
     sleep 5
 done
+
+exit 1

@@ -760,6 +760,12 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
     return json.dumps(message, ensure_ascii=False)
 
 
+def _build_exec_log_prefix(exec_id: Optional[str], initiator: Optional[str]) -> str:
+    safe_exec_id = str(exec_id or "-").strip() or "-"
+    safe_initiator = str(initiator or "SYSTEM").strip() or "SYSTEM"
+    return f"[{safe_exec_id}] [initiator={safe_initiator}]"
+
+
 # =========================
 # HTTP Function: Trigger
 # =========================
@@ -843,6 +849,7 @@ def Trigger(
     if error_res:
         return error_res
     requester_username = session.get("username")
+    log_prefix = _build_exec_log_prefix(exec_id, requester_username)
 
     if session.get("role") == "VIEWER":
         return func.HttpResponse(
@@ -937,7 +944,7 @@ def Trigger(
             or req.params.get("opsgenie_api_key")
             or resolve_jsm_apikey(route_params.get("team") or ""),
         }
-        logging.debug(f"[{exec_id}] Resource info: %s", resource_info)
+        logging.debug(f"{log_prefix} Resource info: %s", resource_info)
 
     # Parse bound table entities (binding returns a JSON array)
     try:
@@ -974,6 +981,7 @@ def Trigger(
                 "worker": "NaN",
                 "group": "-",
                 "oncall": "NaN",
+                "initiator": requester_username,
                 "monitor_condition": monitor_condition or "",
                 "severity": severity or "",
                 "resource_info": resource_info if "resource_info" in locals() else {},
@@ -1013,7 +1021,7 @@ def Trigger(
                 },
             )
 
-    logging.info(f"[{exec_id}] Getting schema entity id '{schema_entity}'")
+    logging.info(f"{log_prefix} Getting schema entity id '{schema_entity}'")
     # Build domain model
     schema = Schema(
         id=schema_entity.get("id"),
@@ -1034,6 +1042,7 @@ def Trigger(
             "worker": schema.worker,
             "group": schema.group,
             "oncall": schema.oncall,
+            "initiator": requester_username,
             "monitor_condition": monitor_condition or "",
             "severity": severity or "",
             "resource_info": resource_info if "resource_info" in locals() else {},
@@ -1076,6 +1085,7 @@ def Trigger(
                 "execId": exec_id,
                 "schemaId": schema.id,
                 "exp": expires_at,
+                "initiator": requester_username,
                 "resource_info": resource_info or {},
                 "routing_info": routing_info or {},
                 "code": func_key or "",
@@ -1343,7 +1353,7 @@ def Trigger(
 
         if target_queue:
             logging.info(
-                f"[{exec_id}] 🎯 Dynamic Routing: Selected Queue '{target_queue}'"
+                f"{log_prefix} 🎯 Dynamic Routing: Selected Queue '{target_queue}'"
             )
 
             try:
@@ -1362,6 +1372,7 @@ def Trigger(
                     "severity": severity,
                     "worker": schema.worker,
                     "group": schema.group,
+                    "initiator": requester_username,
                     "resource_info": resource_info or {},
                     "routing_info": routing_info or {},
                 }
@@ -1393,12 +1404,12 @@ def Trigger(
                     )
 
             except Exception as e:
-                logging.error(f"[{exec_id}] ❌ Queue send failed: {e}")
+                logging.error(f"{log_prefix} ❌ Queue send failed: {e}")
                 status_code = 500
                 api_body = {"error": str(e)}
         else:
             err_msg = f"❌ No workers ({schema.worker}) available and no static queue configured for {schema.id}"
-            logging.error(f"[{exec_id}] {err_msg}")
+            logging.error(f"{log_prefix} {err_msg}")
             status_code = 500
             api_body = {"error": err_msg}
         # ---------------------------------------------------------
@@ -1421,6 +1432,7 @@ def Trigger(
             group=schema.group,
             log_msg=api_body,
             oncall=schema.oncall,
+            initiator=requester_username,
             monitor_condition=monitor_condition,
             severity=severity,
             resource_info=resource_info,
@@ -1445,7 +1457,7 @@ def Trigger(
                     "routing_info": routing_info,
                 }
                 decision = route_alert(ctx)
-                logging.debug(f"[{exec_id}] {decision}")
+                logging.debug(f"{log_prefix} {decision}")
                 status_emoji = "✅" if status_label == "succeeded" else "❌"
                 payload = {
                     "slack": {
@@ -1582,7 +1594,7 @@ def Trigger(
                         ),
                     )
                 except Exception as e:
-                    logging.error(f"[{exec_id}] smart routing failed: {e}")
+                    logging.error(f"{log_prefix} smart routing failed: {e}")
 
         # Return HTTP response mirroring downstream status
         response_body = build_response_body(
@@ -1758,6 +1770,8 @@ def approve(
         )
 
     schema_id = payload.get("schemaId") or ""
+    initiator = payload.get("initiator")
+    log_prefix = _build_exec_log_prefix(execId, initiator)
     resource_info = payload.get("resource_info") or None
     routing_info = payload.get("routing_info") or None
     monitor_condition = payload.get("monitorCondition") or ""
@@ -1803,7 +1817,7 @@ def approve(
 
         if target_queue:
             logging.info(
-                f"[{execId}] 🎯 Dynamic Routing: Selected Queue '{target_queue}'"
+                f"{log_prefix} 🎯 Dynamic Routing: Selected Queue '{target_queue}'"
             )
 
             try:
@@ -1822,6 +1836,7 @@ def approve(
                     "severity": severity,
                     "worker": schema.worker,
                     "group": schema.group,
+                    "initiator": initiator,
                     "resource_info": resource_info or {},
                     "routing_info": routing_info or {},
                 }
@@ -1842,12 +1857,12 @@ def approve(
                 }
 
             except Exception as e:
-                logging.error(f"[{execId}] ❌ Queue send failed: {e}")
+                logging.error(f"{log_prefix} ❌ Queue send failed: {e}")
                 status_code = 500
                 api_body = {"error": str(e)}
         else:
             err_msg = f"❌ No workers ({schema.worker}) available and no static queue configured for {schema.id}"
-            logging.error(f"[{execId}] {err_msg}")
+            logging.error(f"{log_prefix} {err_msg}")
             status_code = 500
             api_body = {"error": err_msg}
         # ---------------------------------------------------------
@@ -1909,7 +1924,7 @@ def approve(
                 "routing_info": routing_info,
             }
             decision = route_alert(ctx)
-            logging.debug(f"[{execId}] Approval: {decision}")
+            logging.debug(f"{log_prefix} Approval: {decision}")
 
             # Notify Slack directly (bypassing smart routing for Slack as requested)
             _notify_slack_decision(
@@ -1927,7 +1942,9 @@ def approve(
             try:
                 execute_actions(decision, payload, send_slack_fn=None)
             except Exception as e:
-                logging.error(f"[{execId}] smart routing approval actions failed: {e}")
+                logging.error(
+                    f"{log_prefix} smart routing approval actions failed: {e}"
+                )
 
         return func.HttpResponse(
             json.dumps(
@@ -2092,6 +2109,8 @@ def reject(
         )
 
     schema_id = payload.get("schemaId") or ""
+    initiator = payload.get("initiator")
+    log_prefix = _build_exec_log_prefix(execId, initiator)
     resource_info = payload.get("resource_info") or None
     routing_info = payload.get("routing_info") or None
     monitor_condition = payload.get("monitorCondition") or ""
@@ -2183,7 +2202,7 @@ def reject(
             "routing_info": routing_info,
         }
         decision = route_alert(ctx)
-        logging.debug(f"[{execId}] Reject: {decision}")
+        logging.debug(f"{log_prefix} Reject: {decision}")
 
         payload = {
             "slack": None  # Skip slack in execute_actions
@@ -2191,7 +2210,7 @@ def reject(
         try:
             execute_actions(decision, payload, send_slack_fn=None)
         except Exception as e:
-            logging.error(f"[{execId}] smart routing rejection failed: {e}")
+            logging.error(f"{log_prefix} smart routing rejection failed: {e}")
 
     return func.HttpResponse(
         json.dumps({"message": f"Rejected by approver: {approver}"}),
@@ -2229,7 +2248,10 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
 
     try:
         body = json.loads(msg.get_body().decode("utf-8"))
-        logging.warning(f"[Receiver] Message received: {body}")
+        receiver_prefix = _build_exec_log_prefix(
+            body.get("exec_id"), body.get("initiator")
+        )
+        logging.warning(f"[Receiver] {receiver_prefix} Message received: {body}")
     except Exception as e:
         logging.error(f"[Receiver] Invalid queue message: {e}")
         return
@@ -2237,11 +2259,11 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
     required_fields = ["exec_id", "status", "name", "id", "runbook"]
     missing = [k for k in required_fields if not (body.get(k) or "").strip()]
     if missing:
-        logging.warning(f"[{body.get('exec_id')}] Missing required fields: {missing}")
+        logging.warning(f"{receiver_prefix} Missing required fields: {missing}")
         return
 
     logging.warning(
-        f"[{body.get('exec_id')}][{body.get('status')}] Receiver invoked",
+        f"{receiver_prefix} [{body.get('status')}] Receiver invoked",
         extra={
             "headers": {
                 "ExecId": body.get("exec_id"),
@@ -2282,7 +2304,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
             )
         except Exception as e:
             logging.warning(
-                f"[{body.get('exec_id')}] blob upload failed, falling back to table log: {type(e).__name__}: {e}"
+                f"{receiver_prefix} blob upload failed, falling back to table log: {type(e).__name__}: {e}"
             )
             log_value = utils._truncate_for_table(logs_raw, MAX_TABLE_CHARS)
     else:
@@ -2355,7 +2377,7 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
             "routing_info": routing_info,  # sempre dict qui
         }
         decision = route_alert(ctx)
-        logging.debug(f"[{exec_id}] {decision}")
+        logging.debug(f"{receiver_prefix} {decision}")
         status_emojis = {
             "succeeded": "✅",
             "running": "🏃",
@@ -2651,9 +2673,10 @@ def dev_test_run(
     session, error_res = _get_authenticated_user(req)
     if error_res:
         return error_res
+    initiator = session.get("username") or "dev-user"
 
     logging.info(
-        f"[DEV TEST] Scheduling test run: {script_name} with capability {capability} (exec_id={exec_id})"
+        f"[DEV TEST] Scheduling test run: {script_name} with capability {capability} (exec_id={exec_id}, initiator={initiator})"
     )
 
     try:
@@ -2692,6 +2715,7 @@ def dev_test_run(
             "requestedAt": requested_at,
             "exec_id": exec_id,
             "oncall": "false",
+            "initiator": initiator,
             "monitor_condition": "Fired",
             "severity": severity or "Sev4",
             "worker": capability,
@@ -2716,7 +2740,7 @@ def dev_test_run(
 
         # Log audit entry for test run
         log_audit(
-            user=session.get("username", "dev-user"),
+            user=initiator,
             action="RUNBOOK_DEV_TEST_RUN",
             target=exec_id,
             details=f"Script: {script_name}, Capability: {capability}, Args: {run_args}",
@@ -2739,6 +2763,7 @@ def dev_test_run(
             group="-",
             log_msg=api_body,
             oncall="false",
+            initiator=initiator,
             monitor_condition=monitor_condition or "Fired",
             severity=severity or "Sev4",
             resource_info=resource_info,
@@ -2967,7 +2992,15 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
 
         def contains_any(e: dict, s: str) -> bool:
             s = s.lower()
-            for k in ("Name", "Id", "Url", "Runbook", "Log", "Run_Args"):
+            for k in (
+                "Name",
+                "Id",
+                "Url",
+                "Runbook",
+                "Log",
+                "Run_Args",
+                "Initiator",
+            ):
                 v = e.get(k)
                 if v is None:
                     continue

@@ -141,4 +141,4 @@ with ID 000-0000-0e0e00ww-wqesd. It describes versioned metadata (“Hello Pippo
 points to the runbook script check_sys.sh, is executed by the Runbook worker,
 and is not marked for on-call.
 
-If oncall was set to `true` in case runbook fail an alert will be opened on Opsgenie.
+If `oncall` is set to `true`, in case the runbook fails an alert will be opened on Jira Service Management (JSM).

@@ -630,6 +630,7 @@ function LogsPanelContent() {
                   <th className="px-4 py-4 text-left min-w-45">
                     Process_Context
                   </th>
+                  <th className="px-4 py-4 text-left min-w-35">Initiator</th>
                   <th className="px-4 py-4 text-left min-w-35">Asset_ID</th>
                   <th className="px-4 py-4 text-left min-w-50">
                     Execution_Details
@@ -681,6 +682,13 @@ function LogsPanelContent() {
                         </div>
                         <div className="text-[10px] text-cloudo-muted/60 opacity-50 font-mono break-all">
                           {log.ExecId}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex flex-col gap-0.5">
+                        <div className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest">
+                          {log.Initiator || "SYSTEM"}
                         </div>
                       </div>
                     </td>
@@ -799,6 +807,14 @@ function LogsPanelContent() {
                       </div>
                       <div className="text-[10px] font-mono text-cloudo-accent/70 uppercase tracking-widest truncate">
                         {log.Runbook}
+                      </div>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-[9px] font-black text-cloudo-muted uppercase tracking-widest">
+                        Initiator
+                      </div>
+                      <div className="text-[10px] font-black text-cloudo-text uppercase tracking-widest truncate">
+                        {log.Initiator || "SYSTEM"}
                       </div>
                     </div>
                   </div>
@@ -1005,23 +1021,6 @@ function LogsPanelContent() {
                     label="Group"
                     value={selectedLog.Group || "default"}
                     icon={<HiOutlineTag />}
-                  />
-                  <DetailItem
-                    label="Requested At"
-                    value={new Date(selectedLog.RequestedAt).toLocaleString(
-                      [],
-                      {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                        hour12: false,
-                      },
-                    )}
-                    icon={<HiOutlineCalendar />}
-                    className="md:col-span-4"
                   />
                 </div>
               </div>
