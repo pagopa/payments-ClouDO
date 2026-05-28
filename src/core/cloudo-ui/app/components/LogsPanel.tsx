@@ -630,7 +630,6 @@ function LogsPanelContent() {
                   <th className="px-4 py-4 text-left min-w-45">
                     Process_Context
                   </th>
-                  <th className="px-4 py-4 text-left min-w-35">Initiator</th>
                   <th className="px-4 py-4 text-left min-w-35">Asset_ID</th>
                   <th className="px-4 py-4 text-left min-w-50">
                     Execution_Details
@@ -682,13 +681,6 @@ function LogsPanelContent() {
                         </div>
                         <div className="text-[10px] text-cloudo-muted/60 opacity-50 font-mono break-all">
                           {log.ExecId}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest">
-                          {log.Initiator || "SYSTEM"}
                         </div>
                       </div>
                     </td>

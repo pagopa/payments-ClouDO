@@ -3,9 +3,10 @@
 import json
 import logging
 import os
+import re
 import uuid
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Optional, cast
 
 # =========================
 # Routing: models
@@ -27,6 +28,51 @@ class RoutingDecision:
     matched_rule_index: Optional[int]
     matched_team: Optional[str]
     reason: str  # "matched" | "fallback_jsm"
+
+
+_SAFE_TEAM_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_SAFE_CHANNEL_RE = re.compile(r"^#[A-Za-z0-9._-]{1,80}$")
+_SAFE_STATUS_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+_SAFE_ENV_KEY_RE = re.compile(r"^[A-Z0-9_]{1,96}$")
+
+
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _sanitize_team(team: Optional[str]) -> Optional[str]:
+    if team is None:
+        return None
+    t = str(team).strip()
+    if not t:
+        return None
+    if _SAFE_TEAM_RE.fullmatch(t):
+        return t
+    logging.warning("Rejected unsafe team identifier")
+    return None
+
+
+def _sanitize_channel(channel: Optional[str]) -> Optional[str]:
+    if channel is None:
+        return None
+    c = str(channel).strip()
+    if not c:
+        return None
+    if _SAFE_CHANNEL_RE.fullmatch(c):
+        return c
+    logging.warning("Rejected unsafe Slack channel format")
+    return None
+
+
+def _safe_for_log(value: Any, max_len: int = 128) -> str:
+    # Remove control chars/newlines to reduce log injection surface.
+    txt = str(value or "")
+    txt = "".join(ch if ch.isprintable() and ch not in "\r\n\t" else "?" for ch in txt)
+    return txt[:max_len]
 
 
 # =========================
@@ -293,6 +339,11 @@ def _get_setting(key: str) -> Optional[str]:
     """
     Helper to get a setting from Azure Table Storage or Environment.
     """
+    # Prevent unsafe environment/table key lookups from dynamic input.
+    if not _SAFE_ENV_KEY_RE.fullmatch(str(key or "")):
+        logging.warning("Rejected unsafe setting key lookup")
+        return None
+
     # Try Table Storage
     try:
         from azure.data.tables import TableClient
@@ -325,6 +376,7 @@ def resolve_jsm_apikey(team: Optional[str]) -> Optional[str]:
       - JSM_API_KEY_DEFAULT (fallback 1)
       - JSM_API_KEY (fallback 2)
     """
+    team = _sanitize_team(team)
     if team:
         key_name = f"JSM_API_KEY_{team}".upper().replace("-", "_")
         key = _get_setting(key_name)
@@ -340,6 +392,7 @@ def resolve_slack_token(team: Optional[str]) -> Optional[str]:
       - SLACK_TOKEN_<TEAM> (preferred)
       - SLACK_TOKEN_DEFAULT (default)
     """
+    team = _sanitize_team(team)
     if team:
         key_name = f"SLACK_TOKEN_{team}".upper().replace("-", "_")
         tok = _get_setting(key_name)
@@ -391,19 +444,37 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     teams_cfg = cfg.get("teams", {})
 
     routing_info = ctx.get("routing_info") or {}
+    allow_runtime_secrets = _as_bool(
+        os.environ.get("ALLOW_ROUTING_INFO_SECRETS"), default=False
+    )
+    allow_inline_rule_secrets = _as_bool(
+        os.environ.get("ALLOW_INLINE_ROUTING_SECRETS"), default=False
+    )
 
     # Avoid logging sensitive information such as API keys or tokens
     safe_routing_info = {
         k: v for k, v in routing_info.items() if k not in {"slack_token", "jsm_token"}
     }
-    logging.info("Routing info (redacted): %s", safe_routing_info)
-    ri_team = (routing_info.get("team") or "").strip() or None
-    ri_slack_token = routing_info.get("slack_token") or None
-    ri_slack_channel = routing_info.get("slack_channel") or None
-    ri_jsm_token = routing_info.get("jsm_token") or None
+    logging.info(
+        "Routing info (redacted): %s",
+        {k: _safe_for_log(v) for k, v in safe_routing_info.items()},
+    )
+    ri_team = _sanitize_team(routing_info.get("team"))
+    ri_slack_channel = _sanitize_channel(routing_info.get("slack_channel"))
+    # Secrets from runtime payload are disabled by default to avoid injection.
+    ri_slack_token = (
+        str(routing_info.get("slack_token") or "").strip() or None
+        if allow_runtime_secrets
+        else None
+    )
+    ri_jsm_token = (
+        str(routing_info.get("jsm_token") or "").strip() or None
+        if allow_runtime_secrets
+        else None
+    )
 
     raw_status = (ctx.get("status") or "").strip().lower()
-    safe_status = "".join(ch for ch in str(raw_status) if ch.isalnum() or ch in {"_", "-"})[:32]
+    safe_status = raw_status if _SAFE_STATUS_RE.fullmatch(raw_status) else "unknown"
     allowed_statuses = {
         "accepted",
         "succeeded",
@@ -416,9 +487,7 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
     status = safe_status if safe_status in allowed_statuses else "unknown"
 
     log_correlation_id = uuid.uuid4().hex[:12]
-    logging.info(
-        f"[{log_correlation_id}] Routing: evaluating {len(rules)} rules"
-    )
+    logging.info(f"[{log_correlation_id}] Routing: evaluating {len(rules)} rules")
 
     for idx, rule in enumerate(rules):
         when = rule.get("when", {})
@@ -436,21 +505,33 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
             if atype not in ("slack", "jsm"):
                 logging.warning(f"Ignoring unsupported action type: {atype}")
                 continue
-            logging.info(f"Executing action: {atype} for {t.get('team')}")
+            logging.info(
+                "Executing action: %s for %s",
+                _safe_for_log(atype, max_len=16),
+                _safe_for_log(t.get("team"), max_len=64),
+            )
 
-            team_name = t.get("team") or ri_team
+            team_name = _sanitize_team(t.get("team")) or ri_team
             team_conf = teams_cfg.get(team_name, {}) if team_name else {}
             matched_team = matched_team or team_name
 
             if atype == "slack":
                 channel = (
-                    t.get("channel")
+                    _sanitize_channel(t.get("channel"))
                     or (team_conf.get("slack", {}) or {}).get("channel")
                     or (defaults.get("slack", {}) or {}).get("channel")
                     or ri_slack_channel
                 )
+                channel = _sanitize_channel(channel)
+                inline_rule_token = (
+                    (str(t.get("token") or "").strip() or None)
+                    if allow_inline_rule_secrets
+                    else None
+                )
                 token = (
-                    t.get("token") or resolve_slack_token(team_name) or ri_slack_token
+                    inline_rule_token
+                    or resolve_slack_token(team_name)
+                    or ri_slack_token
                 )
                 resolved_actions.append(
                     Action(type="slack", channel=channel, token=token, team=team_name)
@@ -459,12 +540,17 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
             elif atype == "jsm":
                 jsm_team = (
                     team_name
-                    or (team_conf.get("jsm", {}) or {}).get("team")
-                    or (defaults.get("jsm", {}) or {}).get("team")
+                    or _sanitize_team((team_conf.get("jsm", {}) or {}).get("team"))
+                    or _sanitize_team((defaults.get("jsm", {}) or {}).get("team"))
                     or ri_team
                 )
+                inline_rule_apikey = (
+                    (str(t.get("apiKey") or "").strip() or None)
+                    if allow_inline_rule_secrets
+                    else None
+                )
                 api_key = (
-                    t.get("apiKey") or resolve_jsm_apikey(jsm_team) or ri_jsm_token
+                    inline_rule_apikey or resolve_jsm_apikey(jsm_team) or ri_jsm_token
                 )
                 if api_key:
                     api_key = str(api_key).strip().strip('"').strip("'")
@@ -555,8 +641,8 @@ def route_alert(raw_ctx: dict[str, Any]) -> RoutingDecision:
 def execute_actions(
     decision: RoutingDecision,
     payload: dict[str, Any],
-    send_slack_fn=None,
-    send_jsm_fn=None,
+    send_slack_fn: Optional[Callable[..., Any]] = None,
+    send_jsm_fn: Optional[Callable[..., Any]] = None,
 ) -> None:
     """
     Execute the decided actions in order.
@@ -566,20 +652,42 @@ def execute_actions(
     any_success = False
     jsm_payload_key = "jsm"
 
+    if send_slack_fn is None or not callable(send_slack_fn):
+        logging.error("Invalid send_slack_fn: expected callable")
+        send_slack_fn = None
+    if send_jsm_fn is None or not callable(send_jsm_fn):
+        logging.error("Invalid send_jsm_fn: expected callable")
+        send_jsm_fn = None
+
+    slack_sender = send_slack_fn
+    jsm_sender = send_jsm_fn
+
     for a in decision.actions:
         try:
             if a.type == "slack":
+                if slack_sender is None:
+                    raise ValueError("Slack sender not configured")
+                slack_sender_safe = cast(Callable[..., Any], slack_sender)
                 if not a.token:
                     raise ValueError("Missing Slack token")
                 if not a.channel:
                     raise ValueError("Missing Slack channel")
-                send_slack_fn(token=a.token, channel=a.channel, **payload["slack"])
+                slack_payload = payload.get("slack")
+                if not isinstance(slack_payload, dict):
+                    raise ValueError("Missing/invalid Slack payload")
+                slack_sender_safe(token=a.token, channel=a.channel, **slack_payload)
                 any_success = True
 
             elif a.type in ("jsm"):
+                if jsm_sender is None:
+                    raise ValueError("JSM sender not configured")
+                jsm_sender_safe = cast(Callable[..., Any], jsm_sender)
                 if not a.apiKey:
                     raise ValueError("Missing JSM apiKey")
-                send_jsm_fn(api_key=a.apiKey, **payload[jsm_payload_key])
+                jsm_payload = payload.get(jsm_payload_key)
+                if not isinstance(jsm_payload, dict):
+                    raise ValueError("Missing/invalid JSM payload")
+                jsm_sender_safe(api_key=a.apiKey, **jsm_payload)
                 any_success = True
 
         except Exception as e:
@@ -588,13 +696,20 @@ def execute_actions(
 
     if not any_success and decision.reason != "no_action_non_final":
         try:
+            if jsm_sender is None:
+                logging.error("Final fallback skipped: JSM sender not configured")
+                return
+            jsm_sender_safe = cast(Callable[..., Any], jsm_sender)
             api_key = resolve_jsm_apikey(None)
             if api_key:
                 logging.info(
                     f"Attempting final JSM fallback (reason={decision.reason})"
                 )
                 try:
-                    ok = send_jsm_fn(api_key=api_key, **payload[jsm_payload_key])
+                    jsm_payload = payload.get(jsm_payload_key)
+                    if not isinstance(jsm_payload, dict):
+                        raise ValueError("Missing/invalid JSM payload")
+                    ok = jsm_sender_safe(api_key=api_key, **jsm_payload)
                     if not ok:
                         logging.error("Final JSM fallback did not confirm success")
                 except Exception as send_err:
