@@ -178,9 +178,9 @@ class AzureMonitorParser(AlertParser):
         result = self._base_result(SOURCE_AZURE_MONITOR, compact_raw, {}, schema_ids, essentials.get("severity") or "", essentials.get("monitorcondition") or "")
         result.update(
             {
-                "resourceName": resource_name,
-                "resourceGroup": resource_group,
-                "resourceId": resource_id,
+                "resource_name": resource_name,
+                "resource_rg": resource_group,
+                "resource_id": resource_id,
                 "namespace": namespace,
                 "pod": pod,
                 "deployment": deployment,
