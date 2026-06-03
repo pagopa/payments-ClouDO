@@ -904,6 +904,7 @@ def Trigger(
     else:
         (
             _raw,
+            _source,
             resource_name,
             resource_group,
             resource_id,
@@ -915,6 +916,7 @@ def Trigger(
             job,
             monitor_condition,
             severity,
+            _payload,
         ) = detection.parse_resource_fields(req).values()
         resource_info = (
             {
@@ -2626,6 +2628,7 @@ def dev_test_run(
     # Parse resource_info from the body using detection (same as Trigger endpoint)
     (
         _raw,
+        _source,
         resource_name,
         resource_group,
         resource_id,
@@ -2637,6 +2640,7 @@ def dev_test_run(
         job,
         monitor_condition,
         severity,
+        _payload,
     ) = detection.parse_resource_fields(req_body.get("body")).values()
     resource_info = {
         "_raw": _raw,
