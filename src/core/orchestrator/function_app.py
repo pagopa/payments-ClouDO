@@ -888,7 +888,23 @@ def Trigger(
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
         schema_id = detection.extract_schema_id_from_req(req)
-        resource_info = {}
+        parsed_body = detection.parse_resource_fields(req)
+        resource_info = {
+            "_raw": parsed_body.get("_raw"),
+            "schema_id": schema_id,
+            "monitor_condition": monitor_condition,
+            "severity": severity,
+            "resource_name": parsed_body.get("resource_name"),
+            "resource_rg": parsed_body.get("resource_group"),
+            "resource_id": parsed_body.get("resource_id"),
+            "aks_namespace": parsed_body.get("namespace"),
+            "aks_pod": parsed_body.get("pod"),
+            "aks_deployment": parsed_body.get("deployment"),
+            "aks_job": parsed_body.get("job"),
+            "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
+            "team": route_params.get("team"),
+            "payload": parsed_body.get("payload"),
+        }
         routing_info = {
             "team": route_params.get("team") or "",
             "slack_token": req.params.get("slack_token")
@@ -902,38 +918,22 @@ def Trigger(
             or resolve_jsm_apikey(route_params.get("team") or ""),
         }
     else:
-        (
-            _raw,
-            _source,
-            resource_name,
-            resource_group,
-            resource_id,
-            schema_id,
-            namespace,
-            pod,
-            deployment,
-            horizontalpodautoscaler,
-            job,
-            monitor_condition,
-            severity,
-            _payload,
-        ) = detection.parse_resource_fields(req).values()
-        resource_info = (
-            {
-                "_raw": _raw,
-                "resource_name": resource_name,
-                "resource_rg": resource_group,
-                "resource_id": resource_id,
-                "aks_namespace": namespace,
-                "aks_pod": pod,
-                "aks_deployment": deployment,
-                "aks_job": job,
-                "aks_horizontalpodautoscaler": horizontalpodautoscaler,
+
+        parsed_body = detection.parse_resource_fields(req)
+        resource_info =  {
+                "_raw": parsed_body.get("_raw"),
+                "resource_name": parsed_body.get("resource_name"),
+                "resource_rg": parsed_body.get("resource_group"),
+                "resource_id": parsed_body.get("resource_id") ,
+                "aks_namespace": parsed_body.get("namespace"),
+                "aks_pod": parsed_body.get("pod"),
+                "aks_deployment": parsed_body.get("deployment"),
+                "aks_job": parsed_body.get("job"),
+                "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
                 "team": route_params.get("team"),
+                "payload": parsed_body.get("payload"),
             }
-            if resource_name
-            else {}
-        )
+
         routing_info = {
             "team": route_params.get("team") or "",
             "slack_token": req.params.get("slack_token")

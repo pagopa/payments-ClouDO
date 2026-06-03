@@ -30,7 +30,7 @@ class AlertParser(ABC):
         ...
 
     @staticmethod
-    def _base_result(source: str, raw: str, payload: dict) -> dict[str, Any]:
+    def _base_result(source: str, raw: str, payload: dict, schemaId: list[str], severity: str, condition: str) -> dict[str, Any]:
         """Return the standard result skeleton with all fields at their zero values."""
         return {
             "_raw": raw,
@@ -38,14 +38,14 @@ class AlertParser(ABC):
             "resource_name": None,
             "resource_rg": None,
             "resource_id": None,
-            "schema_id": None,
+            "schema_id": schemaId,
             "aks_namespace": None,
             "aks_pod": None,
             "aks_deployment": None,
             "aks_horizontalpodautoscaler": None,
             "aks_job": None,
-            "monitorCondition": "",
-            "severity": "",
+            "monitorCondition": condition,
+            "severity": severity,
             "payload": payload,
         }
 
@@ -175,33 +175,20 @@ class AzureMonitorParser(AlertParser):
             if cand and cand != "kube-state-metrics":
                 job = cand
 
-        result = self._base_result(SOURCE_AZURE_MONITOR, compact_raw, {})
+        result = self._base_result(SOURCE_AZURE_MONITOR, compact_raw, {}, schema_ids, essentials.get("severity") or "", essentials.get("monitorcondition") or "")
         result.update(
             {
                 "resourceName": resource_name,
                 "resourceGroup": resource_group,
                 "resourceId": resource_id,
-                "schema_id": schema_ids,
                 "namespace": namespace,
                 "pod": pod,
                 "deployment": deployment,
                 "horizontalpodautoscaler": horizontalpodautoscaler,
-                "job": job,
-                "monitorCondition": essentials.get("monitorcondition") or "",
-                "severity": essentials.get("severity") or "",
+                "job": job
             }
         )
 
-        "_raw": _raw,
-        "resource_name": resource_name,
-        "resource_rg": resource_group,
-        "resource_id": resource_id,
-        "aks_namespace": namespace,
-        "aks_pod": pod,
-        "aks_deployment": deployment,
-        "aks_job": job,
-        "aks_horizontalpodautoscaler": horizontalpodautoscaler,
-        "team": route_params.get("team"),
         return result
 
 
@@ -222,9 +209,12 @@ class GenericSourceParser(AlertParser):
 
     def parse(self, body: dict) -> dict[str, Any]:
         source = str(body.get("source") or "unknown").lower()
+        rule   = body.get("rule", "")
+        severity = body.get("severity", "")
+        monitor_condition = body.get("monitorCondition", "")
         payload = body.get("payload") or {}
         compact_raw = json.dumps(body, separators=(",", ":"))
-        result = self._base_result(source, compact_raw, payload)
+        result = self._base_result(source, compact_raw, payload, [rule], severity, monitor_condition)
         return self._parse_payload(payload, result)
 
     def _parse_payload(self, payload: dict, result: dict) -> dict[str, Any]:
@@ -252,13 +242,21 @@ class ElasticParser(GenericSourceParser):
 
     def _parse_payload(self, payload: dict, result: dict) -> dict[str, Any]:
         elastic_data = {
-            "rule" : payload.get("alertRule"),
-            "severity" : payload.get("alertSeverity"),
-            "monitorCondition": payload.get("monitorCondition"),
-            "type": payload.get("alertType"),
-            "attributes": payload.get("alertAttributes")
+            "type": payload.get("type"),
+            "attributes": payload.get("attributes")
         }
+
+        if payload.get("type") == "aks":
+            alert_attributes = payload.get("attributes", {})
+            aks_data = {
+                "namespace": alert_attributes.pop("namespace"),
+                "resource_name": alert_attributes.pop("cluster_name"),
+                "resource_group": alert_attributes.pop("cluster_rg_name"),
+            }
+            result.update(aks_data)
+
         result.update(elastic_data)
+
         return result
 
 

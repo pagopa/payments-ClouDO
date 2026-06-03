@@ -132,7 +132,7 @@ variable "aks_integration" {
   type = map(object({
     cluster_id = string
   }))
-  description = "Map of AKS cluster configurations including cluster_id for each cluster."
+  description = "Map of AKS cluster configurations including cluster_id"
   default     = {}
 }
 

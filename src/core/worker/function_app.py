@@ -688,8 +688,17 @@ def process_runbook(msg: func.QueueMessage) -> None:
         ns_val = str(info.get("aks_namespace", "")).strip().lower() if info else ""
         has_valid_ns = bool(ns_val) and ns_val not in {"null", "none", "undefined"}
 
+
         kubeconfig_path = None
         if info and has_valid_ns:
+            if os.environ.get("AKS_INTEGRATION_ENABLED") == "false":
+                err_msg = f"{log_prefix} AKS login failed: tf var AKS_INTEGRATION not defined for this deployment"
+                q_client.send_message(
+                    _post_status(payload, status="error", log_message=err_msg)
+                )
+                logging.error(f"{err_msg}")
+
+
             try:
                 kubeconfig_path = _run_aks_login(
                     info, payload, env=env, temp_dir=execution_temp_dir

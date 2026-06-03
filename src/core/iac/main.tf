@@ -41,6 +41,8 @@ module "cloudo_orchestrator" {
       "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
       "NEXTJS_URL"                          = "${var.prefix}-cloudo-ui.azurewebsites.net"
       "FEATURE_DEV"                         = var.env == "dev" ? "true" : "false"
+      "CLOUDO_ENVIRONMENT"                  = var.env
+      "CLOUDO_ENVIRONMENT_SHORT"            = substr(var.env, 0, 1)
     },
     local.orchestrator_smart_routing_app_settings
   )
@@ -167,6 +169,7 @@ module "cloudo_worker" {
     "CLOUDO_ENVIRONMENT"                  = var.env
     "CLOUDO_ENVIRONMENT_SHORT"            = substr(var.env, 0, 1)
     "FEATURE_DEV"                         = var.env == "dev" ? "true" : "false"
+    "AKS_INTEGRATION_ENABLED"             = length(keys(var.aks_integration)) > 0 ? "true" : "false"
   }
 
   docker_image             = var.workers_config.image_name
