@@ -193,8 +193,8 @@ class AzureMonitorParser(AlertParser):
             compact_raw,
             {},
             schema_ids,
-            essentials.get("severity") or "",
-            essentials.get("monitorcondition") or "",
+            essentials.get("severity") or "Sev4",
+            essentials.get("monitorcondition") or "Fired",
         )
         result.update(
             {
