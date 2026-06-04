@@ -888,7 +888,23 @@ def Trigger(
     # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
     if (req.params.get("id")) is not None:
         schema_id = detection.extract_schema_id_from_req(req)
-        resource_info = {}
+        parsed_body = detection.parse_resource_fields(req)
+        resource_info = {
+            "_raw": parsed_body.get("_raw"),
+            "schema_id": schema_id,
+            "monitor_condition": monitor_condition,
+            "severity": severity,
+            "resource_name": parsed_body.get("resource_name"),
+            "resource_rg": parsed_body.get("resource_group"),
+            "resource_id": parsed_body.get("resource_id"),
+            "aks_namespace": parsed_body.get("namespace"),
+            "aks_pod": parsed_body.get("pod"),
+            "aks_deployment": parsed_body.get("deployment"),
+            "aks_job": parsed_body.get("job"),
+            "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
+            "team": route_params.get("team"),
+            "payload": parsed_body.get("payload"),
+        }
         routing_info = {
             "team": route_params.get("team") or "",
             "slack_token": req.params.get("slack_token")
@@ -902,36 +918,23 @@ def Trigger(
             or resolve_jsm_apikey(route_params.get("team") or ""),
         }
     else:
-        (
-            _raw,
-            resource_name,
-            resource_group,
-            resource_id,
-            schema_id,
-            namespace,
-            pod,
-            deployment,
-            horizontalpodautoscaler,
-            job,
-            monitor_condition,
-            severity,
-        ) = detection.parse_resource_fields(req).values()
-        resource_info = (
-            {
-                "_raw": _raw,
-                "resource_name": resource_name,
-                "resource_rg": resource_group,
-                "resource_id": resource_id,
-                "aks_namespace": namespace,
-                "aks_pod": pod,
-                "aks_deployment": deployment,
-                "aks_job": job,
-                "aks_horizontalpodautoscaler": horizontalpodautoscaler,
-                "team": route_params.get("team"),
-            }
-            if resource_name
-            else {}
-        )
+        parsed_body = detection.parse_resource_fields(req)
+        schema_id = parsed_body.get("schema_id")
+        resource_info = {
+            "_raw": parsed_body.get("_raw"),
+            "schema_id": parsed_body.get("schema_id"),
+            "resource_name": parsed_body.get("resource_name"),
+            "resource_rg": parsed_body.get("resource_group"),
+            "resource_id": parsed_body.get("resource_id"),
+            "aks_namespace": parsed_body.get("namespace"),
+            "aks_pod": parsed_body.get("pod"),
+            "aks_deployment": parsed_body.get("deployment"),
+            "aks_job": parsed_body.get("job"),
+            "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
+            "team": route_params.get("team"),
+            "payload": parsed_body.get("payload"),
+        }
+
         routing_info = {
             "team": route_params.get("team") or "",
             "slack_token": req.params.get("slack_token")
@@ -2624,31 +2627,20 @@ def dev_test_run(
     script_type = req_body.get("scriptType", "python").lower()  # Default to python
 
     # Parse resource_info from the body using detection (same as Trigger endpoint)
-    (
-        _raw,
-        resource_name,
-        resource_group,
-        resource_id,
-        schema_id,
-        namespace,
-        pod,
-        deployment,
-        horizontalpodautoscaler,
-        job,
-        monitor_condition,
-        severity,
-    ) = detection.parse_resource_fields(req_body.get("body")).values()
+    parsed_body = detection.parse_resource_fields(req_body.get("body"))
     resource_info = {
-        "_raw": _raw,
-        "resource_name": resource_name,
-        "resource_rg": resource_group,
-        "resource_id": resource_id,
-        "aks_namespace": namespace,
-        "aks_pod": pod,
-        "aks_deployment": deployment,
-        "aks_job": job,
-        "aks_horizontalpodautoscaler": horizontalpodautoscaler,
+        "_raw": parsed_body.get("_raw"),
+        "schema_id": parsed_body.get("schema_id"),
+        "resource_name": parsed_body.get("resource_name"),
+        "resource_rg": parsed_body.get("resource_group"),
+        "resource_id": parsed_body.get("resource_id"),
+        "aks_namespace": parsed_body.get("namespace"),
+        "aks_pod": parsed_body.get("pod"),
+        "aks_deployment": parsed_body.get("deployment"),
+        "aks_job": parsed_body.get("job"),
+        "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
         "team": "dev-test",
+        "payload": parsed_body.get("payload"),
     }
 
     if not script:
@@ -2725,8 +2717,8 @@ def dev_test_run(
             "exec_id": exec_id,
             "oncall": "false",
             "initiator": initiator,
-            "monitor_condition": "Fired",
-            "severity": severity or "Sev4",
+            "monitor_condition": parsed_body.get("monitor_condition") or "Fired",
+            "severity": parsed_body.get("severity") or "Sev4",
             "worker": capability,
             "group": "-",
             "resource_info": resource_info or {},
@@ -2773,8 +2765,8 @@ def dev_test_run(
             log_msg=api_body,
             oncall="false",
             initiator=initiator,
-            monitor_condition=monitor_condition or "Fired",
-            severity=severity or "Sev4",
+            monitor_condition=parsed_body.get("monitor_condition", "Fired"),
+            severity=parsed_body.get("severity", "Sev4"),
             resource_info=resource_info,
         )
         log_table.set(json.dumps(start_log, ensure_ascii=False))
