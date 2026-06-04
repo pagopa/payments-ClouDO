@@ -88,6 +88,7 @@ services:
       - WORKER_CAPABILITY=local
       - WEBSITE_SITE_NAME=worker-local
       - CLOUDO_ENVIRONMENT=dev
+      - AKS_INTEGRATION_ENABLED=true
     volumes:
       - ./src/runbooks:/work/runbooks:ro
       - ./src/core/worker:/home/site/wwwroot/
@@ -119,6 +120,7 @@ services:
       - WORKER_CAPABILITY=alert
       - WEBSITE_SITE_NAME=worker-alert
       - CLOUDO_ENVIRONMENT=dev
+      - AKS_INTEGRATION_ENABLED=true
     volumes:
       - ./src/runbooks:/work/runbooks:ro
       - ./src/core/worker:/home/site/wwwroot/
