@@ -2628,33 +2628,20 @@ def dev_test_run(
     script_type = req_body.get("scriptType", "python").lower()  # Default to python
 
     # Parse resource_info from the body using detection (same as Trigger endpoint)
-    (
-        _raw,
-        _source,
-        resource_name,
-        resource_group,
-        resource_id,
-        schema_id,
-        namespace,
-        pod,
-        deployment,
-        horizontalpodautoscaler,
-        job,
-        monitor_condition,
-        severity,
-        _payload,
-    ) = detection.parse_resource_fields(req_body.get("body")).values()
+    parsed_body = detection.parse_resource_fields(req_body.get("body"))
     resource_info = {
-        "_raw": _raw,
-        "resource_name": resource_name,
-        "resource_rg": resource_group,
-        "resource_id": resource_id,
-        "aks_namespace": namespace,
-        "aks_pod": pod,
-        "aks_deployment": deployment,
-        "aks_job": job,
-        "aks_horizontalpodautoscaler": horizontalpodautoscaler,
+        "_raw": parsed_body.get("_raw"),
+        "schema_id": parsed_body.get("schema_id"),
+        "resource_name": parsed_body.get("resource_name"),
+        "resource_rg": parsed_body.get("resource_group"),
+        "resource_id": parsed_body.get("resource_id"),
+        "aks_namespace": parsed_body.get("namespace"),
+        "aks_pod": parsed_body.get("pod"),
+        "aks_deployment": parsed_body.get("deployment"),
+        "aks_job": parsed_body.get("job"),
+        "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
         "team": "dev-test",
+        "payload": parsed_body.get("payload"),
     }
 
     if not script:
