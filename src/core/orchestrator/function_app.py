@@ -2766,8 +2766,8 @@ def dev_test_run(
             log_msg=api_body,
             oncall="false",
             initiator=initiator,
-            monitor_condition=monitor_condition or "Fired",
-            severity=severity or "Sev4",
+            monitor_condition=parsed_body.get("monitor_condition", "Fired"),
+            severity=parsed_body.get("severity", "Sev4"),
             resource_info=resource_info,
         )
         log_table.set(json.dumps(start_log, ensure_ascii=False))
