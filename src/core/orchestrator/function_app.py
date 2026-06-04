@@ -918,23 +918,22 @@ def Trigger(
             or resolve_jsm_apikey(route_params.get("team") or ""),
         }
     else:
-
         parsed_body = detection.parse_resource_fields(req)
         schema_id = parsed_body.get("schema_id")
-        resource_info =  {
-                "_raw": parsed_body.get("_raw"),
-                "schema_id": parsed_body.get("schema_id"),
-                "resource_name": parsed_body.get("resource_name"),
-                "resource_rg": parsed_body.get("resource_group"),
-                "resource_id": parsed_body.get("resource_id") ,
-                "aks_namespace": parsed_body.get("namespace"),
-                "aks_pod": parsed_body.get("pod"),
-                "aks_deployment": parsed_body.get("deployment"),
-                "aks_job": parsed_body.get("job"),
-                "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
-                "team": route_params.get("team"),
-                "payload": parsed_body.get("payload"),
-            }
+        resource_info = {
+            "_raw": parsed_body.get("_raw"),
+            "schema_id": parsed_body.get("schema_id"),
+            "resource_name": parsed_body.get("resource_name"),
+            "resource_rg": parsed_body.get("resource_group"),
+            "resource_id": parsed_body.get("resource_id"),
+            "aks_namespace": parsed_body.get("namespace"),
+            "aks_pod": parsed_body.get("pod"),
+            "aks_deployment": parsed_body.get("deployment"),
+            "aks_job": parsed_body.get("job"),
+            "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
+            "team": route_params.get("team"),
+            "payload": parsed_body.get("payload"),
+        }
 
         routing_info = {
             "team": route_params.get("team") or "",
@@ -2718,7 +2717,7 @@ def dev_test_run(
             "exec_id": exec_id,
             "oncall": "false",
             "initiator": initiator,
-            "monitor_condition": "Fired",
+            "monitor_condition": parsed_body.get("monitor_condition") or "Fired",
             "severity": parsed_body.get("severity") or "Sev4",
             "worker": capability,
             "group": "-",
