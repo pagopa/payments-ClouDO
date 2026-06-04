@@ -30,7 +30,14 @@ class AlertParser(ABC):
         ...
 
     @staticmethod
-    def _base_result(source: str, raw: str, payload: dict, schemaId: list[str], severity: str, condition: str) -> dict[str, Any]:
+    def _base_result(
+        source: str,
+        raw: str,
+        payload: dict,
+        schemaId: list[str],
+        severity: str,
+        condition: str,
+    ) -> dict[str, Any]:
         """Return the standard result skeleton with all fields at their zero values."""
         return {
             "_raw": raw,
@@ -114,7 +121,11 @@ class AzureMonitorParser(AlertParser):
             candidates.append(rid)
 
         resource_id: Optional[str] = next(
-            (x for x in candidates if isinstance(x, str) and x.startswith("/subscriptions/")),
+            (
+                x
+                for x in candidates
+                if isinstance(x, str) and x.startswith("/subscriptions/")
+            ),
             None,
         )
 
@@ -134,7 +145,9 @@ class AzureMonitorParser(AlertParser):
             config_items = essentials.get("configurationitems") or []
             if config_items and isinstance(config_items, list):
                 resource_name = config_items[0]
-            resource_name = resource_name or ctx.get("resourcename") or labels.get("resourcename")
+            resource_name = (
+                resource_name or ctx.get("resourcename") or labels.get("resourcename")
+            )
             resource_group = ctx.get("resourcegroup") or labels.get("resourcegroup")
             resource_id = ctx.get("resourceid") or labels.get("resourceid")
 
@@ -175,17 +188,24 @@ class AzureMonitorParser(AlertParser):
             if cand and cand != "kube-state-metrics":
                 job = cand
 
-        result = self._base_result(SOURCE_AZURE_MONITOR, compact_raw, {}, schema_ids, essentials.get("severity") or "", essentials.get("monitorcondition") or "")
+        result = self._base_result(
+            SOURCE_AZURE_MONITOR,
+            compact_raw,
+            {},
+            schema_ids,
+            essentials.get("severity") or "",
+            essentials.get("monitorcondition") or "",
+        )
         result.update(
             {
                 "resource_name": resource_name,
-                "resource_rg": resource_group,
+                "resource_group": resource_group,
                 "resource_id": resource_id,
                 "namespace": namespace,
                 "pod": pod,
                 "deployment": deployment,
                 "horizontalpodautoscaler": horizontalpodautoscaler,
-                "job": job
+                "job": job,
             }
         )
 
@@ -209,12 +229,14 @@ class GenericSourceParser(AlertParser):
 
     def parse(self, body: dict) -> dict[str, Any]:
         source = str(body.get("source") or "unknown").lower()
-        rule   = body.get("rule", "")
+        rule = body.get("rule", "")
         severity = body.get("severity", "")
         monitor_condition = body.get("monitorCondition", "")
         payload = body.get("payload") or {}
         compact_raw = json.dumps(body, separators=(",", ":"))
-        result = self._base_result(source, compact_raw, payload, [rule], severity, monitor_condition)
+        result = self._base_result(
+            source, compact_raw, payload, [rule], severity, monitor_condition
+        )
         return self._parse_payload(payload, result)
 
     def _parse_payload(self, payload: dict, result: dict) -> dict[str, Any]:
@@ -243,7 +265,7 @@ class ElasticParser(GenericSourceParser):
     def _parse_payload(self, payload: dict, result: dict) -> dict[str, Any]:
         elastic_data = {
             "type": payload.get("type"),
-            "attributes": payload.get("attributes")
+            "attributes": payload.get("attributes"),
         }
 
         if payload.get("type") == "aks":
@@ -269,9 +291,7 @@ class CloudoParser(GenericSourceParser):
     """
 
     def _parse_payload(self, payload: dict, result: dict) -> dict[str, Any]:
-        result.update({
-            "payload": json.dumps(payload)
-        })
+        result.update({"payload": json.dumps(payload)})
         return result
 
 
