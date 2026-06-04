@@ -230,8 +230,8 @@ class GenericSourceParser(AlertParser):
     def parse(self, body: dict) -> dict[str, Any]:
         source = str(body.get("source") or "unknown").lower()
         rule = body.get("rule", "")
-        severity = body.get("severity", "")
-        monitor_condition = body.get("monitorCondition", "")
+        severity = body.get("severity", "Sev4")
+        monitor_condition = body.get("monitorCondition", "Fired")
         payload = body.get("payload") or {}
         compact_raw = json.dumps(body, separators=(",", ":"))
         result = self._base_result(

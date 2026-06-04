@@ -2719,7 +2719,7 @@ def dev_test_run(
             "oncall": "false",
             "initiator": initiator,
             "monitor_condition": "Fired",
-            "severity": severity or "Sev4",
+            "severity": parsed_body.get("severity") or "Sev4",
             "worker": capability,
             "group": "-",
             "resource_info": resource_info or {},
