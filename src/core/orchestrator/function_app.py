@@ -920,8 +920,10 @@ def Trigger(
     else:
 
         parsed_body = detection.parse_resource_fields(req)
+        schema_id = parsed_body.get("schema_id")
         resource_info =  {
                 "_raw": parsed_body.get("_raw"),
+                "schema_id": parsed_body.get("schema_id"),
                 "resource_name": parsed_body.get("resource_name"),
                 "resource_rg": parsed_body.get("resource_group"),
                 "resource_id": parsed_body.get("resource_id") ,
