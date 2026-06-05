@@ -12,7 +12,7 @@ module "apim_api_cloudo_api_v1" {
   api_version         = "v1"
 
   # Product Association
-  product_ids = concat(var.api_product_ids, var.api_subscription_required ? [azurerm_api_management_product.cloudo.0.id] : [])
+  product_ids = concat(var.api_product_ids, var.create_cloudo_product ? ["${var.prefix}-cloudo-product"] : [])
 
   # API Display and Description
   display_name = "Cloudo API"
@@ -42,6 +42,8 @@ module "apim_api_cloudo_api_v1" {
 
   # Version Set
   version_set_id = azurerm_api_management_api_version_set.api_cloudo.0.id
+
+  depends_on = [azurerm_api_management_product.cloudo]
 }
 
 # API Version Set
