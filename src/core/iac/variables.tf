@@ -361,3 +361,9 @@ variable "cloudo_product_display_name" {
   description = "Display name for the Cloudo APIM product"
   default     = "Cloudo Product"
 }
+
+variable "cloudo_apim_user_email" {
+  type        = string
+  description = "Optional email for APIM subscription user; if empty a safe example.com fallback is used"
+  default     = ""
+}

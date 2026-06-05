@@ -80,7 +80,7 @@ resource "azurerm_api_management_user" "cloudo" {
   user_id             = "${var.prefix}-cloudo-api-user"
   first_name          = "Cloudo"
   last_name           = "API"
-  email               = "cloudo-api@${var.api_manager_hostname}"
+  email               = var.cloudo_apim_user_email != "" ? var.cloudo_apim_user_email : "cloudo-api-${replace(var.prefix, "_", "-")}@example.com"
   state               = "active"
 }
 
