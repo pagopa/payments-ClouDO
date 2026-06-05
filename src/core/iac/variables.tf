@@ -349,3 +349,15 @@ variable "api_backend_function_key" {
   default     = ""
   sensitive   = true
 }
+
+variable "create_cloudo_product" {
+  type        = bool
+  description = "Whether to create a dedicated Cloudo APIM product"
+  default     = true
+}
+
+variable "cloudo_product_display_name" {
+  type        = string
+  description = "Display name for the Cloudo APIM product"
+  default     = "Cloudo Product"
+}

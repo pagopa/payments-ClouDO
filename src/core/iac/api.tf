@@ -12,7 +12,7 @@ module "apim_api_cloudo_api_v1" {
   api_version         = "v1"
 
   # Product Association
-  product_ids = var.api_product_ids
+  product_ids = concat(var.api_product_ids, var.api_subscription_required ? [azurerm_api_management_product.cloudo.0.id] : [])
 
   # API Display and Description
   display_name = "Cloudo API"
@@ -53,4 +53,43 @@ resource "azurerm_api_management_api_version_set" "api_cloudo" {
   api_management_name = var.api_management_name
   display_name        = "Cloudo API"
   versioning_scheme   = "Segment"
+}
+
+# APIM Product for Cloudo
+resource "azurerm_api_management_product" "cloudo" {
+  count = var.api_management_name != "" && var.api_management_rg != "" && var.create_cloudo_product ? 1 : 0
+
+  resource_group_name   = var.api_management_rg
+  api_management_name   = var.api_management_name
+  product_id            = "${var.prefix}-cloudo-product"
+  display_name          = var.cloudo_product_display_name
+  subscription_required = var.api_subscription_required
+  approval_required     = false
+  published             = true
+  description           = "API Product for Cloudo Orchestrator - Payments cloud runbook engine"
+}
+
+# APIM User for Cloudo (needed for subscription)
+resource "azurerm_api_management_user" "cloudo" {
+  count = var.api_management_name != "" && var.api_management_rg != "" && var.api_subscription_required && var.create_cloudo_product ? 1 : 0
+
+  resource_group_name = var.api_management_rg
+  api_management_name = var.api_management_name
+  user_id             = "${var.prefix}-cloudo-api-user"
+  first_name          = "Cloudo"
+  last_name           = "API"
+  email               = "cloudo-api@${var.api_manager_hostname}"
+  state               = "active"
+}
+
+# APIM Subscription for Cloudo (if subscription_required = true)
+resource "azurerm_api_management_subscription" "cloudo" {
+  count = var.api_management_name != "" && var.api_management_rg != "" && var.api_subscription_required && var.create_cloudo_product ? 1 : 0
+
+  resource_group_name = var.api_management_rg
+  api_management_name = var.api_management_name
+  user_id             = azurerm_api_management_user.cloudo.0.id
+  product_id          = azurerm_api_management_product.cloudo.0.id
+  display_name        = "Cloudo API Subscription"
+  state               = "active"
 }
