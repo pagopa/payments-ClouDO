@@ -82,3 +82,13 @@ output "cloudo_api_url" {
   value       = "https://${var.api_manager_hostname}/${trim(var.api_path, "/")}/Trigger"
   description = "The public URL of the Cloudo Trigger endpoint"
 }
+
+output "cloudo_product_id" {
+  value       = try(azurerm_api_management_product.cloudo.0.id, "")
+  description = "The ID of the Cloudo APIM product"
+}
+
+output "cloudo_subscription_id" {
+  value       = try(azurerm_api_management_subscription.cloudo.0.id, "")
+  description = "The ID of the Cloudo APIM subscription"
+}
