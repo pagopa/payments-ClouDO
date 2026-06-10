@@ -2231,15 +2231,8 @@ def reject(
 # =========================
 
 
-@app.queue_trigger(
-    arg_name="msg", queue_name=NOTIFICATION_QUEUE_NAME, connection=STORAGE_CONNECTION
-)
-@app.table_output(
-    arg_name="log_table",
-    table_name=TABLE_NAME,
-    connection=STORAGE_CONN,
-)
-def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
+def _process_receiver_body(body: dict, log_table: func.Out[str]) -> None:
+    """Internal helper function to process receiver message body (shared by HTTP and queue)."""
     import utils
     from escalation import format_jsm_description, send_jsm_alert, send_slack_execution
 
@@ -2250,7 +2243,6 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
         execute_actions = None
 
     try:
-        body = json.loads(msg.get_body().decode("utf-8"))
         receiver_prefix = _build_exec_log_prefix(
             body.get("exec_id"), body.get("initiator")
         )
@@ -2569,6 +2561,78 @@ def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
             logging.error(f"[{exec_id}] smart routing failed: {e}")
     else:
         logging.warning("Routing module not available, keeping legacy notifications")
+
+
+# =========================
+# Queue Trigger: Receiver
+# =========================
+
+
+@app.queue_trigger(
+    arg_name="msg", queue_name=NOTIFICATION_QUEUE_NAME, connection=STORAGE_CONNECTION
+)
+@app.table_output(
+    arg_name="log_table",
+    table_name=TABLE_NAME,
+    connection=STORAGE_CONN,
+)
+def Receiver(msg: func.QueueMessage, log_table: func.Out[str]) -> None:
+    """Queue trigger endpoint for receiving execution status from workers."""
+    try:
+        body = json.loads(msg.get_body().decode("utf-8"))
+        _process_receiver_body(body, log_table)
+    except Exception as e:
+        logging.error(f"[Receiver] Failed to process queue message: {e}")
+
+
+# =========================
+# HTTP Endpoint: Receiver (fast path)
+# =========================
+
+
+@app.route(
+    route="receiver",
+    methods=[func.HttpMethod.POST],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+@app.table_output(
+    arg_name="log_table",
+    table_name=TABLE_NAME,
+    connection=STORAGE_CONN,
+)
+def ReceiverHttp(req: func.HttpRequest, log_table: func.Out[str]) -> func.HttpResponse:
+    """HTTP endpoint for direct status calls from workers (faster than queue)."""
+    try:
+        body = req.get_json()
+        if not isinstance(body, dict):
+            return func.HttpResponse(
+                json.dumps(
+                    {"error": "Invalid JSON: expected object"}, ensure_ascii=False
+                ),
+                status_code=400,
+                mimetype="application/json",
+            )
+        _process_receiver_body(body, log_table)
+        return func.HttpResponse(
+            json.dumps({"status": "ok", "message": "Status received"}),
+            status_code=200,
+            mimetype="application/json",
+        )
+    except ValueError as e:
+        return func.HttpResponse(
+            json.dumps({"error": f"Invalid JSON: {e}"}, ensure_ascii=False),
+            status_code=400,
+            mimetype="application/json",
+        )
+    except Exception as e:
+        logging.error(f"[ReceiverHttp] Error processing request: {e}")
+        return func.HttpResponse(
+            json.dumps(
+                {"error": f"Internal error: {type(e).__name__}"}, ensure_ascii=False
+            ),
+            status_code=500,
+            mimetype="application/json",
+        )
 
 
 # =========================

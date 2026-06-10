@@ -164,6 +164,7 @@ module "cloudo_worker" {
     "DOTNET_RUNNING_IN_CONTAINER"         = true
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
     "ORCHESTRATOR_URL"                    = "https://${module.cloudo_orchestrator.default_hostname}/api/workers/register"
+    "RECEIVER_URL"                        = "https://${module.cloudo_orchestrator.default_hostname}/api/receiver"
     "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
     "WORKER_CAPABILITY"                   = each.value
     "CLOUDO_ENVIRONMENT"                  = var.env
