@@ -276,7 +276,7 @@ class ElasticParser(GenericSourceParser):
                 "resource_group": alert_attributes.pop("cluster_rg_name", ""),
                 "deployment": alert_attributes.pop("deployment", ""),
                 "horizontalpodautoscaler": alert_attributes.pop("hpa", ""),
-                "job": alert_attributes.pop("job", "")
+                "job": alert_attributes.pop("job", ""),
             }
             result.update(aks_data)
 
