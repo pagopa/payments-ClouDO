@@ -9,6 +9,9 @@ import {
   HiOutlineDatabase,
   HiOutlineArrowRight,
   HiOutlineServer,
+  HiOutlineLightningBolt,
+  HiOutlineTrendingUp,
+  HiOutlineChartBar,
 } from "react-icons/hi";
 import { MdOutlineSpaceDashboard } from "react-icons/md";
 
@@ -19,6 +22,43 @@ interface DashboardStats {
   pendingApprovals: number;
   recentExecutions: Record<string, unknown>[];
   liveProcesses: Record<string, unknown>[];
+  execTrend: number[];
+  successTrend: number[];
+  statusBreakdown: Record<string, number>;
+  topRunbooks: { name: string; count: number; success: number }[];
+  failedToday: number;
+  avgDurationMs: number;
+}
+
+const STATUS_BAR_COLOR: Record<string, string> = {
+  succeeded: "bg-cloudo-ok",
+  completed: "bg-cloudo-ok",
+  failed: "bg-cloudo-err",
+  error: "bg-cloudo-err",
+  running: "bg-cloudo-accent",
+  routed: "bg-cloudo-accent",
+  accepted: "bg-cloudo-accent",
+  pending: "bg-cloudo-warn",
+  rejected: "bg-cloudo-warn",
+  stopped: "bg-cloudo-muted",
+  skipped: "bg-cloudo-muted",
+};
+
+function fmtDuration(ms: number): string {
+  if (!ms || ms <= 0) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m ${Math.round(s % 60)}s`;
+}
+
+function greeting(d: Date): string {
+  const h = d.getHours();
+  if (h < 6) return "Good night";
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
 }
 
 export default function DashboardPage() {
@@ -29,9 +69,16 @@ export default function DashboardPage() {
     pendingApprovals: 0,
     recentExecutions: [],
     liveProcesses: [],
+    execTrend: [],
+    successTrend: [],
+    statusBreakdown: {},
+    topRunbooks: [],
+    failedToday: 0,
+    avgDurationMs: 0,
   });
   const [loading, setLoading] = useState(true);
   const [isBackendDown, setIsBackendDown] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const [user, setUser] = useState<{ role: string } | null>(null);
 
@@ -165,6 +212,78 @@ export default function DashboardPage() {
         )
         .slice(0, 5);
 
+      // Real hourly trends over the last 12 hours (no more fake sparklines).
+      const HOURS = 12;
+      const nowTs = Date.now();
+      const execBuckets = new Array(HOURS).fill(0);
+      const succBuckets = new Array(HOURS).fill(0);
+      const finishedBuckets = new Array(HOURS).fill(0);
+
+      finalExecutions.forEach((e: Record<string, unknown>) => {
+        const t = new Date(e.RequestedAt as string).getTime();
+        if (isNaN(t)) return;
+        const hoursAgo = Math.floor((nowTs - t) / 3600000);
+        if (hoursAgo < 0 || hoursAgo >= HOURS) return;
+        const idx = HOURS - 1 - hoursAgo;
+        execBuckets[idx]++;
+        const st = ((e.Status as string) || "").toLowerCase();
+        if (["succeeded", "completed", "failed", "error"].includes(st)) {
+          finishedBuckets[idx]++;
+          if (["succeeded", "completed"].includes(st)) succBuckets[idx]++;
+        }
+      });
+
+      const execTrend = execBuckets;
+      const successTrend = finishedBuckets.map((tot, i) =>
+        tot > 0 ? (succBuckets[i] / tot) * 100 : 0,
+      );
+
+      // Status distribution + top runbooks from final executions.
+      const statusBreakdown: Record<string, number> = {};
+      const runbookMap: Record<string, { count: number; success: number }> = {};
+      finalExecutions.forEach((e: Record<string, unknown>) => {
+        const st = ((e.Status as string) || "unknown").toLowerCase();
+        statusBreakdown[st] = (statusBreakdown[st] || 0) + 1;
+        const rb = (e.Runbook as string) || "Unknown";
+        const entry = (runbookMap[rb] ??= { count: 0, success: 0 });
+        entry.count++;
+        if (["succeeded", "completed"].includes(st)) entry.success++;
+      });
+      const topRunbooks = Object.entries(runbookMap)
+        .map(([name, s]) => ({ name, count: s.count, success: s.success }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      // Average execution duration (min in-progress -> max terminal per ExecId).
+      const durMap = new Map<string, { start?: number; end?: number }>();
+      executions.forEach((log: Record<string, unknown>) => {
+        const id = log.ExecId as string;
+        if (!id) return;
+        const ts = new Date(log.RequestedAt as string).getTime();
+        if (isNaN(ts)) return;
+        const st = ((log.Status as string) || "").toLowerCase();
+        let d = durMap.get(id);
+        if (!d) {
+          d = {};
+          durMap.set(id, d);
+        }
+        if (["accepted", "pending", "routed", "scheduled"].includes(st)) {
+          if (d.start === undefined || ts < d.start) d.start = ts;
+        }
+        if (["succeeded", "completed", "failed", "error"].includes(st)) {
+          if (d.end === undefined || ts > d.end) d.end = ts;
+        }
+      });
+      let durSum = 0;
+      let durCount = 0;
+      durMap.forEach((d) => {
+        if (d.start !== undefined && d.end !== undefined && d.end >= d.start) {
+          durSum += d.end - d.start;
+          durCount++;
+        }
+      });
+      const avgDurationMs = durCount > 0 ? durSum / durCount : 0;
+
       const totalFinished = succeeded + failed;
       setStats({
         totalExecutions: finalExecutions.length,
@@ -176,8 +295,15 @@ export default function DashboardPage() {
         pendingApprovals: pending,
         recentExecutions: sortedExecutions,
         liveProcesses: allLiveProcesses as Record<string, unknown>[],
+        execTrend,
+        successTrend,
+        statusBreakdown,
+        topRunbooks,
+        failedToday: failed,
+        avgDurationMs,
       });
       setIsBackendDown(false);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
       setIsBackendDown(true);
@@ -218,6 +344,12 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          {lastUpdated && !isBackendDown && (
+            <span className="hidden md:flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cloudo-muted/60">
+              <HiOutlineClock className="w-3.5 h-3.5" />
+              Sync {lastUpdated.toLocaleTimeString([], { hour12: false })}
+            </span>
+          )}
           <div className="flex items-center gap-2 px-3 py-1 bg-cloudo-accent/10 border border-cloudo-border">
             <span className="relative flex h-2 w-2">
               <span
@@ -246,30 +378,80 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-8 space-y-8">
-        <div className="max-w-[1400px] mx-auto space-y-8">
+      <div className="flex-1 overflow-auto p-5 sm:p-6 lg:p-8">
+        <div className="max-w-[1400px] mx-auto space-y-6">
+          {/* Welcome Hero */}
+          <div className="relative overflow-hidden bg-cloudo-panel border border-cloudo-border p-5 sm:p-6">
+            <div className="absolute -right-10 -top-10 w-48 h-48 bg-cloudo-accent/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cloudo-accent">
+                  {greeting(new Date())}
+                  {user?.role ? ` // ${user.role}` : ""}
+                </p>
+                <h2 className="text-xl font-black tracking-tight text-cloudo-text">
+                  Welcome back to Cloudo
+                </h2>
+                <p className="text-[12px] font-bold text-cloudo-muted/80 tracking-wide max-w-xl">
+                  {stats.totalExecutions.toLocaleString()} workloads today ·{" "}
+                  <span className="text-cloudo-ok">{stats.successRate}%</span>{" "}
+                  success ·{" "}
+                  <span className="text-cloudo-text">
+                    {stats.activeWorkers}
+                  </span>{" "}
+                  active nodes ·{" "}
+                  <span
+                    className={
+                      stats.liveProcesses.length > 0
+                        ? "text-cloudo-accent"
+                        : "text-cloudo-muted"
+                    }
+                  >
+                    {stats.liveProcesses.length} running
+                  </span>
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <a
+                  href="/studio"
+                  className="flex-1 md:flex-none justify-center flex items-center gap-2 px-5 py-2.5 bg-cloudo-accent text-cloudo-dark text-[11px] font-black uppercase tracking-widest hover:opacity-90 transition-all"
+                >
+                  <HiOutlineLightningBolt className="w-4 h-4" />
+                  Open Studio
+                </a>
+                <a
+                  href="/executions"
+                  className="flex-1 md:flex-none justify-center flex items-center gap-2 px-5 py-2.5 border border-cloudo-border text-cloudo-text text-[11px] font-black uppercase tracking-widest hover:border-cloudo-accent hover:text-cloudo-accent transition-all"
+                >
+                  <HiOutlineChartBar className="w-4 h-4" />
+                  Executions
+                </a>
+              </div>
+            </div>
+          </div>
+
           {/* Stats Cards Row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <StatCard
               title="Workload Executions"
               value={stats.totalExecutions}
               icon={<HiOutlineTerminal className="text-cloudo-accent" />}
               status="TOTAL_LOAD"
-              trend={[10, 20, 15, 30, 25, 40, 35]}
+              trend={stats.execTrend}
             />
             <StatCard
               title="Success Rate"
               value={`${stats.successRate}%`}
               icon={<HiOutlineCheckCircle className="text-cloudo-ok" />}
               status="COMPLIANCE_RATIO"
-              trend={[95, 98, 97, 99, 100, 98, 99]}
+              trend={stats.successTrend}
+              trendColor="var(--color-cloudo-ok)"
             />
             <StatCard
               title="Compute Nodes"
               value={stats.activeWorkers}
               icon={<HiOutlineServer className="text-cloudo-accent" />}
               status="ACTIVE_CAPACITY"
-              trend={[2, 3, 3, 4, 4, 4, 4]}
             />
             <StatCard
               title="Governance Queue"
@@ -277,13 +459,181 @@ export default function DashboardPage() {
               icon={<HiOutlineClock className="text-cloudo-warn" />}
               status="AWAITING_SIG"
               highlight={stats.pendingApprovals > 0}
-              trend={[5, 2, 4, 1, 0, 2, 1]}
             />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Insight Widgets Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+            {/* System Health */}
+            <div className="flex flex-col gap-4">
+              <SectionTitle title="Runbook Status" />
+              <div className="bg-cloudo-panel border border-cloudo-border p-5 sm:p-6 space-y-5 flex-1">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/70">
+                    Reliability
+                  </span>
+                  <span
+                    className={`text-2xl font-black tracking-tighter ${
+                      stats.successRate >= 95
+                        ? "text-cloudo-ok"
+                        : stats.successRate >= 80
+                          ? "text-cloudo-warn"
+                          : "text-cloudo-err"
+                    }`}
+                  >
+                    {stats.successRate}%
+                  </span>
+                </div>
+
+                {/* Stacked status bar */}
+                <div className="space-y-3">
+                  <div className="flex w-full h-2.5 overflow-hidden bg-white/5">
+                    {Object.entries(stats.statusBreakdown).length === 0 ? (
+                      <div className="w-full bg-cloudo-muted/20" />
+                    ) : (
+                      Object.entries(stats.statusBreakdown)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([st, count]) => (
+                          <div
+                            key={st}
+                            className={`${
+                              STATUS_BAR_COLOR[st] || "bg-cloudo-muted"
+                            } h-full`}
+                            style={{
+                              width: `${
+                                (count / Math.max(stats.totalExecutions, 1)) *
+                                100
+                              }%`,
+                            }}
+                            title={`${st}: ${count}`}
+                          />
+                        ))
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    {Object.entries(stats.statusBreakdown)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 6)
+                      .map(([st, count]) => (
+                        <div
+                          key={st}
+                          className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest"
+                        >
+                          <span
+                            className={`w-2 h-2 shrink-0 ${
+                              STATUS_BAR_COLOR[st] || "bg-cloudo-muted"
+                            }`}
+                          />
+                          <span className="text-cloudo-muted truncate flex-1">
+                            {st}
+                          </span>
+                          <span className="text-cloudo-text font-mono">
+                            {count}
+                          </span>
+                        </div>
+                      ))}
+                    {Object.keys(stats.statusBreakdown).length === 0 && (
+                      <span className="text-[10px] text-cloudo-muted/50 italic uppercase tracking-widest">
+                        NO_DATA
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Runbooks */}
+            <div className="flex flex-col gap-4">
+              <SectionTitle title="Top Runbooks" href="/analytics" />
+              <div className="bg-cloudo-panel border border-cloudo-border p-5 sm:p-6 flex-1">
+                {stats.topRunbooks.length === 0 ? (
+                  <div className="py-12 text-center text-cloudo-muted/50 text-xs italic uppercase tracking-widest">
+                    NO_ACTIVE_RUNBOOKS
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {stats.topRunbooks.map((rb) => {
+                      const rate = rb.count ? (rb.success / rb.count) * 100 : 0;
+                      return (
+                        <div key={rb.name} className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-widest">
+                            <span className="text-cloudo-text truncate max-w-[60%]">
+                              {rb.name}
+                            </span>
+                            <span className="text-cloudo-muted font-mono">
+                              {rb.count} · {rate.toFixed(0)}%
+                            </span>
+                          </div>
+                          <div className="w-full h-1 bg-white/5 overflow-hidden">
+                            <div
+                              className={`h-full ${
+                                rate >= 95
+                                  ? "bg-cloudo-ok"
+                                  : rate >= 70
+                                    ? "bg-cloudo-warn"
+                                    : "bg-cloudo-err"
+                              }`}
+                              style={{ width: `${rate}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Throughput & Latency */}
+            <div className="flex flex-col gap-4">
+              <SectionTitle title="Throughput & Latency" />
+              <div className="bg-cloudo-panel border border-cloudo-border p-5 sm:p-6 flex-1 flex flex-col gap-5">
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted/60">
+                      Avg Duration
+                    </p>
+                    <p className="text-2xl font-black tracking-tighter text-cloudo-text mt-1">
+                      {fmtDuration(stats.avgDurationMs)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted/60">
+                      Failed Today
+                    </p>
+                    <p
+                      className={`text-2xl font-black tracking-tighter mt-1 ${
+                        stats.failedToday > 0
+                          ? "text-cloudo-err"
+                          : "text-cloudo-ok"
+                      }`}
+                    >
+                      {stats.failedToday}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-auto space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-cloudo-muted/60">
+                    <span className="flex items-center gap-1.5">
+                      <HiOutlineTrendingUp className="w-3.5 h-3.5" />
+                      12h Throughput
+                    </span>
+                    <span className="font-mono text-cloudo-text">
+                      {stats.execTrend.reduce((a, b) => a + b, 0)} exec
+                    </span>
+                  </div>
+                  <div className="bg-cloudo-dark/40 border border-cloudo-border/50 p-3">
+                    <BigSparkline data={stats.execTrend} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Operational Stream e Live Worker Processes */}
-            <div className="lg:col-span-2 space-y-4">
+            <div className="lg:col-span-2 flex flex-col gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-4 bg-cloudo-accent" />
                 <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">
@@ -359,7 +709,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-4 bg-cloudo-accent" />
                 <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">
@@ -372,7 +722,7 @@ export default function DashboardPage() {
                   View All <HiOutlineArrowRight className="w-3 h-3" />
                 </a>
               </div>
-              <div className="bg-cloudo-panel border border-cloudo-border p-4 space-y-3 min-h-[320px] max-h-[500px] overflow-y-auto custom-scrollbar">
+              <div className="bg-cloudo-panel border border-cloudo-border p-4 space-y-3 flex-1 min-h-[320px] max-h-[500px] overflow-y-auto custom-scrollbar">
                 {stats.liveProcesses.length === 0 ? (
                   <div className="py-20 text-center opacity-50 flex flex-col items-center gap-3">
                     <HiOutlineServer className="w-8 h-8" />
@@ -416,7 +766,7 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-2 pt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-2">
                 <QuickLink
                   icon={<HiOutlineDatabase />}
                   label="Schemas"
@@ -448,6 +798,7 @@ function StatCard({
   status,
   highlight = false,
   trend,
+  trendColor = "var(--color-cloudo-accent)",
 }: {
   title: string;
   value: string | number;
@@ -455,42 +806,160 @@ function StatCard({
   status: string;
   highlight?: boolean;
   trend?: number[];
+  trendColor?: string;
 }) {
+  const hasTrend = trend && trend.some((v) => v > 0);
   return (
-    <div className="bg-cloudo-panel border border-cloudo-border p-6 flex items-center justify-between relative overflow-hidden group">
+    <div className="bg-cloudo-panel border border-cloudo-border p-4 sm:p-6 flex items-center justify-between gap-3 relative overflow-hidden group">
       <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-accent/20" />
-      <div className="relative z-10">
-        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/80">
+      <div className="relative z-10 min-w-0">
+        <p className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-muted/80 truncate">
           {title}
         </p>
         <p
-          className={`text-3xl font-black mt-1 ${
+          className={`text-2xl sm:text-3xl font-black mt-1 ${
             highlight ? "text-cloudo-warn" : "text-cloudo-text"
           } tracking-tighter`}
         >
           {value}
         </p>
         <div className="flex items-center gap-2 mt-2">
-          <p className="text-[11px] font-bold text-cloudo-muted/80 uppercase tracking-[0.1em]">
+          <p className="text-[10px] sm:text-[11px] font-bold text-cloudo-muted/80 uppercase tracking-[0.1em] truncate">
             {status}
           </p>
-          {trend && trend.length > 0 && (
-            <div className="flex items-end gap-0.5 h-3">
-              {trend.map((v, i) => (
-                <div
-                  key={i}
-                  className="w-1 bg-cloudo-accent/30"
-                  style={{ height: `${(v / Math.max(...trend)) * 100}%` }}
-                />
-              ))}
-            </div>
-          )}
+          {hasTrend && <Sparkline data={trend!} color={trendColor} />}
         </div>
       </div>
-      <div className="p-3 bg-cloudo-accent/10 border border-cloudo-border text-xl shrink-0">
+      <div className="hidden sm:block p-3 bg-cloudo-accent/10 border border-cloudo-border text-xl shrink-0">
         {icon}
       </div>
     </div>
+  );
+}
+
+function Sparkline({
+  data,
+  color = "var(--color-cloudo-accent)",
+}: {
+  data: number[];
+  color?: string;
+}) {
+  if (!data || data.length === 0) return null;
+  const W = 72;
+  const H = 18;
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const n = data.length;
+  const pts = data.map((v, i) => {
+    const x = n > 1 ? (i / (n - 1)) * W : W / 2;
+    const y = H - 2 - ((v - min) / range) * (H - 4);
+    return [x, y] as const;
+  });
+  const line = pts
+    .map(
+      (p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`,
+    )
+    .join(" ");
+  const area = `${line} L${W},${H} L0,${H} Z`;
+  const last = pts[n - 1];
+  const gradId = `spark-${color.replace(/[^a-z]/gi, "")}`;
+
+  return (
+    <svg
+      width={W}
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      className="overflow-visible opacity-80 group-hover:opacity-100 transition-opacity"
+    >
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${gradId})`} />
+      <path
+        d={line}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <circle cx={last[0]} cy={last[1]} r="1.6" fill={color} />
+    </svg>
+  );
+}
+
+function SectionTitle({ title, href }: { title: string; href?: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-1.5 h-4 bg-cloudo-accent" />
+      <h2 className="text-sm font-black uppercase tracking-[0.4em] text-cloudo-text">
+        {title}
+      </h2>
+      {href && (
+        <a
+          href={href}
+          className="ml-auto text-[10px] font-black uppercase tracking-widest text-cloudo-accent hover:text-cloudo-text transition-colors flex items-center gap-1"
+        >
+          View All <HiOutlineArrowRight className="w-3 h-3" />
+        </a>
+      )}
+    </div>
+  );
+}
+
+function BigSparkline({ data }: { data: number[] }) {
+  const color = "var(--color-cloudo-accent)";
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-12 flex items-center justify-center text-[10px] text-cloudo-muted/50 italic uppercase tracking-widest">
+        NO_TREND_DATA
+      </div>
+    );
+  }
+  const W = 280;
+  const H = 48;
+  const max = Math.max(...data, 1);
+  const n = data.length;
+  const pts = data.map((v, i) => {
+    const x = n > 1 ? (i / (n - 1)) * W : W / 2;
+    const y = H - 4 - (v / max) * (H - 8);
+    return [x, y] as const;
+  });
+  const line = pts
+    .map(
+      (p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`,
+    )
+    .join(" ");
+  const area = `${line} L${W},${H} L0,${H} Z`;
+  return (
+    <svg
+      width="100%"
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      className="block"
+    >
+      <defs>
+        <linearGradient id="bigSpark" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill="url(#bigSpark)" />
+      <path
+        d={line}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        vectorEffect="non-scaling-stroke"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
