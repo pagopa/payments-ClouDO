@@ -145,40 +145,13 @@ function LogsPanelContent() {
         if (status) params.set("status", status);
         if (query) params.set("q", query);
         if (limit) params.set("limit", limit);
+        params.set("latestOnly", "true");
 
         const res = await cloudoFetch(`/logs/query?${params}`);
         const data = await res.json();
-        const rawLogs = data.items || [];
-
-        // Group by ExecId and keep the final status (highest priority wins)
-        const groupedByExecId = new Map<string, LogEntry>();
-
-        rawLogs.forEach((log: LogEntry) => {
-          const logExecId = log.ExecId;
-          const existing = groupedByExecId.get(logExecId);
-
-          if (!existing) {
-            groupedByExecId.set(logExecId, log);
-          } else {
-            // Keep the entry with higher priority status
-            const currentPriority =
-              statusPriority[log.Status?.toLowerCase()] || 0;
-            const existingPriority =
-              statusPriority[existing.Status?.toLowerCase()] || 0;
-
-            if (currentPriority > existingPriority) {
-              groupedByExecId.set(logExecId, log);
-            } else if (currentPriority === existingPriority) {
-              // If same priority, keep the most recent
-              if (log.RequestedAt > existing.RequestedAt) {
-                groupedByExecId.set(logExecId, log);
-              }
-            }
-          }
-        });
-
-        const finalLogs = Array.from(groupedByExecId.values()).sort((a, b) =>
-          b.RequestedAt.localeCompare(a.RequestedAt),
+        const finalLogs: LogEntry[] = ((data.items || []) as LogEntry[]).sort(
+          (a: LogEntry, b: LogEntry) =>
+            b.RequestedAt.localeCompare(a.RequestedAt),
         );
         setLogs(finalLogs);
 
@@ -1216,6 +1189,7 @@ function ExecutionTimeline({
         params.set("partitionKey", partitionKey);
         params.set("execId", execId);
         params.set("limit", "100");
+        params.set("latestOnly", "false");
 
         const res = await cloudoFetch(`/logs/query?${params}`);
         const data = await res.json();
@@ -1223,7 +1197,8 @@ function ExecutionTimeline({
         // Sort all logs chronologically for this execution by time and priority
         const allLogs = (data.items || []).sort((a: LogEntry, b: LogEntry) => {
           const priorityDiff =
-            (statusPriority[a.Status] ?? 0) - (statusPriority[b.Status] ?? 0);
+            (statusPriority[a.Status?.toLowerCase()] ?? 0) -
+            (statusPriority[b.Status?.toLowerCase()] ?? 0);
           if (priorityDiff !== 0) return priorityDiff;
           return a.RequestedAt.localeCompare(b.RequestedAt);
         });

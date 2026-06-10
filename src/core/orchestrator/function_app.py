@@ -50,6 +50,23 @@ if os.getenv("LOCAL_DEV", "false").lower() != "true":
 else:
     AUTH = func.AuthLevel.ANONYMOUS
 
+STATUS_PRIORITY: dict[str, int] = {
+    "succeeded": 5,
+    "completed": 5,
+    "failed": 4,
+    "error": 4,
+    "running": 3,
+    "skipped": 3,
+    "rejected": 3,
+    "stopped": 3,
+    "accepted": 2,
+    "pending": 1,
+}
+
+
+def _status_priority(status: Any) -> int:
+    return STATUS_PRIORITY.get(str(status or "").strip().lower(), 0)
+
 
 def _b64url_encode(data: bytes) -> str:
     # Base64 URL-safe without padding
@@ -3006,6 +3023,15 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
 
         exec_id = (req.params.get("execId") or "").strip()
         status = (req.params.get("status") or "").strip().lower()
+        latest_only_raw = (
+            req.params.get("latestOnly") or req.params.get("latest_only") or "true"
+        )
+        latest_only = str(latest_only_raw).strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
         q = (req.params.get("q") or "").strip()
         from_dt = (req.params.get("from") or "").strip()
         to_dt = (req.params.get("to") or "").strip()
@@ -3081,7 +3107,14 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
             ok = True
             if exec_id and str(e.get("ExecId") or "").strip() != exec_id:
                 ok = False
-            if ok and status and str(e.get("Status") or "").strip().lower() != status:
+            # When latest_only is enabled we apply status filter after collapse,
+            # so it matches the final state of each execution.
+            if (
+                ok
+                and (not latest_only)
+                and status
+                and str(e.get("Status") or "").strip().lower() != status
+            ):
                 ok = False
             if ok and q and not contains_any(e, q):
                 ok = False
@@ -3096,6 +3129,55 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
                         ok = False
             if ok:
                 filtered.append(e)
+
+        # Keep one entity per ExecId based on status priority and recency.
+        if latest_only:
+            grouped: dict[str, dict[str, Any]] = {}
+            for e in filtered:
+                e_exec_id = str(e.get("ExecId") or "").strip()
+                if not e_exec_id:
+                    continue
+
+                existing = grouped.get(e_exec_id)
+                if not existing:
+                    grouped[e_exec_id] = e
+                    continue
+
+                current_priority = _status_priority(e.get("Status"))
+                existing_priority = _status_priority(existing.get("Status"))
+                if current_priority > existing_priority:
+                    grouped[e_exec_id] = e
+                    continue
+                if current_priority < existing_priority:
+                    continue
+
+                current_dt = parse_dt_local(str(e.get("RequestedAt") or ""))
+                existing_dt = parse_dt_local(str(existing.get("RequestedAt") or ""))
+
+                if current_dt and existing_dt:
+                    if current_dt > existing_dt:
+                        grouped[e_exec_id] = e
+                        continue
+                    if current_dt < existing_dt:
+                        continue
+                elif current_dt and not existing_dt:
+                    grouped[e_exec_id] = e
+                    continue
+                elif existing_dt and not current_dt:
+                    continue
+
+                # Deterministic tie-breaker when priority/time are equal.
+                if str(e.get("RowKey") or "") > str(existing.get("RowKey") or ""):
+                    grouped[e_exec_id] = e
+
+            filtered = list(grouped.values())
+
+            if status:
+                filtered = [
+                    e
+                    for e in filtered
+                    if str(e.get("Status") or "").strip().lower() == status
+                ]
 
         # Order by RequestedAt
         def key_dt(e: dict):
