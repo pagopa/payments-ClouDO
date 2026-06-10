@@ -1062,7 +1062,11 @@ function DonutChart({
     );
   }
 
-  let acc = 0;
+  const arcs = segments.map((s, i) => {
+    const offset =
+      segments.slice(0, i).reduce((sum, x) => sum + x.value, 0) / total;
+    return { ...s, frac: s.value / total, offset };
+  });
 
   return (
     <div className="flex flex-col items-center gap-5">
@@ -1082,10 +1086,9 @@ function DonutChart({
             strokeOpacity="0.25"
             strokeWidth={stroke}
           />
-          {segments.map((s) => {
-            const frac = s.value / total;
-            const dash = frac * c;
-            const seg = (
+          {arcs.map((s) => {
+            const dash = s.frac * c;
+            return (
               <circle
                 key={s.label}
                 cx={cx}
@@ -1095,11 +1098,9 @@ function DonutChart({
                 stroke={s.color}
                 strokeWidth={stroke}
                 strokeDasharray={`${dash} ${c - dash}`}
-                strokeDashoffset={-acc * c}
+                strokeDashoffset={-s.offset * c}
               />
             );
-            acc += frac;
-            return seg;
           })}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
