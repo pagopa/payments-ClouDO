@@ -46,11 +46,11 @@ class AlertParser(ABC):
             "resource_rg": None,
             "resource_id": None,
             "schema_id": schemaId,
-            "aks_namespace": None,
-            "aks_pod": None,
-            "aks_deployment": None,
-            "aks_horizontalpodautoscaler": None,
-            "aks_job": None,
+            "namespace": None,
+            "pod": None,
+            "deployment": None,
+            "horizontalpodautoscaler": None,
+            "job": None,
             "monitorCondition": condition,
             "severity": severity,
             "payload": payload,
@@ -271,9 +271,12 @@ class ElasticParser(GenericSourceParser):
         if payload.get("type") == "aks":
             alert_attributes = payload.get("attributes", {})
             aks_data = {
-                "namespace": alert_attributes.pop("namespace"),
-                "resource_name": alert_attributes.pop("cluster_name"),
-                "resource_group": alert_attributes.pop("cluster_rg_name"),
+                "namespace": alert_attributes.pop("namespace", ""),
+                "resource_name": alert_attributes.pop("cluster_name", ""),
+                "resource_group": alert_attributes.pop("cluster_rg_name", ""),
+                "deployment": alert_attributes.pop("deployment", ""),
+                "horizontalpodautoscaler": alert_attributes.pop("hpa", ""),
+                "job": alert_attributes.pop("job", ""),
             }
             result.update(aks_data)
 
