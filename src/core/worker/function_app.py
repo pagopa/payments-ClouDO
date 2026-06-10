@@ -33,6 +33,10 @@ MAX_INLINE_LOG_BYTES = int(
 LOGS_BLOB_CONTAINER = os.environ.get("LOGS_BLOB_CONTAINER", "runbook-logs")
 LOGS_REF_PREFIX = "blobref://"
 
+# Receiver endpoint configuration
+RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://orchestrator/api/receiver")
+RECEIVER_HTTP_TIMEOUT = int(os.environ.get("RECEIVER_HTTP_TIMEOUT", "5"))
+
 # GitHub fallback configuration
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "pagopa/payments-cloudo")
 GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
@@ -148,6 +152,68 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
         "sent_at": _format_requested_at(),
     }
     return json.dumps(message, ensure_ascii=False)
+
+
+def _send_status_to_receiver(message_json: str, payload: dict) -> bool:
+    """
+    Try to send status via HTTP first (fast path).
+    Returns True if successful, False if should fall back to queue.
+    """
+    exec_id = payload.get("exec_id", "unknown")
+
+    if not RECEIVER_URL or RECEIVER_URL.strip() == "":
+        logging.debug(f"[{exec_id}] RECEIVER_URL not configured, using queue")
+        return False
+
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "x-cloudo-key": os.environ.get("CLOUDO_SECRET_KEY", ""),
+        }
+        resp = requests.post(
+            RECEIVER_URL,
+            data=message_json,
+            headers=headers,
+            timeout=RECEIVER_HTTP_TIMEOUT,
+        )
+        if resp.status_code == 200:
+            logging.debug(
+                f"[{exec_id}] Status sent via HTTP: {payload.get('status', 'unknown')}"
+            )
+            return True
+        else:
+            logging.warning(
+                f"[{exec_id}] HTTP receiver returned {resp.status_code}, "
+                f"will retry via queue"
+            )
+            return False
+    except requests.RequestException as e:
+        logging.warning(
+            f"[{exec_id}] HTTP receiver failed ({type(e).__name__}), "
+            f"will retry via queue: {e}"
+        )
+        return False
+    except Exception as e:
+        logging.error(f"[{exec_id}] Unexpected error sending via HTTP: {e}")
+        return False
+
+
+def _send_status_via_queue(message_json: str, payload: dict) -> None:
+    """Send status message via Azure Storage Queue (fallback)."""
+    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+
+    exec_id = payload.get("exec_id", "unknown")
+    try:
+        q_client = QueueClient.from_connection_string(
+            conn_str=os.environ.get(STORAGE_CONNECTION),
+            queue_name=NOTIFICATION_QUEUE_NAME,
+            message_encode_policy=TextBase64EncodePolicy(),
+        )
+        q_client.send_message(message_json)
+        logging.debug(f"[{exec_id}] Status sent via queue")
+    except Exception as e:
+        logging.error(f"[{exec_id}] Failed to send status via queue: {e}")
+        raise
 
 
 def _github_auth_headers() -> list[dict]:
@@ -627,14 +693,6 @@ def process_runbook(msg: func.QueueMessage) -> None:
 
     started_at = _format_requested_at()
 
-    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
-
-    q_client = QueueClient.from_connection_string(
-        conn_str=os.environ.get(STORAGE_CONNECTION),
-        queue_name=NOTIFICATION_QUEUE_NAME,
-        message_encode_policy=TextBase64EncodePolicy(),
-    )
-
     # Check if this execution is already running
     with _ACTIVE_LOCK:
         items = list(_ACTIVE_RUNS.values())
@@ -642,9 +700,9 @@ def process_runbook(msg: func.QueueMessage) -> None:
         if skip_reason:
             log_msg = f"Execution {exec_id} skipped: {skip_reason}"
             logging.info(f"{log_prefix} {log_msg}")
-            q_client.send_message(
-                _post_status(payload, status="skipped", log_message=log_msg)
-            )
+            message_json = _post_status(payload, status="skipped", log_message=log_msg)
+            if not _send_status_to_receiver(message_json, payload):
+                _send_status_via_queue(message_json, payload)
             return
 
     # Register the execution as "in progress" and notify
@@ -665,7 +723,9 @@ def process_runbook(msg: func.QueueMessage) -> None:
         }
 
     log_msg = f"{log_prefix} Job {payload.get('name')} started"
-    q_client.send_message(_post_status(payload, status="running", log_message=log_msg))
+    message_json = _post_status(payload, status="running", log_message=log_msg)
+    if not _send_status_to_receiver(message_json, payload):
+        _send_status_via_queue(message_json, payload)
     logging.info(f"{log_prefix} Receiver response: status=running")
 
     # Local environment to avoid race conditions in multithreading
@@ -692,9 +752,11 @@ def process_runbook(msg: func.QueueMessage) -> None:
         if info and has_valid_ns:
             if os.environ.get("AKS_INTEGRATION_ENABLED") == "false":
                 err_msg = f"{log_prefix} AKS login failed: tf var AKS_INTEGRATION not defined for this deployment"
-                q_client.send_message(
-                    _post_status(payload, status="error", log_message=err_msg)
+                message_json = _post_status(
+                    payload, status="error", log_message=err_msg
                 )
+                if not _send_status_to_receiver(message_json, payload):
+                    _send_status_via_queue(message_json, payload)
                 logging.error(f"{err_msg}")
 
             try:
@@ -705,9 +767,11 @@ def process_runbook(msg: func.QueueMessage) -> None:
             except Exception as e:
                 # Report error and stop processing
                 err_msg = f"{log_prefix} AKS login failed: {type(e).__name__}: {e}"
-                q_client.send_message(
-                    _post_status(payload, status="error", log_message=err_msg)
+                message_json = _post_status(
+                    payload, status="error", log_message=err_msg
                 )
+                if not _send_status_to_receiver(message_json, payload):
+                    _send_status_via_queue(message_json, payload)
                 logging.error(f"{err_msg}")
                 return
 
@@ -733,16 +797,20 @@ def process_runbook(msg: func.QueueMessage) -> None:
 
         if not stopped:
             log_msg = f"{result.stdout.strip() if result else 'No output'}"
-            q_client.send_message(
-                _post_status(payload, status="succeeded", log_message=log_msg)
+            message_json = _post_status(
+                payload, status="succeeded", log_message=log_msg
             )
+            if not _send_status_to_receiver(message_json, payload):
+                _send_status_via_queue(message_json, payload)
 
     except subprocess.CalledProcessError as e:
         error_message = f"Script failed. returncode={e.returncode} stderr={e.stderr.strip()} stdout={e.stdout.strip()}"
         try:
-            q_client.send_message(
-                _post_status(payload, status="failed", log_message=error_message)
+            message_json = _post_status(
+                payload, status="failed", log_message=error_message
             )
+            if not _send_status_to_receiver(message_json, payload):
+                _send_status_via_queue(message_json, payload)
             logging.error(
                 f"{log_prefix} Receiver response: status=queued",
             )
@@ -751,9 +819,9 @@ def process_runbook(msg: func.QueueMessage) -> None:
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
         try:
-            q_client.send_message(
-                _post_status(payload, status="error", log_message=err_msg)
-            )
+            message_json = _post_status(payload, status="error", log_message=err_msg)
+            if not _send_status_to_receiver(message_json, payload):
+                _send_status_via_queue(message_json, payload)
             logging.error(
                 f"{log_prefix} Receiver response: status=queued",
             )
@@ -948,13 +1016,14 @@ def stop_process(
                 "severity": None,
                 "requestedAt": run_info.get("requestedAt"),
             }
-            cloudo_notification_q.set(
-                _post_status(
-                    payload,
-                    status="stopped",
-                    log_message=f"Execution {exec_id} stopped by request",
-                )
+            message_json = _post_status(
+                payload,
+                status="stopped",
+                log_message=f"Execution {exec_id} stopped by request",
             )
+            # Try HTTP first, fallback to queue
+            if not _send_status_to_receiver(message_json, payload):
+                cloudo_notification_q.set(message_json)
     except Exception:
         logging.warning("[%s] Unable to send status stop", exec_id)
 
