@@ -4901,7 +4901,6 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
         schedules = table_client.query_entities(
             query_filter="PartitionKey eq 'Schedule' and enabled eq true"
         )
-        # now = datetime.now(timezone.utc)
         now = datetime.now(ZoneInfo("Europe/Rome"))
 
         for s in schedules:
