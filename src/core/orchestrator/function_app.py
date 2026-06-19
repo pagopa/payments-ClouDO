@@ -4885,7 +4885,8 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
     """
     import logging
     import os
-    from datetime import datetime, timezone
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
     from azure.data.tables import TableClient
     from azure.storage.queue import QueueClient, TextBase64EncodePolicy
@@ -4900,7 +4901,7 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
         schedules = table_client.query_entities(
             query_filter="PartitionKey eq 'Schedule' and enabled eq true"
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(ZoneInfo("Europe/Rome"))
 
         for s in schedules:
             cron_expr = s.get("cron", "0 */1 * * * *")
@@ -4914,7 +4915,7 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
                     should_run = True
                 else:
                     last_run_dt = datetime.fromisoformat(
-                        last_run_str.replace("Z", "+00:00")
+                        last_run_str.replace("Z", "+02:00")
                     )
                     if (now - last_run_dt).total_seconds() >= 45:
                         should_run = True
