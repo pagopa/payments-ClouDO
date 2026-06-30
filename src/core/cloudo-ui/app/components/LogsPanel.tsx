@@ -155,6 +155,13 @@ function LogsPanelContent() {
         );
         setLogs(finalLogs);
 
+        // Keep detail panel aligned with the newest row for the selected execution.
+        setSelectedLog((prev) => {
+          if (!prev) return prev;
+          const updated = finalLogs.find((l) => l.ExecId === prev.ExecId);
+          return updated || prev;
+        });
+
         // If we are looking for a specific execId via deep link, select it
         if (eId && finalLogs.length > 0) {
           const target = finalLogs.find((l) => l.ExecId === eId);
@@ -196,6 +203,20 @@ function LogsPanelContent() {
       window.clearInterval(intervalId);
     };
   }, [runQuery]);
+
+  useEffect(() => {
+    const status = (selectedLog?.Status || "").toLowerCase();
+    const isLive = status === "running" || status === "accepted";
+    if (!selectedLog || !isLive) return;
+
+    const intervalId = window.setInterval(() => {
+      runQuery();
+    }, 2_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [selectedLog, runQuery]);
 
   const handleReset = () => {
     setExecId("");
