@@ -745,6 +745,37 @@ function ScheduleForm({
         </div>
       </div>
 
+      <div className="border border-cloudo-border bg-cloudo-accent/5 p-4 space-y-2">
+        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cloudo-accent flex items-center gap-2">
+          <HiOutlineClock className="w-4 h-4" /> Cron Quick Guide (Azure)
+        </p>
+        <p className="text-[11px] text-cloudo-text/80 font-mono">
+          Format:{" "}
+          <span className="text-cloudo-accent">{`{sec} {min} {hour} {day} {month} {dow}`}</span>
+        </p>
+        <p className="text-[11px] text-cloudo-muted font-mono">
+          day-of-week: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday,
+          5=Friday, 6=Saturday
+        </p>
+        <div className="text-[11px] text-cloudo-text/80 font-mono space-y-1">
+          <p>
+            Example 1:{" "}
+            <span className="text-cloudo-accent">{"0 */10 * * * *"}</span> =
+            every 10 minutes
+          </p>
+          <p>
+            Example 2:{" "}
+            <span className="text-cloudo-accent">{"0 0 9 * * 1-5"}</span> =
+            09:00 from Monday to Friday
+          </p>
+          <p>
+            Example 3:{" "}
+            <span className="text-cloudo-accent">{"0 30 8 * * 3"}</span> = every
+            Wednesday at 08:30
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-5">
         <div className="space-y-1.5">
           <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
