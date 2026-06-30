@@ -9,8 +9,6 @@ import {
   HiOutlineDatabase,
   HiOutlineChip,
   HiOutlineTerminal,
-  HiOutlineGlobeAlt,
-  HiOutlineClock,
   HiOutlineSearch,
   HiOutlineExclamation,
   HiOutlineCheckCircle,
@@ -215,6 +213,66 @@ export function WorkersPanel() {
     },
     {} as Record<string, Worker[]>,
   );
+
+  const parseLastSeen = (value?: string) => {
+    if (!value) return null;
+
+    const raw = String(value).trim();
+    const numeric = Number(raw);
+    if (!Number.isNaN(numeric) && raw !== "") {
+      const ts = raw.length <= 10 ? numeric * 1000 : numeric;
+      const parsedNumeric = new Date(ts);
+      if (!Number.isNaN(parsedNumeric.getTime())) return parsedNumeric;
+    }
+
+    const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const getHeartbeatState = (
+    value?: string,
+  ): "online" | "stale" | "unknown" => {
+    const parsed = parseLastSeen(value);
+    if (!parsed) return "unknown";
+    const diffMinutes = (Date.now() - parsed.getTime()) / (1000 * 60);
+    return diffMinutes <= 2 ? "online" : "stale";
+  };
+
+  const formatLastSeen = (value?: string) => {
+    const parsed = parseLastSeen(value);
+    if (!parsed) return value || "-";
+    return parsed.toLocaleString();
+  };
+
+  const formatHeartbeatAge = (value?: string) => {
+    const parsed = parseLastSeen(value);
+    if (!parsed) return "-";
+    const diffMs = Date.now() - parsed.getTime();
+    if (diffMs < 60 * 1000) return "now";
+    const minutes = Math.floor(diffMs / (60 * 1000));
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
+
+  const totalWorkers = workers.length;
+  const capabilityCount = Object.keys(workersByCapability).length;
+  const activeQueues = new Set(
+    workers
+      .map((worker) => (worker.Queue || "").trim())
+      .filter((queue) => queue.length > 0),
+  ).size;
+  const staleWorkers = workers.filter(
+    (worker) => getHeartbeatState(worker.LastSeen) === "stale",
+  ).length;
+  const unknownHeartbeatWorkers = workers.filter(
+    (worker) => getHeartbeatState(worker.LastSeen) === "unknown",
+  ).length;
+  const heartbeatIssues = staleWorkers + unknownHeartbeatWorkers;
 
   return (
     <div className="flex flex-col h-full bg-cloudo-dark text-cloudo-text font-mono relative">
@@ -560,6 +618,45 @@ export function WorkersPanel() {
               </h2>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <div className="bg-cloudo-panel border border-cloudo-border px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-cloudo-muted font-black">
+                  Total Workers
+                </p>
+                <p className="text-xl font-black text-cloudo-text mt-1">
+                  {totalWorkers}
+                </p>
+              </div>
+              <div className="bg-cloudo-panel border border-cloudo-border px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-cloudo-muted font-black">
+                  Capabilities
+                </p>
+                <p className="text-xl font-black text-cloudo-text mt-1">
+                  {capabilityCount}
+                </p>
+              </div>
+              <div className="bg-cloudo-panel border border-cloudo-border px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-cloudo-muted font-black">
+                  Active Queues
+                </p>
+                <p className="text-xl font-black text-cloudo-accent mt-1">
+                  {activeQueues}
+                </p>
+              </div>
+              <div className="bg-cloudo-panel border border-cloudo-border px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-cloudo-muted font-black">
+                  Heartbeat Issues
+                </p>
+                <p
+                  className={`text-xl font-black mt-1 ${
+                    heartbeatIssues > 0 ? "text-cloudo-err" : "text-cloudo-ok"
+                  }`}
+                >
+                  {heartbeatIssues}
+                </p>
+              </div>
+            </div>
+
             {loadingWorkers ? (
               <div className="py-20 text-center flex flex-col items-center gap-3">
                 <div className="w-8 h-8 border-2 border-cloudo-accent/30 border-t-cloudo-accent rounded-full animate-spin" />
@@ -574,81 +671,97 @@ export function WorkersPanel() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-10">
-                {Object.entries(workersByCapability).map(
-                  ([capability, workerList]) => (
-                    <div key={capability} className="space-y-4">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <HiOutlineChip className="text-cloudo-accent w-4 h-4 opacity-60 shrink-0" />
-                        <h3 className="text-sm font-black text-cloudo-text uppercase tracking-[0.2em] truncate">
+              <div className="space-y-6">
+                {Object.entries(workersByCapability)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([capability, workerList]) => (
+                    <div
+                      key={capability}
+                      className="bg-cloudo-panel border border-cloudo-border"
+                    >
+                      <div className="px-5 py-4 border-b border-cloudo-border/70 flex items-center gap-3">
+                        <HiOutlineChip className="text-cloudo-accent w-4 h-4 opacity-80 shrink-0" />
+                        <h3 className="text-xs font-black text-cloudo-text uppercase tracking-[0.2em] truncate">
                           {capability}
                         </h3>
-                        <div className="h-[1px] flex-1 bg-cloudo-border" />
+                        <div className="h-px flex-1 bg-cloudo-border" />
                         <span className="text-[11px] font-mono text-cloudo-muted/70 shrink-0">
-                          {workerList.length} Units
+                          {workerList.length} node
+                          {workerList.length > 1 ? "s" : ""}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {workerList.map((worker) => (
-                          <div
-                            key={worker.RowKey}
-                            className="bg-cloudo-panel border border-cloudo-border p-5 hover:border-cloudo-accent/30 transition-all group relative overflow-hidden"
-                          >
-                            <div className="absolute top-0 left-0 w-[2px] h-full bg-cloudo-ok/20" />
-                            <div className="flex justify-between items-start mb-6">
-                              <code className="text-sm font-mono font-bold text-cloudo-accent group-hover:text-cloudo-text transition-colors">
-                                {worker.RowKey}
-                              </code>
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-cloudo-ok animate-pulse" />
-                                <span className="text-[11px] font-black text-cloudo-ok uppercase tracking-widest">
-                                  Alive
-                                </span>
-                              </div>
-                            </div>
-                            <div className="space-y-3 text-[11px] font-bold text-cloudo-muted uppercase tracking-widest">
-                              <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
-                                <span className="opacity-70 flex items-center gap-1">
-                                  <HiOutlineDatabase className="w-3 h-3" />{" "}
-                                  Queue
-                                </span>
-                                <span className="text-cloudo-text font-mono lowercase">
-                                  {worker.Queue}
-                                </span>
-                              </div>
-                              <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
-                                <span className="opacity-70 flex items-center gap-1">
-                                  <HiOutlineGlobeAlt className="w-3 h-3" />{" "}
-                                  Region
-                                </span>
-                                <span className="text-cloudo-text">
-                                  {worker.Region}
-                                </span>
-                              </div>
-                              <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
-                                <span className="opacity-70 flex items-center gap-1">
-                                  <HiOutlineClock className="w-3 h-3" /> Load
-                                </span>
-                                <span className="text-cloudo-accent">
-                                  {worker.Load}%
-                                </span>
-                              </div>
-                              <div className="flex justify-between border-b border-cloudo-border/30 pb-1.5">
-                                <span className="opacity-70 flex items-center gap-1">
-                                  <HiOutlineClock className="w-3 h-3" /> Last
-                                  Seen
-                                </span>
-                                <span className="text-cloudo-accent">
-                                  {worker.LastSeen}%
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="text-[10px] uppercase tracking-[0.2em] font-black text-cloudo-muted border-b border-cloudo-border/60">
+                              <th className="px-5 py-3">Worker</th>
+                              <th className="px-5 py-3">Queue</th>
+                              <th className="px-5 py-3">Region</th>
+                              <th className="px-5 py-3">Seen Ago</th>
+                              <th className="px-5 py-3">Last Heartbeat</th>
+                              <th className="px-5 py-3 text-right">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-cloudo-border/40">
+                            {[...workerList]
+                              .sort((a, b) => a.RowKey.localeCompare(b.RowKey))
+                              .map((worker) => {
+                                const heartbeat = getHeartbeatState(
+                                  worker.LastSeen,
+                                );
+                                return (
+                                  <tr
+                                    key={worker.RowKey}
+                                    className="hover:bg-white/[0.02] transition-colors"
+                                  >
+                                    <td className="px-5 py-3 text-sm font-mono text-cloudo-text">
+                                      {worker.RowKey}
+                                    </td>
+                                    <td className="px-5 py-3 text-[12px] font-mono text-cloudo-accent/80">
+                                      {worker.Queue || "-"}
+                                    </td>
+                                    <td className="px-5 py-3 text-[12px] text-cloudo-text/80">
+                                      {worker.Region || "-"}
+                                    </td>
+                                    <td className="px-5 py-3 text-[12px] font-mono text-cloudo-text/80">
+                                      {formatHeartbeatAge(worker.LastSeen)}
+                                    </td>
+                                    <td className="px-5 py-3 text-[12px] font-mono text-cloudo-muted">
+                                      {formatLastSeen(worker.LastSeen)}
+                                    </td>
+                                    <td className="px-5 py-3">
+                                      <div className="flex items-center justify-end gap-2">
+                                        <div
+                                          className={`w-2 h-2 rounded-full ${
+                                            heartbeat === "online"
+                                              ? "bg-cloudo-ok"
+                                              : heartbeat === "stale"
+                                                ? "bg-cloudo-err"
+                                                : "bg-cloudo-muted"
+                                          }`}
+                                        />
+                                        <span
+                                          className={`text-[10px] font-black uppercase tracking-widest ${
+                                            heartbeat === "online"
+                                              ? "text-cloudo-ok"
+                                              : heartbeat === "stale"
+                                                ? "text-cloudo-err"
+                                                : "text-cloudo-muted"
+                                          }`}
+                                        >
+                                          {heartbeat}
+                                        </span>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
-                  ),
-                )}
+                  ))}
               </div>
             )}
           </section>

@@ -10,3 +10,4 @@ azure-data-tables
 azure-storage-queue
 azure-storage-blob
 bcrypt
+psycopg2-binary>=2.9
