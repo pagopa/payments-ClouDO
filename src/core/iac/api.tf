@@ -94,4 +94,5 @@ resource "azurerm_api_management_subscription" "cloudo" {
   product_id          = azurerm_api_management_product.cloudo.0.id
   display_name        = "Cloudo API Subscription"
   state               = "active"
+  allow_tracing       = true
 }

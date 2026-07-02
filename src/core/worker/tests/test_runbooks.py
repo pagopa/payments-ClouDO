@@ -99,3 +99,42 @@ def test_process_runbook_skips_if_already_running(monkeypatch):
 
     # Should report "skipped" and not attempt to run
     assert "skipped" in status_calls
+
+
+def test_run_aks_login_error_includes_full_output(tmp_path):
+    os.environ["FEATURE_DEV"] = "true"
+    worker = importlib.import_module("function_app")
+
+    class FakePopen:
+        def __init__(self, *args, **kwargs):
+            self.stdout = iter(
+                [
+                    'WARNING: Merged "cluster" as current context\n',
+                    "ERROR: forbidden: cannot create token\n",
+                ]
+            )
+
+        def wait(self):
+            return 1
+
+    with patch("function_app.os.path.exists", return_value=True), patch(
+        "function_app.subprocess.Popen", return_value=FakePopen()
+    ):
+        try:
+            worker._run_aks_login(
+                {
+                    "resource_rg": "rg-demo",
+                    "resource_name": "aks-demo",
+                    "aks_namespace": "demo-ns",
+                },
+                payload={"exec_id": "exec-aks-1"},
+                env={},
+                temp_dir=str(tmp_path),
+            )
+            assert False, "Expected RuntimeError from AKS login"
+        except RuntimeError as exc:
+            message = str(exc)
+
+    assert "AKS login error (rc=1). Full output:" in message
+    assert 'WARNING: Merged "cluster" as current context' in message
+    assert "ERROR: forbidden: cannot create token" in message

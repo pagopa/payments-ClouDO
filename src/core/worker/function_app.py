@@ -412,6 +412,8 @@ def _run_aks_login(
     """
     import tempfile
 
+    exec_id = (payload or {}).get("exec_id", "unknown")
+
     if env is None:
         env = os.environ.copy()
 
@@ -420,10 +422,10 @@ def _run_aks_login(
             resource_info = json.loads(resource_info)
         except json.JSONDecodeError as e:
             raise RuntimeError(
-                f"[{payload.get('exec_id')}] resource_info is not valid JSON: {e}"
+                f"[{exec_id}] resource_info is not valid JSON: {e}"
             ) from e
     if not isinstance(resource_info, dict):
-        raise RuntimeError(f"[{payload.get('exec_id')}] resource_info must be a dict")
+        raise RuntimeError(f"[{exec_id}] resource_info must be a dict")
 
     rg = (resource_info.get("resource_rg") or "").strip()
     name = (resource_info.get("resource_name") or "").strip()
@@ -431,13 +433,13 @@ def _run_aks_login(
 
     if not rg or not name:
         raise RuntimeError(
-            f"[{payload.get('exec_id')}] resource_info requires non-empty 'resource_rg' and 'resource_name'"
+            f"[{exec_id}] resource_info requires non-empty 'resource_rg' and 'resource_name'"
         )
 
     script_path = os.path.normpath("utils/aks-login.sh")
     if not os.path.exists(script_path):
         raise FileNotFoundError(
-            f"[{payload.get('exec_id')}] AKS login script not found: {script_path}"
+            f"[{exec_id}] AKS login script not found: {script_path}"
         )
 
     with tempfile.NamedTemporaryFile(
@@ -450,12 +452,12 @@ def _run_aks_login(
         if ns
         else [script_path, kubeconfig_path, rg, name]
     )
-    logging.info(f"[{payload.get('exec_id')}] Running AKS login: %s", " ".join(cmd))
+    logging.info(f"[{exec_id}] Running AKS login: %s", " ".join(cmd))
     try:
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
             universal_newlines=True,
@@ -469,22 +471,17 @@ def _run_aks_login(
                     continue
                 msg = line.rstrip()
                 collected_stdout.append(line)
-                logging.info(f"[{payload.get('exec_id')}] {msg}")
+                logging.info(f"[{exec_id}] {msg}")
 
         stdout_data = "".join(collected_stdout)
-        stderr_data = ""
-        if proc.stderr:
-            stderr_data = proc.stderr.read() or ""
-
         rc = proc.wait()
         if rc != 0:
+            combined_output = stdout_data.strip() or "No output captured from AKS login"
             raise RuntimeError(
-                f"[{payload.get('exec_id')}] AKS login error (rc={rc}): {stderr_data.strip() or stdout_data.strip()}"
+                f"[{exec_id}] AKS login error (rc={rc}). Full output:\n{combined_output}"
             )
     except OSError as e:
-        raise RuntimeError(
-            f"[{payload.get('exec_id')}] AKS login execution error: {e}"
-        ) from e
+        raise RuntimeError(f"[{exec_id}] AKS login execution error: {e}") from e
 
     return kubeconfig_path
 
