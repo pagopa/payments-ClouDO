@@ -6,6 +6,7 @@
       "Function": "Warning",
       "Function.list_processes": "Warning",
       "Function.heartbeat_trigger": "Warning",
+      "Function.process_runbook": "Warning",
       "Host": "Error",
       "Host.Results": "Error",
       "Microsoft": "Error",

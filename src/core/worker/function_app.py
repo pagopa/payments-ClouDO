@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from subprocess import CompletedProcess
 from threading import Lock
 from typing import Any, Optional
@@ -32,6 +33,7 @@ MAX_INLINE_LOG_BYTES = int(
 )  # Keep queue message below Azure Table/queue limits when inlined
 LOGS_BLOB_CONTAINER = os.environ.get("LOGS_BLOB_CONTAINER", "runbook-logs")
 LOGS_REF_PREFIX = "blobref://"
+LOG_STREAM_UPDATE_SECONDS = float(os.environ.get("LOG_STREAM_UPDATE_SECONDS", "3"))
 
 # Receiver endpoint configuration
 RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://orchestrator/api/receiver")
@@ -96,6 +98,29 @@ def _make_worker_log_blob_name(payload: dict, status: str) -> str:
     )
     safe_status = safe_status or "UNKNOWN"
     return f"{partition_key}/{safe_exec_id}/{safe_status}_{safe_exec_id}.log"
+
+
+def _update_running_log_blob(payload: dict, log_message: str) -> None:
+    """Persist latest running output into a single blob snapshot (overwrite)."""
+    from azure.storage.blob import BlobServiceClient
+
+    conn_str = os.environ.get(STORAGE_CONNECTION)
+    if not conn_str:
+        raise RuntimeError("Missing AzureWebJobsStorage connection string")
+
+    blob_name = _make_worker_log_blob_name(payload, "running")
+    service = BlobServiceClient.from_connection_string(conn_str)
+    container = service.get_container_client(LOGS_BLOB_CONTAINER)
+    try:
+        container.create_container()
+    except Exception:
+        pass
+
+    blob = container.get_blob_client(blob_name)
+    blob.upload_blob(
+        (log_message or "").encode("utf-8", errors="replace"),
+        overwrite=True,
+    )
 
 
 def _post_status(payload: dict, status: str, log_message: str) -> str:
@@ -387,6 +412,8 @@ def _run_aks_login(
     """
     import tempfile
 
+    exec_id = (payload or {}).get("exec_id", "unknown")
+
     if env is None:
         env = os.environ.copy()
 
@@ -395,10 +422,10 @@ def _run_aks_login(
             resource_info = json.loads(resource_info)
         except json.JSONDecodeError as e:
             raise RuntimeError(
-                f"[{payload.get('exec_id')}] resource_info is not valid JSON: {e}"
+                f"[{exec_id}] resource_info is not valid JSON: {e}"
             ) from e
     if not isinstance(resource_info, dict):
-        raise RuntimeError(f"[{payload.get('exec_id')}] resource_info must be a dict")
+        raise RuntimeError(f"[{exec_id}] resource_info must be a dict")
 
     rg = (resource_info.get("resource_rg") or "").strip()
     name = (resource_info.get("resource_name") or "").strip()
@@ -406,13 +433,13 @@ def _run_aks_login(
 
     if not rg or not name:
         raise RuntimeError(
-            f"[{payload.get('exec_id')}] resource_info requires non-empty 'resource_rg' and 'resource_name'"
+            f"[{exec_id}] resource_info requires non-empty 'resource_rg' and 'resource_name'"
         )
 
     script_path = os.path.normpath("utils/aks-login.sh")
     if not os.path.exists(script_path):
         raise FileNotFoundError(
-            f"[{payload.get('exec_id')}] AKS login script not found: {script_path}"
+            f"[{exec_id}] AKS login script not found: {script_path}"
         )
 
     with tempfile.NamedTemporaryFile(
@@ -425,12 +452,12 @@ def _run_aks_login(
         if ns
         else [script_path, kubeconfig_path, rg, name]
     )
-    logging.info(f"[{payload.get('exec_id')}] Running AKS login: %s", " ".join(cmd))
+    logging.info(f"[{exec_id}] Running AKS login: %s", " ".join(cmd))
     try:
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
             universal_newlines=True,
@@ -444,22 +471,17 @@ def _run_aks_login(
                     continue
                 msg = line.rstrip()
                 collected_stdout.append(line)
-                logging.info(f"[{payload.get('exec_id')}] {msg}")
+                logging.info(f"[{exec_id}] {msg}")
 
         stdout_data = "".join(collected_stdout)
-        stderr_data = ""
-        if proc.stderr:
-            stderr_data = proc.stderr.read() or ""
-
         rc = proc.wait()
         if rc != 0:
+            combined_output = stdout_data.strip() or "No output captured from AKS login"
             raise RuntimeError(
-                f"[{payload.get('exec_id')}] AKS login error (rc={rc}): {stderr_data.strip() or stdout_data.strip()}"
+                f"[{exec_id}] AKS login error (rc={rc}). Full output:\n{combined_output}"
             )
     except OSError as e:
-        raise RuntimeError(
-            f"[{payload.get('exec_id')}] AKS login execution error: {e}"
-        ) from e
+        raise RuntimeError(f"[{exec_id}] AKS login execution error: {e}") from e
 
     return kubeconfig_path
 
@@ -610,14 +632,51 @@ def _run_script(
             logging.error(f"[{payload.get('exec_id')}] cannot record process: {e}")
 
         collected_stdout = []
+        last_stream_push = time.monotonic()
+        streamed_chars = 0
+        last_pushed_chars = 0
+        running_blob_push_failed = False
+
+        def _push_running_status_if_due(force: bool = False) -> None:
+            nonlocal last_stream_push, last_pushed_chars, running_blob_push_failed
+            if not payload:
+                return
+            if LOG_STREAM_UPDATE_SECONDS <= 0 and not force:
+                return
+            if streamed_chars <= 0:
+                return
+            if streamed_chars == last_pushed_chars:
+                return
+            now = time.monotonic()
+            if not force and (now - last_stream_push) < LOG_STREAM_UPDATE_SECONDS:
+                return
+            try:
+                _update_running_log_blob(payload, "".join(collected_stdout))
+                running_blob_push_failed = False
+            except Exception as e:
+                # Keep a single warning until the next successful upload.
+                if not running_blob_push_failed:
+                    logging.warning(
+                        "[%s] Failed to update running log blob: %s",
+                        payload.get("exec_id"),
+                        e,
+                    )
+                    running_blob_push_failed = True
+            finally:
+                last_stream_push = now
+                last_pushed_chars = streamed_chars
+
         if proc.stdout:
             for line in proc.stdout:
                 if not line:
                     continue
                 collected_stdout.append(line)
+                streamed_chars += len(line)
                 logging.debug(f"[{payload.get('exec_id')}] {line.rstrip()}")
+                _push_running_status_if_due()
 
         stdout_data = "".join(collected_stdout)
+        _push_running_status_if_due(force=True)
         stderr_data = ""
         if proc.stderr:
             stderr_data = proc.stderr.read() or ""
