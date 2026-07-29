@@ -17,4 +17,4 @@ azure-identity
 azure-monitor-query
 slack-sdk==3.36.0
 #postgresql client
-psycopg2==2.9.12
+psycopg2
