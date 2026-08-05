@@ -816,6 +816,7 @@ def Trigger(
 ) -> func.HttpResponse:
     import detection
     import utils
+    from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
     from azure.storage.queue import QueueClient, TextBase64EncodePolicy
     from escalation import format_jsm_description, send_jsm_alert, send_slack_execution
     from worker_routing import worker_routing
@@ -826,6 +827,16 @@ def Trigger(
             queue_name=NOTIFICATION_QUEUE_NAME,
             message_encode_policy=TextBase64EncodePolicy(),
         )
+        try:
+            q_client.create_queue()
+        except ResourceExistsError:
+            pass
+        except Exception as e:
+            logging.warning(
+                "Failed to ensure notification queue '%s' exists: %s",
+                NOTIFICATION_QUEUE_NAME,
+                e,
+            )
     except Exception as e:
         logging.error(f"Failed to initialize queue client: {e}")
         return func.HttpResponse("Failed to initialize queue client", status_code=500)
@@ -902,69 +913,52 @@ def Trigger(
         token = (os.environ.get("SLACK_TOKEN_DEFAULT") or "").strip()
         channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
 
-    # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
-    if (req.params.get("id")) is not None:
-        schema_id = detection.extract_schema_id_from_req(req)
-        parsed_body = detection.parse_resource_fields(req)
-        resource_info = {
-            "_raw": parsed_body.get("_raw"),
-            "schema_id": schema_id,
-            "monitor_condition": monitor_condition,
-            "severity": severity,
-            "resource_name": parsed_body.get("resource_name"),
-            "resource_rg": parsed_body.get("resource_group"),
-            "resource_id": parsed_body.get("resource_id"),
-            "aks_namespace": parsed_body.get("namespace"),
-            "aks_pod": parsed_body.get("pod"),
-            "aks_deployment": parsed_body.get("deployment"),
-            "aks_job": parsed_body.get("job"),
-            "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
-            "team": route_params.get("team"),
-            "payload": parsed_body.get("payload"),
-        }
-        routing_info = {
-            "team": route_params.get("team") or "",
-            "slack_token": req.params.get("slack_token")
-            or resolve_slack_token(route_params.get("team") or "")
-            or token,
-            "slack_channel": req.params.get("slack_channel")
-            or channel
-            or (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip(),
-            "jsm_token": req.params.get("jsm_api_key")
-            or req.params.get("opsgenie_api_key")
-            or resolve_jsm_apikey(route_params.get("team") or ""),
-        }
-    else:
-        parsed_body = detection.parse_resource_fields(req)
-        schema_id = parsed_body.get("schema_id")
-        resource_info = {
-            "_raw": parsed_body.get("_raw"),
-            "schema_id": parsed_body.get("schema_id"),
-            "resource_name": parsed_body.get("resource_name"),
-            "resource_rg": parsed_body.get("resource_group"),
-            "resource_id": parsed_body.get("resource_id"),
-            "aks_namespace": parsed_body.get("namespace"),
-            "aks_pod": parsed_body.get("pod"),
-            "aks_deployment": parsed_body.get("deployment"),
-            "aks_job": parsed_body.get("job"),
-            "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
-            "team": route_params.get("team"),
-            "payload": parsed_body.get("payload"),
-        }
+    # Resolve alert fields from payload, then optionally override schema_id from route/query.
+    parsed_body = detection.parse_resource_fields(req)
 
-        routing_info = {
-            "team": route_params.get("team") or "",
-            "slack_token": req.params.get("slack_token")
-            or resolve_slack_token(route_params.get("team") or "")
-            or token,
-            "slack_channel": req.params.get("slack_channel")
-            or channel
-            or (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip(),
-            "jsm_token": req.params.get("jsm_api_key")
-            or req.params.get("opsgenie_api_key")
-            or resolve_jsm_apikey(route_params.get("team") or ""),
-        }
-        logging.debug(f"{log_prefix} Resource info: %s", resource_info)
+    resource_name = parsed_body.get("resource_name") or ""
+    resource_group = parsed_body.get("resource_group") or ""
+    resource_id = parsed_body.get("resource_id") or ""
+    monitor_condition = parsed_body.get("monitorCondition") or ""
+    severity = parsed_body.get("severity") or ""
+
+    schema_id = parsed_body.get("schema_id")
+    if (req.params.get("id")) is not None:
+        schema_id = detection.extract_schema_id_from_req(req) or schema_id
+    if not isinstance(schema_id, list):
+        schema_id = [str(schema_id)] if schema_id else []
+    primary_schema_id = str(schema_id[0]).strip() if schema_id else ""
+
+    resource_info = {
+        "_raw": parsed_body.get("_raw"),
+        "schema_id": schema_id,
+        "monitor_condition": monitor_condition,
+        "severity": severity,
+        "resource_name": resource_name,
+        "resource_rg": resource_group,
+        "resource_id": resource_id,
+        "aks_namespace": parsed_body.get("namespace"),
+        "aks_pod": parsed_body.get("pod"),
+        "aks_deployment": parsed_body.get("deployment"),
+        "aks_job": parsed_body.get("job"),
+        "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
+        "team": route_params.get("team"),
+        "payload": parsed_body.get("payload"),
+    }
+
+    routing_info = {
+        "team": route_params.get("team") or "",
+        "slack_token": req.params.get("slack_token")
+        or resolve_slack_token(route_params.get("team") or "")
+        or token,
+        "slack_channel": req.params.get("slack_channel")
+        or channel
+        or (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip(),
+        "jsm_token": req.params.get("jsm_api_key")
+        or req.params.get("opsgenie_api_key")
+        or resolve_jsm_apikey(route_params.get("team") or ""),
+    }
+    logging.debug(f"{log_prefix} Resource info: %s", resource_info)
 
     # Parse bound table entities (binding returns a JSON array)
     try:
@@ -993,23 +987,33 @@ def Trigger(
             log_msg = "ALARM -> ROUTED (No runbook found)"
             payload_for_status = {
                 "requestedAt": requested_at,
-                "id": "NaN",
+                "id": primary_schema_id,
                 "name": resource_name or "",
                 "exec_id": exec_id,
                 "runbook": "alarm routed",
-                "run_args": "NaN",
-                "worker": "NaN",
+                "run_args": "None",
+                "worker": "No worker",
                 "group": "-",
-                "oncall": "NaN",
+                "oncall": True,
                 "initiator": requester_username,
                 "monitor_condition": monitor_condition or "",
                 "severity": severity or "",
                 "resource_info": resource_info if "resource_info" in locals() else {},
                 "routing_info": routing_info if "routing_info" in locals() else {},
             }
-            q_client.send_message(
-                _post_status(payload_for_status, status="routed", log_message=log_msg)
-            )
+            try:
+                q_client.send_message(
+                    _post_status(
+                        payload_for_status, status="routed", log_message=log_msg
+                    )
+                )
+            except ResourceNotFoundError as e:
+                logging.warning(
+                    "%s Notification queue '%s' not found, skipping status post: %s",
+                    log_prefix,
+                    NOTIFICATION_QUEUE_NAME,
+                    e,
+                )
             return func.HttpResponse(
                 json.dumps(
                     {
@@ -1027,6 +1031,9 @@ def Trigger(
                 },
             )
         else:
+            logging.warning(
+                f"No alert detected for {schema_id}: {monitor_condition} - {severity}"
+            )
             return func.HttpResponse(
                 json.dumps(
                     {
@@ -1068,9 +1075,17 @@ def Trigger(
             "resource_info": resource_info if "resource_info" in locals() else {},
             "routing_info": routing_info if "routing_info" in locals() else {},
         }
-        q_client.send_message(
-            _post_status(payload_for_status, status="routed", log_message=log_msg)
-        )
+        try:
+            q_client.send_message(
+                _post_status(payload_for_status, status="routed", log_message=log_msg)
+            )
+        except ResourceNotFoundError as e:
+            logging.warning(
+                "%s Notification queue '%s' not found, skipping status post: %s",
+                log_prefix,
+                NOTIFICATION_QUEUE_NAME,
+                e,
+            )
         return func.HttpResponse(
             json.dumps(
                 {
@@ -2263,6 +2278,17 @@ def _process_receiver_body(body: dict, log_table: func.Out[str]) -> None:
         receiver_prefix = _build_exec_log_prefix(
             body.get("exec_id"), body.get("initiator")
         )
+        # Normalize fields that can arrive as list/scalars to keep Receiver robust.
+        for key in ("exec_id", "status", "name", "id", "runbook"):
+            value = body.get(key)
+            if isinstance(value, list):
+                first = next((str(v).strip() for v in value if str(v).strip()), "")
+                body[key] = first
+            elif value is None:
+                body[key] = ""
+            else:
+                body[key] = str(value).strip()
+
         body_for_log = dict(body)
         if isinstance(body.get("routing_info"), dict):
             body_for_log["routing_info"] = {
@@ -2278,7 +2304,7 @@ def _process_receiver_body(body: dict, log_table: func.Out[str]) -> None:
         return
 
     required_fields = ["exec_id", "status", "name", "id", "runbook"]
-    missing = [k for k in required_fields if not (body.get(k) or "").strip()]
+    missing = [k for k in required_fields if not body.get(k)]
     if missing:
         logging.warning(f"{receiver_prefix} Missing required fields: {missing}")
         return
