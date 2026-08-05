@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Union
@@ -63,9 +64,95 @@ STATUS_PRIORITY: dict[str, int] = {
     "pending": 1,
 }
 
+SETTINGS_CACHE_TTL_SECONDS = int(os.getenv("SETTINGS_CACHE_TTL_SECONDS", "60"))
+_settings_cache: dict[str, Any] = {
+    "token": "",
+    "channel": "#cloudo-test",
+    "expires_at": 0.0,
+}
+
+_NOTIFICATION_QUEUE_READY = False
+
 
 def _status_priority(status: Any) -> int:
     return STATUS_PRIORITY.get(str(status or "").strip().lower(), 0)
+
+
+def _get_entity_id(e: dict) -> str:
+    return str(e.get("Id") or e.get("id") or "").strip()
+
+
+def _find_schema_entity(rows: list[dict], candidate_ids: list[str]) -> Optional[dict]:
+    if not rows or not candidate_ids:
+        return None
+
+    if len(candidate_ids) == 1:
+        target = candidate_ids[0]
+        for e in rows:
+            if _get_entity_id(e) == target:
+                return e
+        return None
+
+    entities_by_id: dict[str, dict] = {}
+    for e in rows:
+        sid = _get_entity_id(e)
+        if sid and sid not in entities_by_id:
+            entities_by_id[sid] = e
+
+    for sid in candidate_ids:
+        if sid in entities_by_id:
+            return entities_by_id[sid]
+    return None
+
+
+def _get_default_notification_settings() -> tuple[str, str]:
+    now = time.time()
+    if _settings_cache.get("expires_at", 0.0) > now:
+        return _settings_cache.get("token", ""), _settings_cache.get(
+            "channel", "#cloudo-test"
+        )
+
+    token = (os.environ.get("SLACK_TOKEN_DEFAULT") or "").strip()
+    channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
+
+    try:
+        from azure.data.tables import TableClient
+
+        conn_str = os.environ.get(STORAGE_CONN)
+        if conn_str:
+            table_client = TableClient.from_connection_string(
+                conn_str, table_name=TABLE_SETTINGS
+            )
+            token_entity = table_client.get_entity(
+                partition_key="GlobalConfig", row_key="SLACK_TOKEN_DEFAULT"
+            )
+            channel_entity = table_client.get_entity(
+                partition_key="GlobalConfig", row_key="SLACK_CHANNEL"
+            )
+            token = token_entity.get("value", "").strip()
+            channel = channel_entity.get("value", "").strip() or "#cloudo-test"
+    except Exception as e:
+        logging.warning(
+            f"Failed to fetch Slack settings from Table Storage, falling back to ENV: {e}"
+        )
+
+    _settings_cache["token"] = token
+    _settings_cache["channel"] = channel
+    _settings_cache["expires_at"] = now + SETTINGS_CACHE_TTL_SECONDS
+    return token, channel
+
+
+def _enqueue_queue_payload(
+    queue_name: str, payload: dict, conn_env: str = STORAGE_CONN
+) -> None:
+    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+
+    q_client = QueueClient.from_connection_string(
+        conn_str=os.environ.get(conn_env),
+        queue_name=queue_name,
+        message_encode_policy=TextBase64EncodePolicy(),
+    )
+    q_client.send_message(json.dumps(payload, ensure_ascii=False))
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -230,11 +317,12 @@ def _get_authenticated_user(
     )
 
 
-def _rows_from_binding(rows: Union[str, list[dict]]) -> list[dict]:
+def _rows_from_binding(rows: Union[str, list[dict], None]) -> Optional[list[dict]]:
     try:
-        return json.loads(rows) if isinstance(rows, str) else (rows or [])
+        parsed = json.loads(rows) if isinstance(rows, str) else rows
     except Exception:
-        return []
+        return None
+    return parsed if isinstance(parsed, list) else None
 
 
 def log_audit(user: str, action: str, target: str, details: str = ""):
@@ -284,33 +372,10 @@ def _notify_slack_decision(
     extra: str = "",
     routing_info: Optional[dict] = None,
 ) -> None:
-    from azure.data.tables import TableClient
     from escalation import send_jsm_alert, send_slack_execution
     from smart_routing import resolve_jsm_apikey
 
-    # Fetch settings from Table Storage
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name=TABLE_SETTINGS
-    )
-
-    try:
-        # Get SLACK_TOKEN_DEFAULT and SLACK_CHANNEL from GlobalConfig
-        token_entity = table_client.get_entity(
-            partition_key="GlobalConfig", row_key="SLACK_TOKEN_DEFAULT"
-        )
-        token = token_entity.get("value", "").strip()
-
-        channel_entity = table_client.get_entity(
-            partition_key="GlobalConfig", row_key="SLACK_CHANNEL"
-        )
-        channel = channel_entity.get("value", "").strip() or "#cloudo-test"
-    except Exception as e:
-        logging.warning(
-            f"Failed to fetch Slack settings from Table Storage, falling back to ENV: {e}"
-        )
-        token = (os.environ.get("SLACK_TOKEN_DEFAULT") or "").strip()
-        channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
+    token, channel = _get_default_notification_settings()
 
     if not token:
         return
@@ -814,6 +879,7 @@ def Trigger(
     entities: str,
     workers: str,
 ) -> func.HttpResponse:
+    global _NOTIFICATION_QUEUE_READY
     import detection
     import utils
     from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
@@ -827,16 +893,19 @@ def Trigger(
             queue_name=NOTIFICATION_QUEUE_NAME,
             message_encode_policy=TextBase64EncodePolicy(),
         )
-        try:
-            q_client.create_queue()
-        except ResourceExistsError:
-            pass
-        except Exception as e:
-            logging.warning(
-                "Failed to ensure notification queue '%s' exists: %s",
-                NOTIFICATION_QUEUE_NAME,
-                e,
-            )
+        if not _NOTIFICATION_QUEUE_READY:
+            try:
+                q_client.create_queue()
+            except ResourceExistsError:
+                _NOTIFICATION_QUEUE_READY = True
+            except Exception as e:
+                logging.warning(
+                    "Failed to ensure notification queue '%s' exists: %s",
+                    NOTIFICATION_QUEUE_NAME,
+                    e,
+                )
+            else:
+                _NOTIFICATION_QUEUE_READY = True
     except Exception as e:
         logging.error(f"Failed to initialize queue client: {e}")
         return func.HttpResponse("Failed to initialize queue client", status_code=500)
@@ -860,6 +929,29 @@ def Trigger(
 
         def resolve_jsm_apikey(_):
             return None
+
+    def _json_response(payload: dict, status_code: int) -> func.HttpResponse:
+        return func.HttpResponse(
+            json.dumps(payload, ensure_ascii=False),
+            status_code=status_code,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    def _send_status_to_receiver(
+        payload_for_status: dict, status: str, log_msg: str
+    ) -> None:
+        try:
+            q_client.send_message(
+                _post_status(payload_for_status, status=status, log_message=log_msg)
+            )
+        except ResourceNotFoundError as e:
+            logging.warning(
+                "%s Notification queue '%s' not found, skipping status post: %s",
+                log_prefix,
+                NOTIFICATION_QUEUE_NAME,
+                e,
+            )
 
     # Init payload variables to None
     resource_name = resource_group = resource_id = schema_id = monitor_condition = (
@@ -887,31 +979,7 @@ def Trigger(
             headers={"Access-Control-Allow-Origin": "*"},
         )
 
-    from azure.data.tables import TableClient
-
-    # Fetch settings from Table Storage
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name=TABLE_SETTINGS
-    )
-
-    try:
-        # Get SLACK_TOKEN_DEFAULT and SLACK_CHANNEL from GlobalConfig
-        token_entity = table_client.get_entity(
-            partition_key="GlobalConfig", row_key="SLACK_TOKEN_DEFAULT"
-        )
-        token = token_entity.get("value", "").strip()
-
-        channel_entity = table_client.get_entity(
-            partition_key="GlobalConfig", row_key="SLACK_CHANNEL"
-        )
-        channel = channel_entity.get("value", "").strip() or "#cloudo-test"
-    except Exception as e:
-        logging.warning(
-            f"Failed to fetch Slack settings from Table Storage, falling back to ENV: {e}"
-        )
-        token = (os.environ.get("SLACK_TOKEN_DEFAULT") or "").strip()
-        channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
+    token, channel = _get_default_notification_settings()
 
     # Resolve alert fields from payload, then optionally override schema_id from route/query.
     parsed_body = detection.parse_resource_fields(req)
@@ -961,12 +1029,9 @@ def Trigger(
     logging.debug(f"{log_prefix} Resource info: %s", resource_info)
 
     # Parse bound table entities (binding returns a JSON array)
-    try:
-        parsed = json.loads(entities) if isinstance(entities, str) else entities
-    except Exception:
-        parsed = None
+    parsed = _rows_from_binding(entities)
 
-    if not isinstance(parsed, list):
+    if parsed is None:
         return func.HttpResponse(
             json.dumps({"error": "Unexpected table result format"}, ensure_ascii=False),
             status_code=500,
@@ -976,11 +1041,7 @@ def Trigger(
             },
         )
 
-    # Apply optional filter in code (case-insensitive fallback on 'Id'/'id')
-    def get_id(e: dict) -> str:
-        return str(e.get("Id") or e.get("id") or "").strip()
-
-    schema_entity = next((e for e in parsed if get_id(e) in schema_id), None)
+    schema_entity = _find_schema_entity(parsed, schema_id)
 
     if not schema_entity:
         if monitor_condition and severity:
@@ -998,60 +1059,36 @@ def Trigger(
                 "initiator": requester_username,
                 "monitor_condition": monitor_condition or "",
                 "severity": severity or "",
-                "resource_info": resource_info if "resource_info" in locals() else {},
-                "routing_info": routing_info if "routing_info" in locals() else {},
+                "resource_info": resource_info,
+                "routing_info": routing_info,
             }
-            try:
-                q_client.send_message(
-                    _post_status(
-                        payload_for_status, status="routed", log_message=log_msg
+            _send_status_to_receiver(
+                payload_for_status, status="routed", log_msg=log_msg
+            )
+            return _json_response(
+                {
+                    "routed": (
+                        "Alarm detected.\n "
+                        "(This alert has not a runbook to be executed) -> ROUTED"
                     )
-                )
-            except ResourceNotFoundError as e:
-                logging.warning(
-                    "%s Notification queue '%s' not found, skipping status post: %s",
-                    log_prefix,
-                    NOTIFICATION_QUEUE_NAME,
-                    e,
-                )
-            return func.HttpResponse(
-                json.dumps(
-                    {
-                        "routed": (
-                            "Alarm detected.\n "
-                            "(This alert has not a runbook to be executed) -> ROUTED"
-                        )
-                    },
-                    ensure_ascii=False,
-                ),
-                status_code=200,
-                mimetype="application/json",
-                headers={
-                    "Access-Control-Allow-Origin": "*",
                 },
+                status_code=200,
             )
         else:
             logging.warning(
                 f"No alert detected for {schema_id}: {monitor_condition} - {severity}"
             )
-            return func.HttpResponse(
-                json.dumps(
-                    {
-                        "ignored": f"No alert detected for {schema_id}",
-                    },
-                    ensure_ascii=False,
-                ),
+            return _json_response(
+                {"ignored": f"No alert detected for {schema_id}"},
                 status_code=204,
-                mimetype="application/json",
-                headers={
-                    "Access-Control-Allow-Origin": "*",
-                },
             )
 
-    logging.info(f"{log_prefix} Getting schema entity id '{schema_entity}'")
+    logging.info(
+        f"{log_prefix} Getting schema entity id '{_get_entity_id(schema_entity)}'"
+    )
     # Build domain model
     schema = Schema(
-        id=schema_entity.get("id"),
+        id=_get_entity_id(schema_entity),
         entity=schema_entity,
         monitor_condition=monitor_condition,
         severity=severity,
@@ -1072,35 +1109,18 @@ def Trigger(
             "initiator": requester_username,
             "monitor_condition": monitor_condition or "",
             "severity": severity or "",
-            "resource_info": resource_info if "resource_info" in locals() else {},
-            "routing_info": routing_info if "routing_info" in locals() else {},
+            "resource_info": resource_info,
+            "routing_info": routing_info,
         }
-        try:
-            q_client.send_message(
-                _post_status(payload_for_status, status="routed", log_message=log_msg)
-            )
-        except ResourceNotFoundError as e:
-            logging.warning(
-                "%s Notification queue '%s' not found, skipping status post: %s",
-                log_prefix,
-                NOTIFICATION_QUEUE_NAME,
-                e,
-            )
-        return func.HttpResponse(
-            json.dumps(
-                {
-                    "routed": (
-                        f"Runbook {schema.id} is disabled.\n "
-                        "(This execution has been ROUTED)"
-                    )
-                },
-                ensure_ascii=False,
-            ),
-            status_code=200,
-            mimetype="application/json",
-            headers={
-                "Access-Control-Allow-Origin": "*",
+        _send_status_to_receiver(payload_for_status, status="routed", log_msg=log_msg)
+        return _json_response(
+            {
+                "routed": (
+                    f"Runbook {schema.id} is disabled.\n "
+                    "(This execution has been ROUTED)"
+                )
             },
+            status_code=200,
         )
 
     try:
@@ -1392,8 +1412,6 @@ def Trigger(
             )
 
             try:
-                from azure.storage.queue import QueueClient, TextBase64EncodePolicy
-
                 # Construct the payload (formerly HTTP headers)
                 queue_payload = {
                     "runbook": schema.runbook,
@@ -1412,31 +1430,16 @@ def Trigger(
                     "routing_info": routing_info or {},
                 }
 
-                # Send it to the specific dynamic queue
-                # We use TextBase64EncodePolicy because Azure Function Triggers usually expect Base64 encoded strings
-                q_client = QueueClient.from_connection_string(
-                    conn_str=os.environ.get(STORAGE_CONN),
-                    queue_name=target_queue,
-                    message_encode_policy=TextBase64EncodePolicy(),
-                )
-                q_client.send_message(json.dumps(queue_payload, ensure_ascii=False))
+                _enqueue_queue_payload(target_queue, queue_payload)
 
                 api_body = {"status": "accepted", "queue": target_queue}
 
-                if resource_info == {}:
-                    log_audit(
-                        user=requester_username,
-                        action="RUNBOOK_EXECUTE",
-                        target=exec_id,
-                        details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
-                    )
-                else:
-                    log_audit(
-                        user=requester_username,
-                        action="RUNBOOK_EXECUTE",
-                        target=exec_id,
-                        details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
-                    )
+                log_audit(
+                    user=requester_username,
+                    action="RUNBOOK_EXECUTE",
+                    target=exec_id,
+                    details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
+                )
 
             except Exception as e:
                 logging.error(f"{log_prefix} ❌ Queue send failed: {e}")
@@ -1793,7 +1796,7 @@ def approve(
             mimetype="application/json",
         )
 
-    rows = _rows_from_binding(today_logs)
+    rows = _rows_from_binding(today_logs) or []
     if not _only_pending_for_exec(rows, execId):
         return func.HttpResponse(
             json.dumps(
@@ -1813,21 +1816,15 @@ def approve(
     severity = payload.get("severity") or ""
 
     # Load schema entity
-    try:
-        parsed = json.loads(schemas) if isinstance(schemas, str) else schemas
-    except Exception:
-        parsed = None
-    if not isinstance(parsed, list):
+    parsed = _rows_from_binding(schemas)
+    if parsed is None:
         return func.HttpResponse(
             json.dumps({"error": "Schemas not available"}, ensure_ascii=False),
             status_code=500,
             mimetype="application/json",
         )
 
-    def get_id(e: dict) -> str:
-        return str(e.get("Id") or e.get("id") or "").strip()
-
-    schema_entity = next((e for e in parsed if get_id(e) == schema_id), None)
+    schema_entity = _find_schema_entity(parsed, [str(schema_id)])
     if not schema_entity:
         return func.HttpResponse(
             json.dumps({"error": "Schema not found"}, ensure_ascii=False),
@@ -1835,7 +1832,7 @@ def approve(
             mimetype="application/json",
         )
 
-    schema = Schema(id=schema_entity.get("id"), entity=schema_entity)
+    schema = Schema(id=_get_entity_id(schema_entity), entity=schema_entity)
 
     partition_key = utils.today_partition_key()
     requested_at = utils.format_requested_at()
@@ -1856,8 +1853,6 @@ def approve(
             )
 
             try:
-                from azure.storage.queue import QueueClient, TextBase64EncodePolicy
-
                 # Construct the payload (formerly HTTP headers)
                 queue_payload = {
                     "runbook": schema.runbook,
@@ -1876,14 +1871,7 @@ def approve(
                     "routing_info": routing_info or {},
                 }
 
-                # Send it to the specific dynamic queue
-                # We use TextBase64EncodePolicy because Azure Function Triggers usually expect Base64 encoded strings
-                q_client = QueueClient.from_connection_string(
-                    conn_str=os.environ.get(STORAGE_CONN),
-                    queue_name=target_queue,
-                    message_encode_policy=TextBase64EncodePolicy(),
-                )
-                q_client.send_message(json.dumps(queue_payload, ensure_ascii=False))
+                _enqueue_queue_payload(target_queue, queue_payload)
 
                 api_body = {
                     "status": "accepted",
@@ -2087,7 +2075,7 @@ def reject(
     route_params = getattr(req, "route_params", {}) or {}
     execId = (route_params.get("execId") or "").strip()
 
-    rows = _rows_from_binding(today_logs)
+    rows = _rows_from_binding(today_logs) or []
     if not _only_pending_for_exec(rows, execId):
         return func.HttpResponse(
             json.dumps(
@@ -2152,21 +2140,15 @@ def reject(
     severity = payload.get("severity") or ""
 
     # Load schema entity
-    try:
-        parsed = json.loads(schemas) if isinstance(schemas, str) else schemas
-    except Exception:
-        parsed = None
-    if not isinstance(parsed, list):
+    parsed = _rows_from_binding(schemas)
+    if parsed is None:
         return func.HttpResponse(
             json.dumps({"error": "Schemas not available"}, ensure_ascii=False),
             status_code=500,
             mimetype="application/json",
         )
 
-    def get_id(e: dict) -> str:
-        return str(e.get("Id") or e.get("id") or "").strip()
-
-    schema_entity = next((e for e in parsed if get_id(e) == schema_id), None)
+    schema_entity = _find_schema_entity(parsed, [str(schema_id)])
     if not schema_entity:
         return func.HttpResponse(
             json.dumps({"error": "Schema not found"}, ensure_ascii=False),
@@ -2174,7 +2156,7 @@ def reject(
             mimetype="application/json",
         )
 
-    schema = Schema(id=schema_entity.get("id"), entity=schema_entity)
+    schema = Schema(id=_get_entity_id(schema_entity), entity=schema_entity)
 
     partition_key = utils.today_partition_key()
     requested_at = utils.format_requested_at()
@@ -2296,9 +2278,6 @@ def _process_receiver_body(body: dict, log_table: func.Out[str]) -> None:
                 "slack_channel": body["routing_info"].get("slack_channel"),
                 "redacted": True,
             }
-        logging.warning(
-            f"[Receiver] {receiver_prefix} Message received: {body_for_log}"
-        )
     except Exception as e:
         logging.error(f"[Receiver] Invalid queue message: {e}")
         return
@@ -2837,14 +2816,7 @@ def dev_test_run(
         )
 
         # Send to the selected queue
-        from azure.storage.queue import QueueClient, TextBase64EncodePolicy
-
-        q_client = QueueClient.from_connection_string(
-            conn_str=os.environ.get(STORAGE_CONN),
-            queue_name=target_queue,
-            message_encode_policy=TextBase64EncodePolicy(),
-        )
-        q_client.send_message(json.dumps(queue_payload, ensure_ascii=False))
+        _enqueue_queue_payload(target_queue, queue_payload)
 
         # Log audit entry for test run
         log_audit(
@@ -3325,7 +3297,7 @@ def list_workers(req: func.HttpRequest, workers: str) -> func.HttpResponse:
 
     try:
         # Parse binding result (can be string or list depending on extension version)
-        data = json.loads(workers) if isinstance(workers, str) else (workers or [])
+        data = _rows_from_binding(workers) or []
 
         return func.HttpResponse(
             json.dumps(data, ensure_ascii=False),
