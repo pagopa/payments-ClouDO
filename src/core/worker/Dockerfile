@@ -7,6 +7,8 @@ ARG TERRAFORM_VERSION=1.14.8
 # Helpful environment variables
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true \
+    API_PREFIX=/api \
+    PYTHONPATH=/home/site/wwwroot \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
@@ -47,3 +49,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip && \
 
 # Copy the Function App code
 COPY ${APP_PATH}/ /home/site/wwwroot/
+
+WORKDIR /home/site/wwwroot
+
+CMD ["python", "-m", "uvicorn", "--app-dir", "/home/site/wwwroot", "fastapi_app:app", "--host", "0.0.0.0", "--port", "80"]
