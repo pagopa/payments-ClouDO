@@ -216,7 +216,6 @@ module "cloudo" {
     "partition_key": "Schedule",
     "entity": [
       {
-        "id": "cache-health-hourly",
         "name": "Cache Health Check",
         "cron": "0 */5 * * * *",
         "runbook": "src/runbooks/aks/cache-health.sh",
@@ -229,6 +228,8 @@ module "cloudo" {
   }
 }
 ```
+
+`id` is generated automatically by Terraform as UUID.
 
 ## Requirements
 
