@@ -4297,6 +4297,20 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
 
     table_client = _get_table_client(TABLE_SCHEDULES)
 
+    def _as_bool(value: Any, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _is_terraform_locked(entity: Optional[dict[str, Any]]) -> bool:
+        if not entity:
+            return False
+        managed_by = str(entity.get("managed_by") or "").strip().lower()
+        locked = _as_bool(entity.get("locked"), default=False)
+        return managed_by == "terraform" or locked
+
     # Verification of authentication
     session, error_res = _get_authenticated_user(req)
     if error_res:
@@ -4329,6 +4343,8 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
                         "enabled": e.get("enabled"),
                         "oncall": e.get("oncall"),
                         "last_run": e.get("last_run"),
+                        "managed_by": e.get("managed_by") or "manual",
+                        "locked": _is_terraform_locked(e),
                     }
                 )
             return func.HttpResponse(
@@ -4347,7 +4363,32 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "POST":
         try:
             body = req.get_json()
+            if not isinstance(body, dict):
+                return func.HttpResponse(
+                    json.dumps({"error": "Invalid request body"}),
+                    status_code=400,
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
             schedule_id = body.get("id") or str(uuid.uuid4())
+
+            existing = None
+            try:
+                existing = table_client.get_entity(
+                    partition_key="Schedule", row_key=schedule_id
+                )
+            except Exception:
+                existing = None
+
+            if _is_terraform_locked(existing):
+                return func.HttpResponse(
+                    json.dumps(
+                        {
+                            "error": "Terraform-managed schedule is read-only and cannot be modified."
+                        }
+                    ),
+                    status_code=403,
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
 
             entity = {
                 "PartitionKey": "Schedule",
@@ -4360,7 +4401,9 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
                 "worker_pool": body.get("worker_pool"),
                 "enabled": body.get("enabled", True),
                 "oncall": body.get("oncall", True),
-                "last_run": body.get("last_run", ""),
+                "last_run": (existing or {}).get("last_run", ""),
+                "managed_by": (existing or {}).get("managed_by", "manual"),
+                "locked": _as_bool((existing or {}).get("locked"), default=False),
             }
             table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
 
@@ -4389,6 +4432,28 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
                 return func.HttpResponse(
                     json.dumps({"error": "Missing id"}),
                     status_code=400,
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
+
+            try:
+                existing = table_client.get_entity(
+                    partition_key="Schedule", row_key=schedule_id
+                )
+            except Exception:
+                return func.HttpResponse(
+                    json.dumps({"error": f"Schedule '{schedule_id}' not found"}),
+                    status_code=404,
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
+
+            if _is_terraform_locked(existing):
+                return func.HttpResponse(
+                    json.dumps(
+                        {
+                            "error": "Terraform-managed schedule is read-only and cannot be deleted."
+                        }
+                    ),
+                    status_code=403,
                     headers={"Access-Control-Allow-Origin": "*"},
                 )
 

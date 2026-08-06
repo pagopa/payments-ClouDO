@@ -12,10 +12,12 @@ resource "azurerm_storage_table_entity" "schedules" {
   entity = merge(
     each.value.entity,
     {
-      enabled  = lookup(each.value.entity, "enabled", true)
-      oncall   = lookup(each.value.entity, "oncall", true)
-      run_args = lookup(each.value.entity, "run_args", "")
-      last_run = ""
+      enabled    = lookup(each.value.entity, "enabled", true)
+      oncall     = lookup(each.value.entity, "oncall", true)
+      run_args   = lookup(each.value.entity, "run_args", "")
+      last_run   = ""
+      managed_by = "terraform"
+      locked     = true
     }
   )
 

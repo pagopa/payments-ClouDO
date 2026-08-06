@@ -36,6 +36,8 @@ interface Schedule {
   enabled: boolean;
   oncall: boolean;
   last_run?: string;
+  managed_by?: string;
+  locked?: boolean;
 }
 
 interface Notification {
@@ -163,6 +165,16 @@ export default function SchedulesPage() {
   };
 
   const toggleSchedule = async (schedule: Schedule) => {
+    const isTerraformSchedule =
+      schedule.locked === true ||
+      (schedule.managed_by || "").toLowerCase() === "terraform";
+    if (isTerraformSchedule) {
+      addNotification(
+        "error",
+        "Terraform schedule is read-only and cannot be modified",
+      );
+      return;
+    }
     setTogglingId(schedule.id);
     try {
       const updatedSchedule = { ...schedule, enabled: !schedule.enabled };
@@ -376,130 +388,193 @@ export default function SchedulesPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredSchedules.map((s) => (
-                      <tr
-                        key={s.id}
-                        className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40"
-                      >
-                        <td className="px-4 lg:px-8 py-4 lg:py-6">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                s.enabled
-                                  ? "bg-cloudo-ok animate-pulse"
-                                  : "bg-cloudo-muted opacity-60"
-                              }`}
-                            />
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-sm font-black text-cloudo-text tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors truncate">
-                                {s.name}
-                              </span>
-                              <span className="text-[11px] text-cloudo-muted/70 font-mono mt-0.5 truncate">
-                                ID: {s.id}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 lg:px-8 py-4 lg:py-6">
-                          <div className="bg-cloudo-accent/10 border border-cloudo-border px-3 py-1.5 font-mono text-cloudo-accent/80 text-xs w-fit whitespace-nowrap">
-                            {s.cron}
-                          </div>
-                        </td>
-                        <td className="hidden md:table-cell px-4 lg:px-8 py-4 lg:py-6 text-cloudo-text/70 font-mono">
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => fetchRunbookContent(s.runbook)}
-                              className="p-1.5 bg-cloudo-accent/10 border border-cloudo-border hover:bg-cloudo-accent/20 transition-all cursor-pointer flex-shrink-0"
-                              title="View Source Code"
-                            >
-                              <HiOutlineTerminal className="opacity-150 w-4 h-4" />
-                            </button>
-                            <span
-                              className="truncate cursor-pointer hover:text-cloudo-accent transition-colors max-w-[200px] xl:max-w-none"
-                              onClick={() => fetchRunbookContent(s.runbook)}
-                            >
-                              {s.runbook}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="hidden lg:table-cell px-4 lg:px-8 py-4 lg:py-6 text-cloudo-muted opacity-70 font-mono whitespace-nowrap">
-                          {s.last_run
-                            ? new Date(s.last_run).toLocaleString()
-                            : "NEVER_EXECUTED"}
-                        </td>
-                        <td className="hidden lg:table-cell px-4 py-4 text-center">
-                          {s.oncall && (
-                            <div className="flex justify-center">
-                              <div className="w-2 h-2 bg-cloudo-err animate-pulse" />
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 lg:px-8 py-4 lg:py-6 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => toggleSchedule(s)}
-                              disabled={togglingId === s.id}
-                              className={`p-2.5 border transition-all ${
-                                s.enabled
-                                  ? "bg-cloudo-accent/10 border-cloudo-border text-cloudo-muted hover:border-cloudo-muted/40"
-                                  : "bg-cloudo-accent/10 border-cloudo-border text-cloudo-ok hover:border-white/20"
-                              } ${
-                                togglingId === s.id
-                                  ? "opacity-50 cursor-wait"
-                                  : ""
-                              } ${
-                                user?.role !== "ADMIN" &&
-                                user?.role !== "OPERATOR"
-                                  ? "hidden"
-                                  : ""
-                              }`}
-                              title={
-                                s.enabled
-                                  ? "Disable Schedule"
-                                  : "Enable Schedule"
-                              }
-                            >
-                              {togglingId === s.id ? (
-                                <HiOutlineRefresh className="w-4 h-4 animate-spin" />
-                              ) : s.enabled ? (
-                                <HiOutlineBan className="w-4 h-4" />
-                              ) : (
-                                <HiOutlineCheck className="w-4 h-4" />
+                    filteredSchedules.map((s) =>
+                      (() => {
+                        const isTerraformSchedule =
+                          s.locked === true ||
+                          (s.managed_by || "").toLowerCase() === "terraform";
+                        return (
+                          <tr
+                            key={s.id}
+                            className="group hover:bg-cloudo-accent/[0.02] transition-colors relative border-l-2 border-l-transparent hover:border-l-cloudo-accent/40"
+                          >
+                            <td className="px-4 lg:px-8 py-4 lg:py-6">
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                    s.enabled
+                                      ? "bg-cloudo-ok animate-pulse"
+                                      : "bg-cloudo-muted opacity-60"
+                                  }`}
+                                />
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-sm font-black text-cloudo-text tracking-[0.1em] uppercase group-hover:text-cloudo-accent transition-colors truncate">
+                                    {s.name}
+                                  </span>
+                                  <div className="flex items-center gap-2 mt-0.5 min-w-0">
+                                    <span className="text-[11px] text-cloudo-muted/70 font-mono truncate">
+                                      ID: {s.id}
+                                    </span>
+                                    <span
+                                      className={`text-[9px] px-1.5 py-0.5 border font-black uppercase tracking-widest ${
+                                        isTerraformSchedule
+                                          ? "text-violet-300 border-violet-400/40 bg-violet-500/15"
+                                          : "text-cloudo-ok border-cloudo-ok/30 bg-cloudo-ok/10"
+                                      }`}
+                                      title={
+                                        isTerraformSchedule
+                                          ? "Managed by Terraform (read-only)"
+                                          : "Managed manually"
+                                      }
+                                    >
+                                      {isTerraformSchedule
+                                        ? "Terraform"
+                                        : "Manual"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 lg:px-8 py-4 lg:py-6">
+                              <div className="bg-cloudo-accent/10 border border-cloudo-border px-3 py-1.5 font-mono text-cloudo-accent/80 text-xs w-fit whitespace-nowrap">
+                                {s.cron}
+                              </div>
+                            </td>
+                            <td className="hidden md:table-cell px-4 lg:px-8 py-4 lg:py-6 text-cloudo-text/70 font-mono">
+                              <div className="flex items-center gap-3">
+                                <button
+                                  onClick={() => fetchRunbookContent(s.runbook)}
+                                  className="p-1.5 bg-cloudo-accent/10 border border-cloudo-border hover:bg-cloudo-accent/20 transition-all cursor-pointer flex-shrink-0"
+                                  title="View Source Code"
+                                >
+                                  <HiOutlineTerminal className="opacity-150 w-4 h-4" />
+                                </button>
+                                <span
+                                  className="truncate cursor-pointer hover:text-cloudo-accent transition-colors max-w-[200px] xl:max-w-none"
+                                  onClick={() => fetchRunbookContent(s.runbook)}
+                                >
+                                  {s.runbook}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="hidden lg:table-cell px-4 lg:px-8 py-4 lg:py-6 text-cloudo-muted opacity-70 font-mono whitespace-nowrap">
+                              {s.last_run
+                                ? new Date(s.last_run).toLocaleString()
+                                : "NEVER_EXECUTED"}
+                            </td>
+                            <td className="hidden lg:table-cell px-4 py-4 text-center">
+                              {s.oncall && (
+                                <div className="flex justify-center">
+                                  <div className="w-2 h-2 bg-cloudo-err animate-pulse" />
+                                </div>
                               )}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedSchedule(s);
-                                setModalMode("edit");
-                                fetchAvailableRunbooks();
-                                fetchWorkers();
-                              }}
-                              className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn ${
-                                user?.role !== "ADMIN" &&
-                                user?.role !== "OPERATOR"
-                                  ? "hidden"
-                                  : ""
-                              }`}
-                              title="Edit Schedule"
-                            >
-                              <HiOutlinePencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => setScheduleToDelete(s)}
-                              className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn ${
-                                user?.role !== "ADMIN" &&
-                                user?.role !== "OPERATOR"
-                                  ? "hidden"
-                                  : ""
-                              }`}
-                              title="Delete Schedule"
-                            >
-                              <HiOutlineTrash className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                            </td>
+                            <td className="px-4 lg:px-8 py-4 lg:py-6 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => toggleSchedule(s)}
+                                  disabled={
+                                    togglingId === s.id || isTerraformSchedule
+                                  }
+                                  className={`p-2.5 border transition-all ${
+                                    s.enabled
+                                      ? "bg-cloudo-accent/10 border-cloudo-border text-cloudo-muted hover:border-cloudo-muted/40"
+                                      : "bg-cloudo-accent/10 border-cloudo-border text-cloudo-ok hover:border-white/20"
+                                  } ${
+                                    togglingId === s.id || isTerraformSchedule
+                                      ? "opacity-50 cursor-not-allowed"
+                                      : "cursor-pointer"
+                                  } ${
+                                    user?.role !== "ADMIN" &&
+                                    user?.role !== "OPERATOR"
+                                      ? "hidden"
+                                      : ""
+                                  }`}
+                                  title={
+                                    isTerraformSchedule
+                                      ? "Terraform-managed schedule (read-only)"
+                                      : s.enabled
+                                        ? "Disable Schedule"
+                                        : "Enable Schedule"
+                                  }
+                                >
+                                  {togglingId === s.id ? (
+                                    <HiOutlineRefresh className="w-4 h-4 animate-spin" />
+                                  ) : s.enabled ? (
+                                    <HiOutlineBan className="w-4 h-4" />
+                                  ) : (
+                                    <HiOutlineCheck className="w-4 h-4" />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (isTerraformSchedule) {
+                                      addNotification(
+                                        "error",
+                                        "Terraform schedule is read-only and cannot be edited",
+                                      );
+                                      return;
+                                    }
+                                    setSelectedSchedule(s);
+                                    setModalMode("edit");
+                                    fetchAvailableRunbooks();
+                                    fetchWorkers();
+                                  }}
+                                  disabled={isTerraformSchedule}
+                                  className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-white/20 text-cloudo-muted hover:text-cloudo-text transition-all group/btn ${
+                                    isTerraformSchedule
+                                      ? "opacity-50 cursor-not-allowed"
+                                      : ""
+                                  } ${
+                                    user?.role !== "ADMIN" &&
+                                    user?.role !== "OPERATOR"
+                                      ? "hidden"
+                                      : ""
+                                  }`}
+                                  title={
+                                    isTerraformSchedule
+                                      ? "Terraform-managed schedule (read-only)"
+                                      : "Edit Schedule"
+                                  }
+                                >
+                                  <HiOutlinePencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (isTerraformSchedule) {
+                                      addNotification(
+                                        "error",
+                                        "Terraform schedule is read-only and cannot be deleted",
+                                      );
+                                      return;
+                                    }
+                                    setScheduleToDelete(s);
+                                  }}
+                                  disabled={isTerraformSchedule}
+                                  className={`p-2.5 bg-cloudo-accent/10 border border-cloudo-border hover:border-cloudo-err/40 text-cloudo-err hover:bg-cloudo-err hover:text-cloudo-text transition-all group/btn ${
+                                    isTerraformSchedule
+                                      ? "opacity-50 cursor-not-allowed hover:bg-cloudo-accent/10 hover:text-cloudo-err"
+                                      : ""
+                                  } ${
+                                    user?.role !== "ADMIN" &&
+                                    user?.role !== "OPERATOR"
+                                      ? "hidden"
+                                      : ""
+                                  }`}
+                                  title={
+                                    isTerraformSchedule
+                                      ? "Terraform-managed schedule (read-only)"
+                                      : "Delete Schedule"
+                                  }
+                                >
+                                  <HiOutlineTrash className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })(),
+                    )
                   )}
                 </tbody>
               </table>
