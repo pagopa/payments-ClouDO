@@ -2,7 +2,7 @@
 resource "azurerm_storage_table_entity" "schedules" {
   for_each = {
     for i in local.schedules_executor :
-    "${i.partition_key}:${i.entity.id}" => i
+    "${i.partition_key}" => i
   }
 
   storage_table_id = azurerm_storage_table.cloudo_schedules.id
