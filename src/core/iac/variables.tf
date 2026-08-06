@@ -58,6 +58,30 @@ variable "schemas" {
   }
 }
 
+variable "schedules" {
+  description = "Schedules to seed into CloudoSchedules table."
+  type        = string
+  default     = "{}"
+  validation {
+    condition = alltrue([
+      for k, v in jsondecode(var.schedules) : (
+        length(setsubtract(keys(v), ["partition_key", "entity"])) == 0 &&
+        alltrue([
+          for item in v.entity : (
+            length(setsubtract(keys(item), [
+              "id", "name", "cron", "runbook", "run_args", "queue", "worker_pool", "enabled", "oncall"
+            ])) == 0 &&
+            item.id != "" && item.name != "" && item.cron != "" && item.runbook != "" &&
+            contains([true, false], lookup(item, "enabled", true)) &&
+            contains([true, false], lookup(item, "oncall", true))
+          )
+        ])
+      )
+    ])
+    error_message = "The schedules definition contains invalid keys or empty required fields (id, name, cron, runbook)."
+  }
+}
+
 variable "subscription_id" {
   type        = string
   description = "(Optional) The Azure subscription ID for resource permission scope."
