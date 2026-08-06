@@ -4635,9 +4635,20 @@ def runbook_schemas(
 
     requester_username = session.get("username")
 
+    def _as_bool(value: Any, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
     if req.method == "GET":
         try:
             schemas_data = json.loads(entities)
+            if isinstance(schemas_data, list):
+                for item in schemas_data:
+                    if isinstance(item, dict):
+                        item["enabled"] = _as_bool(item.get("enabled"), default=True)
             logging.info(f"schemas: {str(schemas_data)}")
 
             return func.HttpResponse(
@@ -4659,12 +4670,20 @@ def runbook_schemas(
     if req.method == "POST":
         try:
             body = req.get_json()
+            if not isinstance(body, dict):
+                return func.HttpResponse(
+                    body=json.dumps({"error": "Invalid request body"}),
+                    status_code=400,
+                    mimetype="application/json",
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
 
             schema_id = body.get("id", str(uuid.uuid4()))
             new_entity = {
                 "PartitionKey": body.get("PartitionKey", "RunbookSchema"),
                 "RowKey": schema_id,
                 **body,
+                "enabled": _as_bool(body.get("enabled"), default=True),
             }
 
             outputTable.set(json.dumps(new_entity))
@@ -4702,6 +4721,13 @@ def runbook_schemas(
             from azure.data.tables import UpdateMode
 
             body = req.get_json()
+            if not isinstance(body, dict):
+                return func.HttpResponse(
+                    body=json.dumps({"error": "Invalid request body"}),
+                    status_code=400,
+                    mimetype="application/json",
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
             schema_id = body.get("id")
 
             if not schema_id:
@@ -4718,6 +4744,7 @@ def runbook_schemas(
                 "PartitionKey": body.get("PartitionKey", "RunbookSchema"),
                 "RowKey": schema_id,
                 **body,
+                "enabled": _as_bool(body.get("enabled"), default=True),
             }
 
             table_client = _get_table_client(TABLE_SCHEMAS)
