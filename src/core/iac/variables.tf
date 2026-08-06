@@ -69,7 +69,7 @@ variable "schedules" {
         alltrue([
           for item in v.entity : (
             length(setsubtract(keys(item), [
-              "id", "name", "cron", "runbook", "run_args", "queue", "worker_pool", "enabled", "oncall"
+              "name", "cron", "runbook", "run_args", "queue", "worker_pool", "enabled", "oncall"
             ])) == 0 &&
             item.id != "" && item.name != "" && item.cron != "" && item.runbook != "" &&
             contains([true, false], lookup(item, "enabled", true)) &&
@@ -347,6 +347,12 @@ variable "api_manager_hostname" {
   type        = string
   description = "The hostname of the API Manager (e.g., api.pagopa.it)"
   default     = ""
+}
+
+variable "api_management_allow_tracing" {
+  type        = bool
+  description = "Whether to allow tracing for the API Management instance"
+  default     = false
 }
 
 variable "api_path" {
