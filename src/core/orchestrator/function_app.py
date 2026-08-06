@@ -72,6 +72,56 @@ _settings_cache: dict[str, Any] = {
 }
 
 _NOTIFICATION_QUEUE_READY = False
+_LOGS_CONTAINER_READY = False
+_table_clients: dict[tuple[str, str], Any] = {}
+_queue_clients: dict[tuple[str, str], Any] = {}
+_blob_services: dict[str, Any] = {}
+
+
+def _require_connection_string(conn_env: str = STORAGE_CONN) -> str:
+    conn_str = (os.environ.get(conn_env) or "").strip()
+    if not conn_str:
+        raise ValueError(f"Missing storage connection string in env '{conn_env}'")
+    return conn_str
+
+
+def _get_table_client(table_name: str, conn_env: str = STORAGE_CONN):
+    from azure.data.tables import TableClient
+
+    conn_str = _require_connection_string(conn_env)
+    key = (conn_str, table_name)
+    client = _table_clients.get(key)
+    if client is None:
+        client = TableClient.from_connection_string(conn_str, table_name=table_name)
+        _table_clients[key] = client
+    return client
+
+
+def _get_queue_client(queue_name: str, conn_env: str = STORAGE_CONN):
+    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+
+    conn_str = _require_connection_string(conn_env)
+    key = (conn_str, queue_name)
+    client = _queue_clients.get(key)
+    if client is None:
+        client = QueueClient.from_connection_string(
+            conn_str=conn_str,
+            queue_name=queue_name,
+            message_encode_policy=TextBase64EncodePolicy(),
+        )
+        _queue_clients[key] = client
+    return client
+
+
+def _get_blob_service(conn_env: str = STORAGE_CONN):
+    from azure.storage.blob import BlobServiceClient
+
+    conn_str = _require_connection_string(conn_env)
+    service = _blob_services.get(conn_str)
+    if service is None:
+        service = BlobServiceClient.from_connection_string(conn_str)
+        _blob_services[conn_str] = service
+    return service
 
 
 def _status_priority(status: Any) -> int:
@@ -116,13 +166,8 @@ def _get_default_notification_settings() -> tuple[str, str]:
     channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
 
     try:
-        from azure.data.tables import TableClient
-
-        conn_str = os.environ.get(STORAGE_CONN)
-        if conn_str:
-            table_client = TableClient.from_connection_string(
-                conn_str, table_name=TABLE_SETTINGS
-            )
+        if os.environ.get(STORAGE_CONN):
+            table_client = _get_table_client(TABLE_SETTINGS)
             token_entity = table_client.get_entity(
                 partition_key="GlobalConfig", row_key="SLACK_TOKEN_DEFAULT"
             )
@@ -145,13 +190,7 @@ def _get_default_notification_settings() -> tuple[str, str]:
 def _enqueue_queue_payload(
     queue_name: str, payload: dict, conn_env: str = STORAGE_CONN
 ) -> None:
-    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
-
-    q_client = QueueClient.from_connection_string(
-        conn_str=os.environ.get(conn_env),
-        queue_name=queue_name,
-        message_encode_policy=TextBase64EncodePolicy(),
-    )
+    q_client = _get_queue_client(queue_name, conn_env=conn_env)
     q_client.send_message(json.dumps(payload, ensure_ascii=False))
 
 
@@ -277,12 +316,7 @@ def _get_authenticated_user(
 
         # Check personal API tokens
         try:
-            from azure.data.tables import TableClient
-
-            conn_str = os.environ.get(STORAGE_CONN)
-            table_client = TableClient.from_connection_string(
-                conn_str, table_name=TABLE_USERS
-            )
+            table_client = _get_table_client(TABLE_USERS)
 
             # This is not efficient (O(N)), but Table Storage doesn't support secondary indexes easily.
             # For a small number of users it's fine.
@@ -328,12 +362,7 @@ def _rows_from_binding(rows: Union[str, list[dict], None]) -> Optional[list[dict
 def log_audit(user: str, action: str, target: str, details: str = ""):
     """Log an action to the Audit table."""
     try:
-        from azure.data.tables import TableClient
-
-        conn_str = os.environ.get(STORAGE_CONN)
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name=TABLE_AUDIT
-        )
+        table_client = _get_table_client(TABLE_AUDIT)
 
         now = datetime.now(timezone.utc)
         entity = {
@@ -542,16 +571,17 @@ def _parse_blob_ref(log_value: Optional[str]) -> Optional[tuple[str, str]]:
 def _upload_log_to_blob(
     partition_key: str, exec_id: str, status: str, logs_raw: str
 ) -> str:
-    from azure.storage.blob import BlobServiceClient
+    global _LOGS_CONTAINER_READY
 
     blob_name = _make_log_blob_name(partition_key, exec_id, status)
-    conn_str = os.environ.get(STORAGE_CONN)
-    service = BlobServiceClient.from_connection_string(conn_str)
+    service = _get_blob_service(STORAGE_CONN)
     container = service.get_container_client(LOGS_BLOB_CONTAINER)
-    try:
-        container.create_container()
-    except Exception:
-        pass
+    if not _LOGS_CONTAINER_READY:
+        try:
+            container.create_container()
+        except Exception:
+            pass
+        _LOGS_CONTAINER_READY = True
     blob = container.get_blob_client(blob_name)
     blob.upload_blob((logs_raw or "").encode("utf-8", errors="replace"), overwrite=True)
     return _blob_ref(blob_name)
@@ -562,10 +592,7 @@ def _download_log_from_blob_ref(log_value: Optional[str]) -> Optional[str]:
     if not parsed:
         return None
     container, blob_name = parsed
-    from azure.storage.blob import BlobServiceClient
-
-    conn_str = os.environ.get(STORAGE_CONN)
-    service = BlobServiceClient.from_connection_string(conn_str)
+    service = _get_blob_service(STORAGE_CONN)
     blob = service.get_blob_client(container=container, blob=blob_name)
     content = blob.download_blob().readall()
     return content.decode("utf-8", errors="replace")
@@ -883,15 +910,12 @@ def Trigger(
     import detection
     import utils
     from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
-    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
     from escalation import format_jsm_description, send_jsm_alert, send_slack_execution
     from worker_routing import worker_routing
 
     try:
-        q_client = QueueClient.from_connection_string(
-            conn_str=os.environ.get(STORAGE_CONNECTION),
-            queue_name=NOTIFICATION_QUEUE_NAME,
-            message_encode_policy=TextBase64EncodePolicy(),
+        q_client = _get_queue_client(
+            NOTIFICATION_QUEUE_NAME, conn_env=STORAGE_CONNECTION
         )
         if not _NOTIFICATION_QUEUE_READY:
             try:
@@ -3008,9 +3032,24 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
     if error_res:
         return error_res
 
-    from azure.data.tables import TableClient
-
     try:
+
+        def _odata_escape(value: str) -> str:
+            return str(value or "").replace("'", "''")
+
+        def parse_dt_local(v: str) -> Optional[datetime]:
+            if not v:
+                return None
+            try:
+                return datetime.fromisoformat(v)
+            except Exception:
+                try:
+                    from datetime import datetime as dt
+
+                    return dt.strptime(v.replace(" ", "T"), "%Y-%m-%dT%H:%M:%S")
+                except Exception:
+                    return None
+
         partition_key = (req.params.get("partitionKey") or "").strip()
         if not partition_key:
             return func.HttpResponse(
@@ -3033,6 +3072,19 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
         q = (req.params.get("q") or "").strip()
         from_dt = (req.params.get("from") or "").strip()
         to_dt = (req.params.get("to") or "").strip()
+        include_log_content_raw = (
+            req.params.get("includeLogContent")
+            or req.params.get("include_log_content")
+            or req.params.get("includeLogs")
+            or req.params.get("include_logs")
+            or "true"
+        )
+        include_log_content = str(include_log_content_raw).strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
 
         try:
             limit = min(max(int(req.params.get("limit") or 200), 1), 5000)
@@ -3040,17 +3092,47 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
             limit = 200
         order = (req.params.get("order") or "desc").strip().lower()
 
-        conn_str = os.environ.get(STORAGE_CONN)
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name=TABLE_NAME
-        )
+        table_client = _get_table_client(TABLE_NAME)
 
-        filter_query = f"PartitionKey eq '{partition_key}'"
+        filter_parts = [f"PartitionKey eq '{_odata_escape(partition_key)}'"]
         if exec_id:
-            filter_query += f" and ExecId eq '{exec_id}'"
+            filter_parts.append(f"ExecId eq '{_odata_escape(exec_id)}'")
+        if (not latest_only) and status:
+            filter_parts.append(f"Status eq '{_odata_escape(status)}'")
+
+        f_dt = parse_dt_local(from_dt)
+        t_dt = parse_dt_local(to_dt)
+        if f_dt:
+            filter_parts.append(f"RequestedAt ge '{_odata_escape(f_dt.isoformat())}'")
+        if t_dt:
+            filter_parts.append(f"RequestedAt le '{_odata_escape(t_dt.isoformat())}'")
+
+        filter_query = " and ".join(filter_parts)
+        selected_columns = [
+            "PartitionKey",
+            "RowKey",
+            "ExecId",
+            "Status",
+            "RequestedAt",
+            "Name",
+            "Id",
+            "Runbook",
+            "Run_Args",
+            "Worker",
+            "Group",
+            "OnCall",
+            "Initiator",
+            "Severity",
+            "MonitorCondition",
+            "ResourceInfo",
+        ]
+        if include_log_content or q:
+            selected_columns.append("Log")
 
         try:
-            entities = table_client.query_entities(query_filter=filter_query)
+            entities = table_client.query_entities(
+                query_filter=filter_query, select=selected_columns
+            )
             data = list(entities)
         except Exception as e:
             logging.error(f"Table query failed: {e}")
@@ -3061,23 +3143,6 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=500,
                 mimetype="application/json",
             )
-
-        # Helpers
-        def parse_dt_local(v: str) -> Optional[datetime]:
-            if not v:
-                return None
-            try:
-                return datetime.fromisoformat(v)
-            except Exception:
-                try:
-                    from datetime import datetime as dt
-
-                    return dt.strptime(v.replace(" ", "T"), "%Y-%m-%dT%H:%M:%S")
-                except Exception:
-                    return None
-
-        f_dt = parse_dt_local(from_dt)
-        t_dt = parse_dt_local(to_dt)
 
         def contains_any(e: dict, s: str) -> bool:
             s = s.lower()
@@ -3191,6 +3256,9 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
 
         hydrated_items = []
         for item in filtered:
+            if not include_log_content:
+                hydrated_items.append(item)
+                continue
             try:
                 hydrated_items.append(_hydrate_log_field(item))
             except Exception as e:
@@ -3223,7 +3291,7 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
 )
 def register_worker(req: func.HttpRequest) -> func.HttpResponse:
     import utils
-    from azure.data.tables import TableClient, UpdateMode
+    from azure.data.tables import UpdateMode
 
     expected_key = os.environ.get("CLOUDO_SECRET_KEY")
     request_key = req.headers.get("x-cloudo-key")
@@ -3247,10 +3315,7 @@ def register_worker(req: func.HttpRequest) -> func.HttpResponse:
                 "Missing capability, worker_id or url", status_code=400
             )
 
-        conn_str = os.environ.get("AzureWebJobsStorage")
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name="WorkersRegistry"
-        )
+        table_client = _get_table_client(TABLE_WORKERS_SCHEMAS)
 
         entity = {
             "PartitionKey": capability,
@@ -3397,8 +3462,6 @@ def auth_register(req: func.HttpRequest) -> func.HttpResponse:
 
     body = req.get_json()
     try:
-        from azure.data.tables import TableClient
-
         username = body.get("username").lower()
         password = body.get("password")
         email = body.get("email")
@@ -3411,10 +3474,7 @@ def auth_register(req: func.HttpRequest) -> func.HttpResponse:
                 headers={"Access-Control-Allow-Origin": "*"},
             )
 
-        conn_str = os.environ.get(STORAGE_CONN)
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name=TABLE_USERS
-        )
+        table_client = _get_table_client(TABLE_USERS)
 
         try:
             table_client.get_entity(partition_key="Operator", row_key=username)
@@ -3479,8 +3539,6 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
 
     body = req.get_json()
     try:
-        from azure.data.tables import TableClient
-
         username = body.get("username").lower()
         password = body.get("password")
 
@@ -3492,10 +3550,7 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
                 headers={"Access-Control-Allow-Origin": "*"},
             )
 
-        conn_str = os.environ.get(STORAGE_CONN)
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name=TABLE_USERS
-        )
+        table_client = _get_table_client(TABLE_USERS)
 
         user_entity = table_client.get_entity(
             partition_key="Operator", row_key=username
@@ -3647,12 +3702,7 @@ def auth_google(req: func.HttpRequest) -> func.HttpResponse:
                 headers={"Access-Control-Allow-Origin": "*"},
             )
 
-        from azure.data.tables import TableClient
-
-        conn_str = os.environ.get(STORAGE_CONN)
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name=TABLE_USERS
-        )
+        table_client = _get_table_client(TABLE_USERS)
 
         username = email.split("@")[0].lower()
 
@@ -3762,10 +3812,9 @@ def auth_profile(req: func.HttpRequest) -> func.HttpResponse:
         return error_res
 
     username = session.get("username")
-    from azure.data.tables import TableClient, UpdateMode
+    from azure.data.tables import UpdateMode
 
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_USERS)
+    table_client = _get_table_client(TABLE_USERS)
 
     try:
         user_entity = table_client.get_entity(
@@ -3908,10 +3957,9 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
             headers={"Access-Control-Allow-Origin": "*"},
         )
 
-    from azure.data.tables import TableClient, UpdateMode
+    from azure.data.tables import UpdateMode
 
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_USERS)
+    table_client = _get_table_client(TABLE_USERS)
 
     if req.method == "GET":
         try:
@@ -4058,12 +4106,7 @@ def settings_management(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return create_cors_response()
 
-    from azure.data.tables import TableClient
-
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name=TABLE_SETTINGS
-    )
+    table_client = _get_table_client(TABLE_SETTINGS)
 
     # Verification of admin role
     session, error_res = _get_authenticated_user(req)
@@ -4146,10 +4189,7 @@ def get_audit_logs(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return create_cors_response()
 
-    from azure.data.tables import TableClient
-
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_AUDIT)
+    table_client = _get_table_client(TABLE_AUDIT)
 
     # Verification of admin role
     session, error_res = _get_authenticated_user(req)
@@ -4172,22 +4212,34 @@ def get_audit_logs(req: func.HttpRequest) -> func.HttpResponse:
             limit = int(limit) if limit and limit.lower() != "all" else None
         except ValueError:
             limit = None
+        days_raw = req.params.get("days")
+        try:
+            days = min(max(int(days_raw or 30), 1), 180)
+        except ValueError:
+            days = 30
 
-        entities = table_client.query_entities(query_filter="")
         logs = []
-        for e in entities:
-            logs.append(
-                {
-                    "timestamp": e.get("timestamp"),
-                    "operator": e.get("operator"),
-                    "action": e.get("action"),
-                    "target": e.get("target"),
-                    "details": e.get("details"),
-                }
+        now = datetime.now(timezone.utc)
+        for day_offset in range(days):
+            pk = (now - timedelta(days=day_offset)).strftime("%Y%m%d")
+            entities = table_client.query_entities(
+                query_filter=f"PartitionKey eq '{pk}'",
+                select=["timestamp", "operator", "action", "target", "details"],
             )
-        # Sort by timestamp descending
-        logs.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+            for e in entities:
+                logs.append(
+                    {
+                        "timestamp": e.get("timestamp"),
+                        "operator": e.get("operator"),
+                        "action": e.get("action"),
+                        "target": e.get("target"),
+                        "details": e.get("details"),
+                    }
+                )
+            if limit and len(logs) >= limit:
+                break
 
+        logs.sort(key=lambda x: x["timestamp"] or "", reverse=True)
         if limit:
             logs = logs[:limit]
 
@@ -4219,12 +4271,9 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return create_cors_response()
 
-    from azure.data.tables import TableClient, UpdateMode
+    from azure.data.tables import UpdateMode
 
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name=TABLE_SCHEDULES
-    )
+    table_client = _get_table_client(TABLE_SCHEDULES)
 
     # Verification of authentication
     session, error_res = _get_authenticated_user(req)
@@ -4520,7 +4569,7 @@ def runbook_schemas(
 
     if req.method == "PUT":
         try:
-            from azure.data.tables import TableClient, UpdateMode
+            from azure.data.tables import UpdateMode
 
             body = req.get_json()
             schema_id = body.get("id")
@@ -4541,10 +4590,7 @@ def runbook_schemas(
                 **body,
             }
 
-            conn_str = os.environ.get(STORAGE_CONN)
-            table_client = TableClient.from_connection_string(
-                conn_str, table_name=TABLE_SCHEMAS
-            )
+            table_client = _get_table_client(TABLE_SCHEMAS)
             table_client.upsert_entity(entity=updated_entity, mode=UpdateMode.REPLACE)
 
             # Audit log
@@ -4577,8 +4623,6 @@ def runbook_schemas(
 
     if req.method == "DELETE":
         try:
-            from azure.data.tables import TableClient
-
             # Try to get schema_id from query params first, then body
             schema_id = req.params.get("id")
             partition_key = req.params.get("PartitionKey", "RunbookSchema")
@@ -4601,10 +4645,7 @@ def runbook_schemas(
                     },
                 )
 
-            conn_str = os.environ.get(STORAGE_CONN)
-            table_client = TableClient.from_connection_string(
-                conn_str, table_name=TABLE_SCHEMAS
-            )
+            table_client = _get_table_client(TABLE_SCHEMAS)
             table_client.delete_entity(partition_key=partition_key, row_key=schema_id)
 
             # Audit log
@@ -4882,20 +4923,30 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
     Scheduler Engine: Check for scheduled runbooks and execute them.
     """
     import logging
-    import os
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    from azure.data.tables import TableClient
-    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
     from utils import format_requested_at, is_cron_now, today_partition_key
 
-    conn_str = os.environ.get("AzureWebJobsStorage")
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name=TABLE_SCHEDULES
-    )
+    table_client = _get_table_client(TABLE_SCHEDULES)
+    log_table_client = _get_table_client(TABLE_NAME)
+    workers_table = _get_table_client(TABLE_WORKERS_SCHEMAS)
 
     try:
+        worker_pool_to_queue: dict[str, str] = {}
+        try:
+            workers = workers_table.query_entities(
+                query_filter="PartitionKey ne ''",
+                select=["PartitionKey", "Queue"],
+            )
+            for w in workers:
+                pool = str(w.get("PartitionKey") or "").strip()
+                queue_name = str(w.get("Queue") or "").strip()
+                if pool and queue_name and pool not in worker_pool_to_queue:
+                    worker_pool_to_queue[pool] = queue_name
+        except Exception as werr:
+            logging.error(f"[Scheduler] Failed to load WorkersRegistry map: {werr}")
+
         schedules = table_client.query_entities(
             query_filter="PartitionKey eq 'Schedule' and enabled eq true"
         )
@@ -4928,26 +4979,7 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
                 target_queue = "cloudo-default"
 
                 if worker_pool:
-                    try:
-                        workers_table = TableClient.from_connection_string(
-                            conn_str, table_name="WorkersRegistry"
-                        )
-                        entities = list(
-                            workers_table.query_entities(
-                                query_filter=f"PartitionKey eq '{worker_pool}'"
-                            )
-                        )
-                        logging.warning(
-                            f"[WorkersRegistry] Found {len(entities)} workers"
-                        )
-                        for w in entities:
-                            if w.get("Queue"):
-                                target_queue = w.get("Queue")
-                                break
-                    except Exception as e:
-                        logging.error(
-                            f"[Scheduler] Failed to resolve queue for pool {worker_pool}: {e}"
-                        )
+                    target_queue = worker_pool_to_queue.get(worker_pool, target_queue)
 
                 requested_at = format_requested_at()
                 partition_key = today_partition_key()
@@ -4967,9 +4999,6 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
                 }
 
                 try:
-                    log_table_client = TableClient.from_connection_string(
-                        conn_str, table_name=TABLE_NAME
-                    )
                     log_entry = build_log_entry(
                         status="scheduled",
                         partition_key=partition_key,
@@ -4998,11 +5027,11 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
                     logging.error(f"[Scheduler] Failed to log scheduled status: {le}")
 
                 q_name = target_queue
-                queue_service = QueueClient.from_connection_string(
-                    conn_str, q_name, message_encode_policy=TextBase64EncodePolicy()
-                )
+                queue_service = _get_queue_client(q_name)
                 try:
-                    queue_service.send_message(json.dumps(queue_payload))
+                    queue_service.send_message(
+                        json.dumps(queue_payload, ensure_ascii=False)
+                    )
                 except Exception as qe:
                     if "QueueNotFound" in str(qe):
                         logging.warning(f"[Scheduler] Queue {q_name} not found")
@@ -5027,12 +5056,8 @@ def worker_cleanup(cleanupTimer: func.TimerRequest) -> None:
     Garbage Collector: Cleanup old workers where LastSeen is > 3 minutes.
     """
     import utils
-    from azure.data.tables import TableClient
 
-    conn_str = os.environ.get("AzureWebJobsStorage")
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name="WorkersRegistry"
-    )
+    table_client = _get_table_client(TABLE_WORKERS_SCHEMAS)
 
     now_str = utils.utc_now_iso()
     now_dt = datetime.fromisoformat(now_str.replace("Z", "+00:00"))

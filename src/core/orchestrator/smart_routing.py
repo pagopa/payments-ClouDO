@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, cast
@@ -34,6 +35,14 @@ _SAFE_TEAM_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _SAFE_CHANNEL_RE = re.compile(r"^#[A-Za-z0-9._-]{1,80}$")
 _SAFE_STATUS_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 _SAFE_ENV_KEY_RE = re.compile(r"^[A-Z0-9_]{1,96}$")
+ROUTING_CONFIG_CACHE_TTL_SECONDS = int(
+    os.getenv("ROUTING_CONFIG_CACHE_TTL_SECONDS", "60")
+)
+ROUTING_SETTINGS_CACHE_TTL_SECONDS = int(
+    os.getenv("ROUTING_SETTINGS_CACHE_TTL_SECONDS", "60")
+)
+_routing_config_cache: dict[str, Any] = {"value": None, "expires_at": 0.0}
+_setting_cache: dict[str, tuple[Optional[str], float]] = {}
 
 
 def _as_bool(value: Any, default: bool = False) -> bool:
@@ -117,6 +126,17 @@ def load_routing_config() -> dict[str, Any]:
         ],
     }
 
+    now = time.time()
+    if _routing_config_cache.get("expires_at", 0.0) > now:
+        cached_cfg = _routing_config_cache.get("value")
+        if isinstance(cached_cfg, dict):
+            return cached_cfg
+
+    def _cache_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
+        _routing_config_cache["value"] = cfg
+        _routing_config_cache["expires_at"] = now + ROUTING_CONFIG_CACHE_TTL_SECONDS
+        return cfg
+
     raw = ""
     # 1. Try Azure Table Storage
     try:
@@ -140,7 +160,7 @@ def load_routing_config() -> dict[str, Any]:
 
     if not raw:
         logging.info("ROUTING_RULES not set: using fallback configuration")
-        return fallback
+        return _cache_cfg(fallback)
     try:
         cfg = json.loads(raw)
         # Soft-merge defaults to ensure required keys exist
@@ -152,10 +172,10 @@ def load_routing_config() -> dict[str, Any]:
         )
         cfg.setdefault("teams", {})
         cfg.setdefault("rules", cfg.get("rules") or fallback["rules"])
-        return cfg
+        return _cache_cfg(cfg)
     except Exception as e:
         logging.error(f"Invalid ROUTING_RULES JSON: {e}")
-        return fallback
+        return _cache_cfg(fallback)
 
 
 # =========================
@@ -344,7 +364,13 @@ def _get_setting(key: str) -> Optional[str]:
         logging.warning("Rejected unsafe setting key lookup")
         return None
 
+    now = time.time()
+    cached = _setting_cache.get(key)
+    if cached and cached[1] > now:
+        return cached[0]
+
     # Try Table Storage
+    resolved: Optional[str] = None
     try:
         from azure.data.tables import TableClient
 
@@ -358,15 +384,20 @@ def _get_setting(key: str) -> Optional[str]:
                 )
                 val = entity.get("value")
                 if val:
-                    return str(val).strip().strip('"').strip("'")
+                    resolved = str(val).strip().strip('"').strip("'")
     except Exception:
         pass
 
-    # Try Environment
-    val = os.environ.get(key)
-    if val:
-        return str(val).strip().strip('"').strip("'")
-    return None
+    if resolved is None:
+        val = os.environ.get(key)
+        if val:
+            resolved = str(val).strip().strip('"').strip("'")
+
+    _setting_cache[key] = (
+        resolved,
+        now + ROUTING_SETTINGS_CACHE_TTL_SECONDS,
+    )
+    return resolved
 
 
 def resolve_jsm_apikey(team: Optional[str]) -> Optional[str]:
