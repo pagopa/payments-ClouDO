@@ -352,12 +352,11 @@ BANNER = r"""
   ██║     ██║     ██║   ██║██║   ██║██║  ██║██║   ██║
   ╚██████╗███████╗╚██████╔╝╚██████╔╝██████╔╝╚██████╔╝
    ╚═════╝╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝  ╚═════╝
-\033[0m\033[1;37m
-  ┌─────────────────────────────────────────────────────┐
-  │  🧠  ORCHESTRATOR                  FastAPI runtime   │
-  │  ⚡  Event-driven orchestration engine  ▶  port 80   │
-  └─────────────────────────────────────────────────────┘
-\033[0m"""
+\033[0m
+  service  : ORCHESTRATOR
+  role     : Event-driven orchestration engine
+  port     : 80
+"""
 
 
 app = FastAPI(title="CloudDO Orchestrator", version="fastapi-migration")

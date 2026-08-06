@@ -375,12 +375,11 @@ BANNER = r"""
   ██║███╗██║██║   ██║██╔══██╗██╔═██╗ ██╔══╝  ██╔══██╗
   ╚███╔███╔╝╚██████╔╝██║  ██║██║  ██╗███████╗██║  ██║
    ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
-\033[0m\033[1;37m
-  ┌─────────────────────────────────────────────────────┐
-  │  ⚙️   WORKER                       FastAPI runtime  │
-  │  🔁  Runbook queue processor          ▶  port 80    │
-  └─────────────────────────────────────────────────────┘
-\033[0m"""
+\033[0m
+  service  : WORKER
+  role     : Runbook queue processor
+  port     : 80
+"""
 
 
 app = FastAPI(title="CloudDO Worker", version="fastapi-migration")
