@@ -368,11 +368,19 @@ def _stop_background_workers() -> None:
 
 
 BANNER = r"""
-╔══════════════════════════════════════════════════╗
-║              CloudDO Worker API                 ║
-║          FastAPI runtime is now live            ║
-╚══════════════════════════════════════════════════╝
-"""
+\033[1;33m
+  ██╗    ██╗ ██████╗ ██████╗ ██╗  ██╗███████╗██████╗
+  ██║    ██║██╔═══██╗██╔══██╗██║ ██╔╝██╔════╝██╔══██╗
+  ██║ █╗ ██║██║   ██║██████╔╝█████╔╝ █████╗  ██████╔╝
+  ██║███╗██║██║   ██║██╔══██╗██╔═██╗ ██╔══╝  ██╔══██╗
+  ╚███╔███╔╝╚██████╔╝██║  ██║██║  ██╗███████╗██║  ██║
+   ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+\033[0m\033[1;37m
+  ┌─────────────────────────────────────────────────────┐
+  │  ⚙️   WORKER                       FastAPI runtime  │
+  │  🔁  Runbook queue processor          ▶  port 80    │
+  └─────────────────────────────────────────────────────┘
+\033[0m"""
 
 
 app = FastAPI(title="CloudDO Worker", version="fastapi-migration")
@@ -380,7 +388,7 @@ app = FastAPI(title="CloudDO Worker", version="fastapi-migration")
 
 @app.on_event("startup")
 def _on_startup() -> None:
-    print(BANNER)
+    print(BANNER.replace("\\033", "\033"))
     _start_background_workers()
 
 
