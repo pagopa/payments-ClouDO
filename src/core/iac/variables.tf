@@ -71,14 +71,14 @@ variable "schedules" {
             length(setsubtract(keys(item), [
               "name", "cron", "runbook", "run_args", "queue", "worker_pool", "enabled", "oncall"
             ])) == 0 &&
-            item.id != "" && item.name != "" && item.cron != "" && item.runbook != "" &&
+            item.name != "" && item.cron != "" && item.runbook != "" &&
             contains([true, false], lookup(item, "enabled", true)) &&
             contains([true, false], lookup(item, "oncall", true))
           )
         ])
       )
     ])
-    error_message = "The schedules definition contains invalid keys or empty required fields (id, name, cron, runbook)."
+    error_message = "The schedules definition contains invalid keys or empty required fields (name, cron, runbook)."
   }
 }
 
