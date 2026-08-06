@@ -4380,38 +4380,81 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
                 existing = None
 
             if _is_terraform_locked(existing):
-                return func.HttpResponse(
-                    json.dumps(
-                        {
-                            "error": "Terraform-managed schedule is read-only and cannot be modified."
-                        }
-                    ),
-                    status_code=403,
-                    headers={"Access-Control-Allow-Origin": "*"},
-                )
+                immutable_fields = [
+                    "name",
+                    "cron",
+                    "runbook",
+                    "run_args",
+                    "queue",
+                    "worker_pool",
+                ]
+                for field in immutable_fields:
+                    if field in body and (body.get(field) or "") != (
+                        existing.get(field) or ""
+                    ):
+                        return func.HttpResponse(
+                            json.dumps(
+                                {
+                                    "error": "Terraform-managed schedule allows only enabled toggle. Other fields are read-only."
+                                }
+                            ),
+                            status_code=403,
+                            headers={"Access-Control-Allow-Origin": "*"},
+                        )
+                if "oncall" in body and _as_bool(
+                    body.get("oncall"), default=True
+                ) != _as_bool(existing.get("oncall"), default=True):
+                    return func.HttpResponse(
+                        json.dumps(
+                            {
+                                "error": "Terraform-managed schedule allows only enabled toggle. Other fields are read-only."
+                            }
+                        ),
+                        status_code=403,
+                        headers={"Access-Control-Allow-Origin": "*"},
+                    )
 
-            entity = {
-                "PartitionKey": "Schedule",
-                "RowKey": schedule_id,
-                "name": body.get("name"),
-                "cron": body.get("cron"),
-                "runbook": body.get("runbook"),
-                "run_args": body.get("run_args"),
-                "queue": body.get("queue"),
-                "worker_pool": body.get("worker_pool"),
-                "enabled": body.get("enabled", True),
-                "oncall": body.get("oncall", True),
-                "last_run": (existing or {}).get("last_run", ""),
-                "managed_by": (existing or {}).get("managed_by", "manual"),
-                "locked": _as_bool((existing or {}).get("locked"), default=False),
-            }
+                entity = {
+                    "PartitionKey": "Schedule",
+                    "RowKey": schedule_id,
+                    "name": existing.get("name"),
+                    "cron": existing.get("cron"),
+                    "runbook": existing.get("runbook"),
+                    "run_args": existing.get("run_args"),
+                    "queue": existing.get("queue"),
+                    "worker_pool": existing.get("worker_pool"),
+                    "enabled": _as_bool(
+                        body.get("enabled"),
+                        default=_as_bool(existing.get("enabled"), default=True),
+                    ),
+                    "oncall": _as_bool(existing.get("oncall"), default=True),
+                    "last_run": existing.get("last_run", ""),
+                    "managed_by": existing.get("managed_by", "terraform"),
+                    "locked": _as_bool(existing.get("locked"), default=True),
+                }
+            else:
+                entity = {
+                    "PartitionKey": "Schedule",
+                    "RowKey": schedule_id,
+                    "name": body.get("name"),
+                    "cron": body.get("cron"),
+                    "runbook": body.get("runbook"),
+                    "run_args": body.get("run_args"),
+                    "queue": body.get("queue"),
+                    "worker_pool": body.get("worker_pool"),
+                    "enabled": _as_bool(body.get("enabled"), default=True),
+                    "oncall": _as_bool(body.get("oncall"), default=True),
+                    "last_run": (existing or {}).get("last_run", ""),
+                    "managed_by": (existing or {}).get("managed_by", "manual"),
+                    "locked": _as_bool((existing or {}).get("locked"), default=False),
+                }
             table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
 
             log_audit(
                 user=session.get("username") or "SYSTEM",
                 action="SCHEDULE_UPSERT",
                 target=schedule_id,
-                details=f"Name: {body.get('name')}, Cron: {body.get('cron')}",
+                details=f"Name: {entity.get('name')}, Cron: {entity.get('cron')}",
             )
             return func.HttpResponse(
                 json.dumps({"success": True, "id": schedule_id}),

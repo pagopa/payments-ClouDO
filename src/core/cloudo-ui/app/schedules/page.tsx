@@ -165,16 +165,6 @@ export default function SchedulesPage() {
   };
 
   const toggleSchedule = async (schedule: Schedule) => {
-    const isTerraformSchedule =
-      schedule.locked === true ||
-      (schedule.managed_by || "").toLowerCase() === "terraform";
-    if (isTerraformSchedule) {
-      addNotification(
-        "error",
-        "Terraform schedule is read-only and cannot be modified",
-      );
-      return;
-    }
     setTogglingId(schedule.id);
     try {
       const updatedSchedule = { ...schedule, enabled: !schedule.enabled };
@@ -423,7 +413,7 @@ export default function SchedulesPage() {
                                       }`}
                                       title={
                                         isTerraformSchedule
-                                          ? "Managed by Terraform (read-only)"
+                                          ? "Managed by Terraform (toggle enabled only)"
                                           : "Managed manually"
                                       }
                                     >
@@ -473,15 +463,13 @@ export default function SchedulesPage() {
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   onClick={() => toggleSchedule(s)}
-                                  disabled={
-                                    togglingId === s.id || isTerraformSchedule
-                                  }
+                                  disabled={togglingId === s.id}
                                   className={`p-2.5 border transition-all ${
                                     s.enabled
                                       ? "bg-cloudo-accent/10 border-cloudo-border text-cloudo-muted hover:border-cloudo-muted/40"
                                       : "bg-cloudo-accent/10 border-cloudo-border text-cloudo-ok hover:border-white/20"
                                   } ${
-                                    togglingId === s.id || isTerraformSchedule
+                                    togglingId === s.id
                                       ? "opacity-50 cursor-not-allowed"
                                       : "cursor-pointer"
                                   } ${
@@ -491,11 +479,9 @@ export default function SchedulesPage() {
                                       : ""
                                   }`}
                                   title={
-                                    isTerraformSchedule
-                                      ? "Terraform-managed schedule (read-only)"
-                                      : s.enabled
-                                        ? "Disable Schedule"
-                                        : "Enable Schedule"
+                                    s.enabled
+                                      ? "Disable Schedule"
+                                      : "Enable Schedule"
                                   }
                                 >
                                   {togglingId === s.id ? (

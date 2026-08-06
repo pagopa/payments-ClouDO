@@ -19,8 +19,8 @@ resource "azurerm_storage_table_entity" "schedules" {
     each.value.entity,
     {
       id         = random_uuid.schedule_ids[each.key].result
-      enabled    = lookup(each.value.entity, "enabled", true)
-      oncall     = lookup(each.value.entity, "oncall", true)
+      enabled    = try(tobool(lookup(each.value.entity, "enabled", true)), true)
+      oncall     = try(tobool(lookup(each.value.entity, "oncall", true)), true)
       run_args   = lookup(each.value.entity, "run_args", "")
       last_run   = ""
       managed_by = "terraform"
