@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -302,18 +303,27 @@ def _poll_notification_queue() -> None:
 
 def _run_scheduler_timers() -> None:
     class _Timer(func.TimerRequest):
-        past_due = False
+        @property
+        def past_due(self) -> bool:
+            return False
+
+    # Align to the next minute boundary so that cron expressions with second=0
+    # (e.g. "0 */1 * * * *") evaluate correctly inside scheduler_engine.
+    now = datetime.now()
+    secs_to_next_minute = 60 - now.second - now.microsecond / 1_000_000
+    _STOP_EVENT.wait(secs_to_next_minute)
 
     while not _STOP_EVENT.is_set():
         try:
             legacy.scheduler_engine(_Timer())
-        except Exception as exc:
-            logging.warning("Scheduler engine failed: %s", exc)
+        except Exception:
+            logging.exception("Scheduler engine failed")
         try:
             legacy.worker_cleanup(_Timer())
-        except Exception as exc:
-            logging.warning("Worker cleanup failed: %s", exc)
-        _STOP_EVENT.wait(SCHEDULER_SECONDS)
+        except Exception:
+            logging.exception("Worker cleanup failed")
+        # Sleep exactly 60 s to stay aligned with minute boundaries.
+        _STOP_EVENT.wait(60)
 
 
 def _start_background_workers() -> None:
