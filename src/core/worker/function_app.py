@@ -46,6 +46,11 @@ GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_PATH_PREFIX = os.environ.get("GITHUB_PATH_PREFIX", "src/runbooks")
 
 _PROCESS_BY_EXEC: dict[str, subprocess.Popen] = {}
+_CLOUDO_SECRET_KEY = os.environ.get("CLOUDO_SECRET_KEY", "")
+_STORAGE_CONN_STR = os.environ.get(STORAGE_CONNECTION)
+_BLOB_CONTAINER_CLIENT = None
+_NOTIFICATION_QUEUE_CLIENT = None
+_STORAGE_CLIENT_LOCK = Lock()
 
 if os.getenv("LOCAL_DEV", "false").lower() != "true":
     AUTH = func.AuthLevel.FUNCTION
@@ -57,6 +62,53 @@ app = func.FunctionApp()
 # In-memory registry of ongoing executions (per instance)
 _ACTIVE_RUNS = {}
 _ACTIVE_LOCK = Lock()
+
+
+def _is_authorized_request(req: func.HttpRequest) -> bool:
+    request_key = req.headers.get("x-cloudo-key")
+    return bool(_CLOUDO_SECRET_KEY) and request_key == _CLOUDO_SECRET_KEY
+
+
+def _get_blob_container_client():
+    from azure.storage.blob import BlobServiceClient
+
+    global _BLOB_CONTAINER_CLIENT
+    if _BLOB_CONTAINER_CLIENT is not None:
+        return _BLOB_CONTAINER_CLIENT
+
+    if not _STORAGE_CONN_STR:
+        raise RuntimeError("Missing AzureWebJobsStorage connection string")
+
+    with _STORAGE_CLIENT_LOCK:
+        if _BLOB_CONTAINER_CLIENT is None:
+            service = BlobServiceClient.from_connection_string(_STORAGE_CONN_STR)
+            container = service.get_container_client(LOGS_BLOB_CONTAINER)
+            try:
+                container.create_container()
+            except Exception:
+                pass
+            _BLOB_CONTAINER_CLIENT = container
+    return _BLOB_CONTAINER_CLIENT
+
+
+def _upload_log_blob(blob_name: str, content: str) -> str:
+    container = _get_blob_container_client()
+    blob = container.get_blob_client(blob_name)
+    blob.upload_blob((content or "").encode("utf-8", errors="replace"), overwrite=True)
+    return f"{LOGS_REF_PREFIX}{LOGS_BLOB_CONTAINER}/{blob_name}"
+
+
+def _parse_resource_info(value: Any, exec_id: str) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            logging.warning("[%s] resource_info not valid JSON", exec_id)
+    return {}
 
 
 def _build_status_headers(payload: dict, status: str, log_message: str) -> dict:
@@ -102,25 +154,8 @@ def _make_worker_log_blob_name(payload: dict, status: str) -> str:
 
 def _update_running_log_blob(payload: dict, log_message: str) -> None:
     """Persist latest running output into a single blob snapshot (overwrite)."""
-    from azure.storage.blob import BlobServiceClient
-
-    conn_str = os.environ.get(STORAGE_CONNECTION)
-    if not conn_str:
-        raise RuntimeError("Missing AzureWebJobsStorage connection string")
-
     blob_name = _make_worker_log_blob_name(payload, "running")
-    service = BlobServiceClient.from_connection_string(conn_str)
-    container = service.get_container_client(LOGS_BLOB_CONTAINER)
-    try:
-        container.create_container()
-    except Exception:
-        pass
-
-    blob = container.get_blob_client(blob_name)
-    blob.upload_blob(
-        (log_message or "").encode("utf-8", errors="replace"),
-        overwrite=True,
-    )
+    _upload_log_blob(blob_name, log_message)
 
 
 def _post_status(payload: dict, status: str, log_message: str) -> str:
@@ -132,19 +167,8 @@ def _post_status(payload: dict, status: str, log_message: str) -> str:
     log_ref = ""
     if len(log_bytes) > MAX_INLINE_LOG_BYTES:
         try:
-            from azure.storage.blob import BlobServiceClient
-
             blob_name = _make_worker_log_blob_name(payload, status)
-            conn_str = os.environ.get(STORAGE_CONNECTION)
-            service = BlobServiceClient.from_connection_string(conn_str)
-            container = service.get_container_client(LOGS_BLOB_CONTAINER)
-            try:
-                container.create_container()
-            except Exception:
-                pass
-            blob = container.get_blob_client(blob_name)
-            blob.upload_blob(log_text.encode("utf-8", errors="replace"), overwrite=True)
-            log_ref = f"{LOGS_REF_PREFIX}{LOGS_BLOB_CONTAINER}/{blob_name}"
+            log_ref = _upload_log_blob(blob_name, log_text)
             log_bytes = b""
         except Exception as e:
             logging.warning(
@@ -193,7 +217,7 @@ def _send_status_to_receiver(message_json: str, payload: dict) -> bool:
     try:
         headers = {
             "Content-Type": "application/json",
-            "x-cloudo-key": os.environ.get("CLOUDO_SECRET_KEY", ""),
+            "x-cloudo-key": _CLOUDO_SECRET_KEY,
         }
         resp = requests.post(
             RECEIVER_URL,
@@ -227,18 +251,37 @@ def _send_status_via_queue(message_json: str, payload: dict) -> None:
     """Send status message via Azure Storage Queue (fallback)."""
     from azure.storage.queue import QueueClient, TextBase64EncodePolicy
 
+    global _NOTIFICATION_QUEUE_CLIENT
     exec_id = payload.get("exec_id", "unknown")
     try:
-        q_client = QueueClient.from_connection_string(
-            conn_str=os.environ.get(STORAGE_CONNECTION),
-            queue_name=NOTIFICATION_QUEUE_NAME,
-            message_encode_policy=TextBase64EncodePolicy(),
-        )
-        q_client.send_message(message_json)
+        if _NOTIFICATION_QUEUE_CLIENT is None:
+            with _STORAGE_CLIENT_LOCK:
+                if _NOTIFICATION_QUEUE_CLIENT is None:
+                    _NOTIFICATION_QUEUE_CLIENT = QueueClient.from_connection_string(
+                        conn_str=_STORAGE_CONN_STR,
+                        queue_name=NOTIFICATION_QUEUE_NAME,
+                        message_encode_policy=TextBase64EncodePolicy(),
+                    )
+        _NOTIFICATION_QUEUE_CLIENT.send_message(message_json)
         logging.debug(f"[{exec_id}] Status sent via queue")
     except Exception as e:
         logging.error(f"[{exec_id}] Failed to send status via queue: {e}")
         raise
+
+
+def _dispatch_status(
+    payload: dict,
+    status: str,
+    log_message: str,
+    queue_out: Optional[func.Out[str]] = None,
+) -> None:
+    message_json = _post_status(payload, status=status, log_message=log_message)
+    if _send_status_to_receiver(message_json, payload):
+        return
+    if queue_out is not None:
+        queue_out.set(message_json)
+    else:
+        _send_status_via_queue(message_json, payload)
 
 
 def _github_auth_headers() -> list[dict]:
@@ -714,7 +757,7 @@ def _run_script(
                 os.remove(kubeconfig_path)
         except Exception as e:
             logging.warning(
-                f"[{payload.get('exec_id')}] remove kubeconfig path error ({p}): {e}"
+                f"[{payload.get('exec_id')}] remove kubeconfig path error ({kubeconfig_path}): {e}"
             )
 
 
@@ -759,9 +802,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
         if skip_reason:
             log_msg = f"Execution {exec_id} skipped: {skip_reason}"
             logging.info(f"{log_prefix} {log_msg}")
-            message_json = _post_status(payload, status="skipped", log_message=log_msg)
-            if not _send_status_to_receiver(message_json, payload):
-                _send_status_via_queue(message_json, payload)
+            _dispatch_status(payload, status="skipped", log_message=log_msg)
             return
 
     # Register the execution as "in progress" and notify
@@ -782,9 +823,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
         }
 
     log_msg = f"{log_prefix} Job {payload.get('name')} started"
-    message_json = _post_status(payload, status="running", log_message=log_msg)
-    if not _send_status_to_receiver(message_json, payload):
-        _send_status_via_queue(message_json, payload)
+    _dispatch_status(payload, status="running", log_message=log_msg)
     logging.info(f"{log_prefix} Receiver response: status=running")
 
     # Local environment to avoid race conditions in multithreading
@@ -792,17 +831,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
     execution_temp_dir = tempfile.mkdtemp(prefix=f"cloudo-{exec_id}-")
 
     try:
-        info_raw = payload.get("resource_info")
-        info: dict = {}
-        if isinstance(info_raw, str):
-            try:
-                parsed = json.loads(info_raw)
-                if isinstance(parsed, dict):
-                    info = parsed
-            except json.JSONDecodeError:
-                logging.warning("[%s] resource_info not valid JSON", exec_id)
-        elif isinstance(info_raw, dict):
-            info = info_raw
+        info = _parse_resource_info(payload.get("resource_info"), exec_id)
 
         ns_val = str(info.get("aks_namespace", "")).strip().lower() if info else ""
         has_valid_ns = bool(ns_val) and ns_val not in {"null", "none", "undefined"}
@@ -811,11 +840,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
         if info and has_valid_ns:
             if os.environ.get("AKS_INTEGRATION_ENABLED") == "false":
                 err_msg = f"{log_prefix} AKS login failed: tf var AKS_INTEGRATION not defined for this deployment"
-                message_json = _post_status(
-                    payload, status="error", log_message=err_msg
-                )
-                if not _send_status_to_receiver(message_json, payload):
-                    _send_status_via_queue(message_json, payload)
+                _dispatch_status(payload, status="error", log_message=err_msg)
                 logging.error(f"{err_msg}")
 
             try:
@@ -826,11 +851,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
             except Exception as e:
                 # Report error and stop processing
                 err_msg = f"{log_prefix} AKS login failed: {type(e).__name__}: {e}"
-                message_json = _post_status(
-                    payload, status="error", log_message=err_msg
-                )
-                if not _send_status_to_receiver(message_json, payload):
-                    _send_status_via_queue(message_json, payload)
+                _dispatch_status(payload, status="error", log_message=err_msg)
                 logging.error(f"{err_msg}")
                 return
 
@@ -856,20 +877,12 @@ def process_runbook(msg: func.QueueMessage) -> None:
 
         if not stopped:
             log_msg = f"{result.stdout.strip() if result else 'No output'}"
-            message_json = _post_status(
-                payload, status="succeeded", log_message=log_msg
-            )
-            if not _send_status_to_receiver(message_json, payload):
-                _send_status_via_queue(message_json, payload)
+            _dispatch_status(payload, status="succeeded", log_message=log_msg)
 
     except subprocess.CalledProcessError as e:
         error_message = f"Script failed. returncode={e.returncode} stderr={e.stderr.strip()} stdout={e.stdout.strip()}"
         try:
-            message_json = _post_status(
-                payload, status="failed", log_message=error_message
-            )
-            if not _send_status_to_receiver(message_json, payload):
-                _send_status_via_queue(message_json, payload)
+            _dispatch_status(payload, status="failed", log_message=error_message)
             logging.error(
                 f"{log_prefix} Receiver response: status=queued",
             )
@@ -878,9 +891,7 @@ def process_runbook(msg: func.QueueMessage) -> None:
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
         try:
-            message_json = _post_status(payload, status="error", log_message=err_msg)
-            if not _send_status_to_receiver(message_json, payload):
-                _send_status_via_queue(message_json, payload)
+            _dispatch_status(payload, status="error", log_message=err_msg)
             logging.error(
                 f"{log_prefix} Receiver response: status=queued",
             )
@@ -945,10 +956,7 @@ def list_processes(req: func.HttpRequest) -> func.HttpResponse:
     - GET /api/processes?q=python — Filter by text on exec_id, id, name, runbook
 
     """
-    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
-    request_key = req.headers.get("x-cloudo-key")
-
-    if not expected_key or request_key != expected_key:
+    if not _is_authorized_request(req):
         return func.HttpResponse(
             json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
             status_code=401,
@@ -1009,10 +1017,7 @@ def stop_process(
     example: POST /api/processes/stop?exec_id=123
     """
 
-    expected_key = os.environ.get("CLOUDO_SECRET_KEY")
-    request_key = req.headers.get("x-cloudo-key")
-
-    if not expected_key or request_key != expected_key:
+    if not _is_authorized_request(req):
         return func.HttpResponse(
             json.dumps({"error": "Unauthorized"}, ensure_ascii=False),
             status_code=401,
@@ -1075,14 +1080,12 @@ def stop_process(
                 "severity": None,
                 "requestedAt": run_info.get("requestedAt"),
             }
-            message_json = _post_status(
+            _dispatch_status(
                 payload,
                 status="stopped",
                 log_message=f"Execution {exec_id} stopped by request",
+                queue_out=cloudo_notification_q,
             )
-            # Try HTTP first, fallback to queue
-            if not _send_status_to_receiver(message_json, payload):
-                cloudo_notification_q.set(message_json)
     except Exception:
         logging.warning("[%s] Unable to send status stop", exec_id)
 

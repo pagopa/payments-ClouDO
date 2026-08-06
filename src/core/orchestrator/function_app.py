@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Union
@@ -63,9 +64,134 @@ STATUS_PRIORITY: dict[str, int] = {
     "pending": 1,
 }
 
+SETTINGS_CACHE_TTL_SECONDS = int(os.getenv("SETTINGS_CACHE_TTL_SECONDS", "60"))
+_settings_cache: dict[str, Any] = {
+    "token": "",
+    "channel": "#cloudo-test",
+    "expires_at": 0.0,
+}
+
+_NOTIFICATION_QUEUE_READY = False
+_LOGS_CONTAINER_READY = False
+_table_clients: dict[tuple[str, str], Any] = {}
+_queue_clients: dict[tuple[str, str], Any] = {}
+_blob_services: dict[str, Any] = {}
+
+
+def _require_connection_string(conn_env: str = STORAGE_CONN) -> str:
+    conn_str = (os.environ.get(conn_env) or "").strip()
+    if not conn_str:
+        raise ValueError(f"Missing storage connection string in env '{conn_env}'")
+    return conn_str
+
+
+def _get_table_client(table_name: str, conn_env: str = STORAGE_CONN):
+    from azure.data.tables import TableClient
+
+    conn_str = _require_connection_string(conn_env)
+    key = (conn_str, table_name)
+    client = _table_clients.get(key)
+    if client is None:
+        client = TableClient.from_connection_string(conn_str, table_name=table_name)
+        _table_clients[key] = client
+    return client
+
+
+def _get_queue_client(queue_name: str, conn_env: str = STORAGE_CONN):
+    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+
+    conn_str = _require_connection_string(conn_env)
+    key = (conn_str, queue_name)
+    client = _queue_clients.get(key)
+    if client is None:
+        client = QueueClient.from_connection_string(
+            conn_str=conn_str,
+            queue_name=queue_name,
+            message_encode_policy=TextBase64EncodePolicy(),
+        )
+        _queue_clients[key] = client
+    return client
+
+
+def _get_blob_service(conn_env: str = STORAGE_CONN):
+    from azure.storage.blob import BlobServiceClient
+
+    conn_str = _require_connection_string(conn_env)
+    service = _blob_services.get(conn_str)
+    if service is None:
+        service = BlobServiceClient.from_connection_string(conn_str)
+        _blob_services[conn_str] = service
+    return service
+
 
 def _status_priority(status: Any) -> int:
     return STATUS_PRIORITY.get(str(status or "").strip().lower(), 0)
+
+
+def _get_entity_id(e: dict) -> str:
+    return str(e.get("Id") or e.get("id") or "").strip()
+
+
+def _find_schema_entity(rows: list[dict], candidate_ids: list[str]) -> Optional[dict]:
+    if not rows or not candidate_ids:
+        return None
+
+    if len(candidate_ids) == 1:
+        target = candidate_ids[0]
+        for e in rows:
+            if _get_entity_id(e) == target:
+                return e
+        return None
+
+    entities_by_id: dict[str, dict] = {}
+    for e in rows:
+        sid = _get_entity_id(e)
+        if sid and sid not in entities_by_id:
+            entities_by_id[sid] = e
+
+    for sid in candidate_ids:
+        if sid in entities_by_id:
+            return entities_by_id[sid]
+    return None
+
+
+def _get_default_notification_settings() -> tuple[str, str]:
+    now = time.time()
+    if _settings_cache.get("expires_at", 0.0) > now:
+        return _settings_cache.get("token", ""), _settings_cache.get(
+            "channel", "#cloudo-test"
+        )
+
+    token = (os.environ.get("SLACK_TOKEN_DEFAULT") or "").strip()
+    channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
+
+    try:
+        if os.environ.get(STORAGE_CONN):
+            table_client = _get_table_client(TABLE_SETTINGS)
+            token_entity = table_client.get_entity(
+                partition_key="GlobalConfig", row_key="SLACK_TOKEN_DEFAULT"
+            )
+            channel_entity = table_client.get_entity(
+                partition_key="GlobalConfig", row_key="SLACK_CHANNEL"
+            )
+            token = token_entity.get("value", "").strip()
+            channel = channel_entity.get("value", "").strip() or "#cloudo-test"
+    except Exception as e:
+        logging.warning(
+            f"Failed to fetch Slack settings from Table Storage, falling back to ENV: {e}"
+        )
+
+    _settings_cache["token"] = token
+    _settings_cache["channel"] = channel
+    _settings_cache["expires_at"] = now + SETTINGS_CACHE_TTL_SECONDS
+    return token, channel
+
+
+def _enqueue_queue_payload(
+    queue_name: str, payload: dict, conn_env: str = STORAGE_CONN
+) -> None:
+    q_client = _get_queue_client(queue_name, conn_env=conn_env)
+    q_client.send_message(json.dumps(payload, ensure_ascii=False))
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -190,12 +316,7 @@ def _get_authenticated_user(
 
         # Check personal API tokens
         try:
-            from azure.data.tables import TableClient
-
-            conn_str = os.environ.get(STORAGE_CONN)
-            table_client = TableClient.from_connection_string(
-                conn_str, table_name=TABLE_USERS
-            )
+            table_client = _get_table_client(TABLE_USERS)
 
             # This is not efficient (O(N)), but Table Storage doesn't support secondary indexes easily.
             # For a small number of users it's fine.
@@ -230,22 +351,18 @@ def _get_authenticated_user(
     )
 
 
-def _rows_from_binding(rows: Union[str, list[dict]]) -> list[dict]:
+def _rows_from_binding(rows: Union[str, list[dict], None]) -> Optional[list[dict]]:
     try:
-        return json.loads(rows) if isinstance(rows, str) else (rows or [])
+        parsed = json.loads(rows) if isinstance(rows, str) else rows
     except Exception:
-        return []
+        return None
+    return parsed if isinstance(parsed, list) else None
 
 
 def log_audit(user: str, action: str, target: str, details: str = ""):
     """Log an action to the Audit table."""
     try:
-        from azure.data.tables import TableClient
-
-        conn_str = os.environ.get(STORAGE_CONN)
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name=TABLE_AUDIT
-        )
+        table_client = _get_table_client(TABLE_AUDIT)
 
         now = datetime.now(timezone.utc)
         entity = {
@@ -284,33 +401,10 @@ def _notify_slack_decision(
     extra: str = "",
     routing_info: Optional[dict] = None,
 ) -> None:
-    from azure.data.tables import TableClient
     from escalation import send_jsm_alert, send_slack_execution
     from smart_routing import resolve_jsm_apikey
 
-    # Fetch settings from Table Storage
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name=TABLE_SETTINGS
-    )
-
-    try:
-        # Get SLACK_TOKEN_DEFAULT and SLACK_CHANNEL from GlobalConfig
-        token_entity = table_client.get_entity(
-            partition_key="GlobalConfig", row_key="SLACK_TOKEN_DEFAULT"
-        )
-        token = token_entity.get("value", "").strip()
-
-        channel_entity = table_client.get_entity(
-            partition_key="GlobalConfig", row_key="SLACK_CHANNEL"
-        )
-        channel = channel_entity.get("value", "").strip() or "#cloudo-test"
-    except Exception as e:
-        logging.warning(
-            f"Failed to fetch Slack settings from Table Storage, falling back to ENV: {e}"
-        )
-        token = (os.environ.get("SLACK_TOKEN_DEFAULT") or "").strip()
-        channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
+    token, channel = _get_default_notification_settings()
 
     if not token:
         return
@@ -477,16 +571,17 @@ def _parse_blob_ref(log_value: Optional[str]) -> Optional[tuple[str, str]]:
 def _upload_log_to_blob(
     partition_key: str, exec_id: str, status: str, logs_raw: str
 ) -> str:
-    from azure.storage.blob import BlobServiceClient
+    global _LOGS_CONTAINER_READY
 
     blob_name = _make_log_blob_name(partition_key, exec_id, status)
-    conn_str = os.environ.get(STORAGE_CONN)
-    service = BlobServiceClient.from_connection_string(conn_str)
+    service = _get_blob_service(STORAGE_CONN)
     container = service.get_container_client(LOGS_BLOB_CONTAINER)
-    try:
-        container.create_container()
-    except Exception:
-        pass
+    if not _LOGS_CONTAINER_READY:
+        try:
+            container.create_container()
+        except Exception:
+            pass
+        _LOGS_CONTAINER_READY = True
     blob = container.get_blob_client(blob_name)
     blob.upload_blob((logs_raw or "").encode("utf-8", errors="replace"), overwrite=True)
     return _blob_ref(blob_name)
@@ -497,10 +592,7 @@ def _download_log_from_blob_ref(log_value: Optional[str]) -> Optional[str]:
     if not parsed:
         return None
     container, blob_name = parsed
-    from azure.storage.blob import BlobServiceClient
-
-    conn_str = os.environ.get(STORAGE_CONN)
-    service = BlobServiceClient.from_connection_string(conn_str)
+    service = _get_blob_service(STORAGE_CONN)
     blob = service.get_blob_client(container=container, blob=blob_name)
     content = blob.download_blob().readall()
     return content.decode("utf-8", errors="replace")
@@ -814,18 +906,30 @@ def Trigger(
     entities: str,
     workers: str,
 ) -> func.HttpResponse:
+    global _NOTIFICATION_QUEUE_READY
     import detection
     import utils
-    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+    from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
     from escalation import format_jsm_description, send_jsm_alert, send_slack_execution
     from worker_routing import worker_routing
 
     try:
-        q_client = QueueClient.from_connection_string(
-            conn_str=os.environ.get(STORAGE_CONNECTION),
-            queue_name=NOTIFICATION_QUEUE_NAME,
-            message_encode_policy=TextBase64EncodePolicy(),
+        q_client = _get_queue_client(
+            NOTIFICATION_QUEUE_NAME, conn_env=STORAGE_CONNECTION
         )
+        if not _NOTIFICATION_QUEUE_READY:
+            try:
+                q_client.create_queue()
+            except ResourceExistsError:
+                _NOTIFICATION_QUEUE_READY = True
+            except Exception as e:
+                logging.warning(
+                    "Failed to ensure notification queue '%s' exists: %s",
+                    NOTIFICATION_QUEUE_NAME,
+                    e,
+                )
+            else:
+                _NOTIFICATION_QUEUE_READY = True
     except Exception as e:
         logging.error(f"Failed to initialize queue client: {e}")
         return func.HttpResponse("Failed to initialize queue client", status_code=500)
@@ -849,6 +953,29 @@ def Trigger(
 
         def resolve_jsm_apikey(_):
             return None
+
+    def _json_response(payload: dict, status_code: int) -> func.HttpResponse:
+        return func.HttpResponse(
+            json.dumps(payload, ensure_ascii=False),
+            status_code=status_code,
+            mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    def _send_status_to_receiver(
+        payload_for_status: dict, status: str, log_msg: str
+    ) -> None:
+        try:
+            q_client.send_message(
+                _post_status(payload_for_status, status=status, log_message=log_msg)
+            )
+        except ResourceNotFoundError as e:
+            logging.warning(
+                "%s Notification queue '%s' not found, skipping status post: %s",
+                log_prefix,
+                NOTIFICATION_QUEUE_NAME,
+                e,
+            )
 
     # Init payload variables to None
     resource_name = resource_group = resource_id = schema_id = monitor_condition = (
@@ -876,103 +1003,59 @@ def Trigger(
             headers={"Access-Control-Allow-Origin": "*"},
         )
 
-    from azure.data.tables import TableClient
+    token, channel = _get_default_notification_settings()
 
-    # Fetch settings from Table Storage
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name=TABLE_SETTINGS
-    )
+    # Resolve alert fields from payload, then optionally override schema_id from route/query.
+    parsed_body = detection.parse_resource_fields(req)
 
-    try:
-        # Get SLACK_TOKEN_DEFAULT and SLACK_CHANNEL from GlobalConfig
-        token_entity = table_client.get_entity(
-            partition_key="GlobalConfig", row_key="SLACK_TOKEN_DEFAULT"
-        )
-        token = token_entity.get("value", "").strip()
+    resource_name = parsed_body.get("resource_name") or ""
+    resource_group = parsed_body.get("resource_group") or ""
+    resource_id = parsed_body.get("resource_id") or ""
+    monitor_condition = parsed_body.get("monitorCondition") or ""
+    severity = parsed_body.get("severity") or ""
 
-        channel_entity = table_client.get_entity(
-            partition_key="GlobalConfig", row_key="SLACK_CHANNEL"
-        )
-        channel = channel_entity.get("value", "").strip() or "#cloudo-test"
-    except Exception as e:
-        logging.warning(
-            f"Failed to fetch Slack settings from Table Storage, falling back to ENV: {e}"
-        )
-        token = (os.environ.get("SLACK_TOKEN_DEFAULT") or "").strip()
-        channel = (os.environ.get("SLACK_CHANNEL") or "").strip() or "#cloudo-test"
-
-    # Resolve schema_id from route first; fallback to query/body (alertId/schemaId)
+    schema_id = parsed_body.get("schema_id")
     if (req.params.get("id")) is not None:
-        schema_id = detection.extract_schema_id_from_req(req)
-        parsed_body = detection.parse_resource_fields(req)
-        resource_info = {
-            "_raw": parsed_body.get("_raw"),
-            "schema_id": schema_id,
-            "monitor_condition": monitor_condition,
-            "severity": severity,
-            "resource_name": parsed_body.get("resource_name"),
-            "resource_rg": parsed_body.get("resource_group"),
-            "resource_id": parsed_body.get("resource_id"),
-            "aks_namespace": parsed_body.get("namespace"),
-            "aks_pod": parsed_body.get("pod"),
-            "aks_deployment": parsed_body.get("deployment"),
-            "aks_job": parsed_body.get("job"),
-            "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
-            "team": route_params.get("team"),
-            "payload": parsed_body.get("payload"),
-        }
-        routing_info = {
-            "team": route_params.get("team") or "",
-            "slack_token": req.params.get("slack_token")
-            or resolve_slack_token(route_params.get("team") or "")
-            or token,
-            "slack_channel": req.params.get("slack_channel")
-            or channel
-            or (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip(),
-            "jsm_token": req.params.get("jsm_api_key")
-            or req.params.get("opsgenie_api_key")
-            or resolve_jsm_apikey(route_params.get("team") or ""),
-        }
-    else:
-        parsed_body = detection.parse_resource_fields(req)
-        schema_id = parsed_body.get("schema_id")
-        resource_info = {
-            "_raw": parsed_body.get("_raw"),
-            "schema_id": parsed_body.get("schema_id"),
-            "resource_name": parsed_body.get("resource_name"),
-            "resource_rg": parsed_body.get("resource_group"),
-            "resource_id": parsed_body.get("resource_id"),
-            "aks_namespace": parsed_body.get("namespace"),
-            "aks_pod": parsed_body.get("pod"),
-            "aks_deployment": parsed_body.get("deployment"),
-            "aks_job": parsed_body.get("job"),
-            "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
-            "team": route_params.get("team"),
-            "payload": parsed_body.get("payload"),
-        }
+        schema_id = detection.extract_schema_id_from_req(req) or schema_id
+    if not isinstance(schema_id, list):
+        schema_id = [str(schema_id)] if schema_id else []
+    primary_schema_id = str(schema_id[0]).strip() if schema_id else ""
 
-        routing_info = {
-            "team": route_params.get("team") or "",
-            "slack_token": req.params.get("slack_token")
-            or resolve_slack_token(route_params.get("team") or "")
-            or token,
-            "slack_channel": req.params.get("slack_channel")
-            or channel
-            or (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip(),
-            "jsm_token": req.params.get("jsm_api_key")
-            or req.params.get("opsgenie_api_key")
-            or resolve_jsm_apikey(route_params.get("team") or ""),
-        }
-        logging.debug(f"{log_prefix} Resource info: %s", resource_info)
+    resource_info = {
+        "_raw": parsed_body.get("_raw"),
+        "schema_id": schema_id,
+        "monitor_condition": monitor_condition,
+        "severity": severity,
+        "resource_name": resource_name,
+        "resource_rg": resource_group,
+        "resource_id": resource_id,
+        "aks_namespace": parsed_body.get("namespace"),
+        "aks_pod": parsed_body.get("pod"),
+        "aks_deployment": parsed_body.get("deployment"),
+        "aks_job": parsed_body.get("job"),
+        "aks_horizontalpodautoscaler": parsed_body.get("horizontalpodautoscaler"),
+        "team": route_params.get("team"),
+        "payload": parsed_body.get("payload"),
+    }
+
+    routing_info = {
+        "team": route_params.get("team") or "",
+        "slack_token": req.params.get("slack_token")
+        or resolve_slack_token(route_params.get("team") or "")
+        or token,
+        "slack_channel": req.params.get("slack_channel")
+        or channel
+        or (os.environ.get("SLACK_CHANNEL") or "#cloudo-test").strip(),
+        "jsm_token": req.params.get("jsm_api_key")
+        or req.params.get("opsgenie_api_key")
+        or resolve_jsm_apikey(route_params.get("team") or ""),
+    }
+    logging.debug(f"{log_prefix} Resource info: %s", resource_info)
 
     # Parse bound table entities (binding returns a JSON array)
-    try:
-        parsed = json.loads(entities) if isinstance(entities, str) else entities
-    except Exception:
-        parsed = None
+    parsed = _rows_from_binding(entities)
 
-    if not isinstance(parsed, list):
+    if parsed is None:
         return func.HttpResponse(
             json.dumps({"error": "Unexpected table result format"}, ensure_ascii=False),
             status_code=500,
@@ -982,69 +1065,54 @@ def Trigger(
             },
         )
 
-    # Apply optional filter in code (case-insensitive fallback on 'Id'/'id')
-    def get_id(e: dict) -> str:
-        return str(e.get("Id") or e.get("id") or "").strip()
-
-    schema_entity = next((e for e in parsed if get_id(e) in schema_id), None)
+    schema_entity = _find_schema_entity(parsed, schema_id)
 
     if not schema_entity:
         if monitor_condition and severity:
             log_msg = "ALARM -> ROUTED (No runbook found)"
             payload_for_status = {
                 "requestedAt": requested_at,
-                "id": "NaN",
+                "id": primary_schema_id,
                 "name": resource_name or "",
                 "exec_id": exec_id,
                 "runbook": "alarm routed",
-                "run_args": "NaN",
-                "worker": "NaN",
+                "run_args": "None",
+                "worker": "No worker",
                 "group": "-",
-                "oncall": "NaN",
+                "oncall": True,
                 "initiator": requester_username,
                 "monitor_condition": monitor_condition or "",
                 "severity": severity or "",
-                "resource_info": resource_info if "resource_info" in locals() else {},
-                "routing_info": routing_info if "routing_info" in locals() else {},
+                "resource_info": resource_info,
+                "routing_info": routing_info,
             }
-            q_client.send_message(
-                _post_status(payload_for_status, status="routed", log_message=log_msg)
+            _send_status_to_receiver(
+                payload_for_status, status="routed", log_msg=log_msg
             )
-            return func.HttpResponse(
-                json.dumps(
-                    {
-                        "routed": (
-                            "Alarm detected.\n "
-                            "(This alert has not a runbook to be executed) -> ROUTED"
-                        )
-                    },
-                    ensure_ascii=False,
-                ),
-                status_code=200,
-                mimetype="application/json",
-                headers={
-                    "Access-Control-Allow-Origin": "*",
+            return _json_response(
+                {
+                    "routed": (
+                        "Alarm detected.\n "
+                        "(This alert has not a runbook to be executed) -> ROUTED"
+                    )
                 },
+                status_code=200,
             )
         else:
-            return func.HttpResponse(
-                json.dumps(
-                    {
-                        "ignored": f"No alert detected for {schema_id}",
-                    },
-                    ensure_ascii=False,
-                ),
+            logging.warning(
+                f"No alert detected for {schema_id}: {monitor_condition} - {severity}"
+            )
+            return _json_response(
+                {"ignored": f"No alert detected for {schema_id}"},
                 status_code=204,
-                mimetype="application/json",
-                headers={
-                    "Access-Control-Allow-Origin": "*",
-                },
             )
 
-    logging.info(f"{log_prefix} Getting schema entity id '{schema_entity}'")
+    logging.info(
+        f"{log_prefix} Getting schema entity id '{_get_entity_id(schema_entity)}'"
+    )
     # Build domain model
     schema = Schema(
-        id=schema_entity.get("id"),
+        id=_get_entity_id(schema_entity),
         entity=schema_entity,
         monitor_condition=monitor_condition,
         severity=severity,
@@ -1065,27 +1133,18 @@ def Trigger(
             "initiator": requester_username,
             "monitor_condition": monitor_condition or "",
             "severity": severity or "",
-            "resource_info": resource_info if "resource_info" in locals() else {},
-            "routing_info": routing_info if "routing_info" in locals() else {},
+            "resource_info": resource_info,
+            "routing_info": routing_info,
         }
-        q_client.send_message(
-            _post_status(payload_for_status, status="routed", log_message=log_msg)
-        )
-        return func.HttpResponse(
-            json.dumps(
-                {
-                    "routed": (
-                        f"Runbook {schema.id} is disabled.\n "
-                        "(This execution has been ROUTED)"
-                    )
-                },
-                ensure_ascii=False,
-            ),
-            status_code=200,
-            mimetype="application/json",
-            headers={
-                "Access-Control-Allow-Origin": "*",
+        _send_status_to_receiver(payload_for_status, status="routed", log_msg=log_msg)
+        return _json_response(
+            {
+                "routed": (
+                    f"Runbook {schema.id} is disabled.\n "
+                    "(This execution has been ROUTED)"
+                )
             },
+            status_code=200,
         )
 
     try:
@@ -1129,36 +1188,12 @@ def Trigger(
             approve_url = f"{base}/api/approvals/{partition_key}/{exec_id}/approve?p={payload_b64}&s={sig}&code={func_key}"
             reject_url = f"{base}/api/approvals/{partition_key}/{exec_id}/reject?p={payload_b64}&s={sig}&code={func_key}"
 
-            pending_log = build_log_entry(
-                status="pending",
-                partition_key=partition_key,
-                exec_id=exec_id,
-                row_key=exec_id,
-                requested_at=requested_at,
-                name=schema.name or "",
-                schema_id=schema.id,
-                runbook=schema.runbook,
-                run_args=schema.run_args,
-                worker=schema.worker,
-                group=schema.group,
-                log_msg=json.dumps(
-                    {
-                        "message": "Awaiting approval",
-                        "approve": approve_url,
-                        "reject": reject_url,
-                        "resource_info": resource_info,
-                    },
-                    ensure_ascii=False,
-                ),
-                oncall=schema.oncall,
-                initiator=requester_username,
-                resource_info=resource_info,
-                monitor_condition=monitor_condition,
-                severity=severity,
-                approval_required=True,
-                approval_expires_at=expires_at,
-            )
-            log_table.set(json.dumps(pending_log, ensure_ascii=False))
+            pending_log_payload = {
+                "message": "Awaiting approval",
+                "approve": approve_url,
+                "reject": reject_url,
+                "resource_info": resource_info,
+            }
 
             if requester_username:
                 log_audit(
@@ -1176,6 +1211,7 @@ def Trigger(
                 or routing_info.get("opsgenie_token")
                 or resolve_jsm_apikey(routing_info.get("team"))
             )
+            notification_warnings: list[str] = []
 
             # UI Base URL
             ui_base = (
@@ -1187,7 +1223,7 @@ def Trigger(
                 f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
             )
 
-            if slack_token:
+            if slack_token and slack_channel:
                 try:
                     # Truncate description and compact resource info to avoid Slack limits
                     description_truncated = (
@@ -1309,7 +1345,13 @@ def Trigger(
                         ],
                     )
                 except Exception as e:
-                    logging.error(f"[{exec_id}] Slack approval notify failed: {e}")
+                    msg = f"Slack approval notify failed: {e}"
+                    logging.warning(f"[{exec_id}] {msg}")
+                    notification_warnings.append(msg)
+            else:
+                msg = "Slack approval notify skipped: missing token or channel"
+                logging.warning(f"[{exec_id}] {msg}")
+                notification_warnings.append(msg)
 
             if jsm_token:
                 try:
@@ -1341,7 +1383,40 @@ def Trigger(
                         },
                     )
                 except Exception as e:
-                    logging.error(f"[{exec_id}] JSM approval notify failed: {e}")
+                    msg = f"JSM approval notify failed: {e}"
+                    logging.warning(f"[{exec_id}] {msg}")
+                    notification_warnings.append(msg)
+            else:
+                msg = "JSM approval notify skipped: missing token"
+                logging.warning(f"[{exec_id}] {msg}")
+                notification_warnings.append(msg)
+
+            if notification_warnings:
+                pending_log_payload["notification_status"] = "warning"
+                pending_log_payload["notification_warnings"] = notification_warnings
+
+            pending_log = build_log_entry(
+                status="pending",
+                partition_key=partition_key,
+                exec_id=exec_id,
+                row_key=exec_id,
+                requested_at=requested_at,
+                name=schema.name or "",
+                schema_id=schema.id,
+                runbook=schema.runbook,
+                run_args=schema.run_args,
+                worker=schema.worker,
+                group=schema.group,
+                log_msg=json.dumps(pending_log_payload, ensure_ascii=False),
+                oncall=schema.oncall,
+                initiator=requester_username,
+                resource_info=resource_info,
+                monitor_condition=monitor_condition,
+                severity=severity,
+                approval_required=True,
+                approval_expires_at=expires_at,
+            )
+            log_table.set(json.dumps(pending_log, ensure_ascii=False))
 
             body = json.dumps(
                 {
@@ -1351,6 +1426,10 @@ def Trigger(
                     "approve": approve_url,
                     "reject": reject_url,
                     "expires_at (UTC)": expires_at,
+                    "notification_status": (
+                        "warning" if notification_warnings else "ok"
+                    ),
+                    "notification_warnings": notification_warnings,
                 },
                 ensure_ascii=False,
             )
@@ -1377,8 +1456,6 @@ def Trigger(
             )
 
             try:
-                from azure.storage.queue import QueueClient, TextBase64EncodePolicy
-
                 # Construct the payload (formerly HTTP headers)
                 queue_payload = {
                     "runbook": schema.runbook,
@@ -1397,31 +1474,16 @@ def Trigger(
                     "routing_info": routing_info or {},
                 }
 
-                # Send it to the specific dynamic queue
-                # We use TextBase64EncodePolicy because Azure Function Triggers usually expect Base64 encoded strings
-                q_client = QueueClient.from_connection_string(
-                    conn_str=os.environ.get(STORAGE_CONN),
-                    queue_name=target_queue,
-                    message_encode_policy=TextBase64EncodePolicy(),
-                )
-                q_client.send_message(json.dumps(queue_payload, ensure_ascii=False))
+                _enqueue_queue_payload(target_queue, queue_payload)
 
                 api_body = {"status": "accepted", "queue": target_queue}
 
-                if resource_info == {}:
-                    log_audit(
-                        user=requester_username,
-                        action="RUNBOOK_EXECUTE",
-                        target=exec_id,
-                        details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
-                    )
-                else:
-                    log_audit(
-                        user=requester_username,
-                        action="RUNBOOK_EXECUTE",
-                        target=exec_id,
-                        details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
-                    )
+                log_audit(
+                    user=requester_username,
+                    action="RUNBOOK_EXECUTE",
+                    target=exec_id,
+                    details=f"ID: {schema.id}, Runbook: {schema.runbook}, Args: {schema.run_args}",
+                )
 
             except Exception as e:
                 logging.error(f"{log_prefix} ❌ Queue send failed: {e}")
@@ -1778,7 +1840,7 @@ def approve(
             mimetype="application/json",
         )
 
-    rows = _rows_from_binding(today_logs)
+    rows = _rows_from_binding(today_logs) or []
     if not _only_pending_for_exec(rows, execId):
         return func.HttpResponse(
             json.dumps(
@@ -1798,21 +1860,15 @@ def approve(
     severity = payload.get("severity") or ""
 
     # Load schema entity
-    try:
-        parsed = json.loads(schemas) if isinstance(schemas, str) else schemas
-    except Exception:
-        parsed = None
-    if not isinstance(parsed, list):
+    parsed = _rows_from_binding(schemas)
+    if parsed is None:
         return func.HttpResponse(
             json.dumps({"error": "Schemas not available"}, ensure_ascii=False),
             status_code=500,
             mimetype="application/json",
         )
 
-    def get_id(e: dict) -> str:
-        return str(e.get("Id") or e.get("id") or "").strip()
-
-    schema_entity = next((e for e in parsed if get_id(e) == schema_id), None)
+    schema_entity = _find_schema_entity(parsed, [str(schema_id)])
     if not schema_entity:
         return func.HttpResponse(
             json.dumps({"error": "Schema not found"}, ensure_ascii=False),
@@ -1820,7 +1876,7 @@ def approve(
             mimetype="application/json",
         )
 
-    schema = Schema(id=schema_entity.get("id"), entity=schema_entity)
+    schema = Schema(id=_get_entity_id(schema_entity), entity=schema_entity)
 
     partition_key = utils.today_partition_key()
     requested_at = utils.format_requested_at()
@@ -1841,8 +1897,6 @@ def approve(
             )
 
             try:
-                from azure.storage.queue import QueueClient, TextBase64EncodePolicy
-
                 # Construct the payload (formerly HTTP headers)
                 queue_payload = {
                     "runbook": schema.runbook,
@@ -1861,14 +1915,7 @@ def approve(
                     "routing_info": routing_info or {},
                 }
 
-                # Send it to the specific dynamic queue
-                # We use TextBase64EncodePolicy because Azure Function Triggers usually expect Base64 encoded strings
-                q_client = QueueClient.from_connection_string(
-                    conn_str=os.environ.get(STORAGE_CONN),
-                    queue_name=target_queue,
-                    message_encode_policy=TextBase64EncodePolicy(),
-                )
-                q_client.send_message(json.dumps(queue_payload, ensure_ascii=False))
+                _enqueue_queue_payload(target_queue, queue_payload)
 
                 api_body = {
                     "status": "accepted",
@@ -2072,7 +2119,7 @@ def reject(
     route_params = getattr(req, "route_params", {}) or {}
     execId = (route_params.get("execId") or "").strip()
 
-    rows = _rows_from_binding(today_logs)
+    rows = _rows_from_binding(today_logs) or []
     if not _only_pending_for_exec(rows, execId):
         return func.HttpResponse(
             json.dumps(
@@ -2137,21 +2184,15 @@ def reject(
     severity = payload.get("severity") or ""
 
     # Load schema entity
-    try:
-        parsed = json.loads(schemas) if isinstance(schemas, str) else schemas
-    except Exception:
-        parsed = None
-    if not isinstance(parsed, list):
+    parsed = _rows_from_binding(schemas)
+    if parsed is None:
         return func.HttpResponse(
             json.dumps({"error": "Schemas not available"}, ensure_ascii=False),
             status_code=500,
             mimetype="application/json",
         )
 
-    def get_id(e: dict) -> str:
-        return str(e.get("Id") or e.get("id") or "").strip()
-
-    schema_entity = next((e for e in parsed if get_id(e) == schema_id), None)
+    schema_entity = _find_schema_entity(parsed, [str(schema_id)])
     if not schema_entity:
         return func.HttpResponse(
             json.dumps({"error": "Schema not found"}, ensure_ascii=False),
@@ -2159,7 +2200,7 @@ def reject(
             mimetype="application/json",
         )
 
-    schema = Schema(id=schema_entity.get("id"), entity=schema_entity)
+    schema = Schema(id=_get_entity_id(schema_entity), entity=schema_entity)
 
     partition_key = utils.today_partition_key()
     requested_at = utils.format_requested_at()
@@ -2263,6 +2304,17 @@ def _process_receiver_body(body: dict, log_table: func.Out[str]) -> None:
         receiver_prefix = _build_exec_log_prefix(
             body.get("exec_id"), body.get("initiator")
         )
+        # Normalize fields that can arrive as list/scalars to keep Receiver robust.
+        for key in ("exec_id", "status", "name", "id", "runbook"):
+            value = body.get(key)
+            if isinstance(value, list):
+                first = next((str(v).strip() for v in value if str(v).strip()), "")
+                body[key] = first
+            elif value is None:
+                body[key] = ""
+            else:
+                body[key] = str(value).strip()
+
         body_for_log = dict(body)
         if isinstance(body.get("routing_info"), dict):
             body_for_log["routing_info"] = {
@@ -2270,15 +2322,12 @@ def _process_receiver_body(body: dict, log_table: func.Out[str]) -> None:
                 "slack_channel": body["routing_info"].get("slack_channel"),
                 "redacted": True,
             }
-        logging.warning(
-            f"[Receiver] {receiver_prefix} Message received: {body_for_log}"
-        )
     except Exception as e:
         logging.error(f"[Receiver] Invalid queue message: {e}")
         return
 
     required_fields = ["exec_id", "status", "name", "id", "runbook"]
-    missing = [k for k in required_fields if not (body.get(k) or "").strip()]
+    missing = [k for k in required_fields if not body.get(k)]
     if missing:
         logging.warning(f"{receiver_prefix} Missing required fields: {missing}")
         return
@@ -2811,14 +2860,7 @@ def dev_test_run(
         )
 
         # Send to the selected queue
-        from azure.storage.queue import QueueClient, TextBase64EncodePolicy
-
-        q_client = QueueClient.from_connection_string(
-            conn_str=os.environ.get(STORAGE_CONN),
-            queue_name=target_queue,
-            message_encode_policy=TextBase64EncodePolicy(),
-        )
-        q_client.send_message(json.dumps(queue_payload, ensure_ascii=False))
+        _enqueue_queue_payload(target_queue, queue_payload)
 
         # Log audit entry for test run
         log_audit(
@@ -3010,9 +3052,24 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
     if error_res:
         return error_res
 
-    from azure.data.tables import TableClient
-
     try:
+
+        def _odata_escape(value: str) -> str:
+            return str(value or "").replace("'", "''")
+
+        def parse_dt_local(v: str) -> Optional[datetime]:
+            if not v:
+                return None
+            try:
+                return datetime.fromisoformat(v)
+            except Exception:
+                try:
+                    from datetime import datetime as dt
+
+                    return dt.strptime(v.replace(" ", "T"), "%Y-%m-%dT%H:%M:%S")
+                except Exception:
+                    return None
+
         partition_key = (req.params.get("partitionKey") or "").strip()
         if not partition_key:
             return func.HttpResponse(
@@ -3035,6 +3092,19 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
         q = (req.params.get("q") or "").strip()
         from_dt = (req.params.get("from") or "").strip()
         to_dt = (req.params.get("to") or "").strip()
+        include_log_content_raw = (
+            req.params.get("includeLogContent")
+            or req.params.get("include_log_content")
+            or req.params.get("includeLogs")
+            or req.params.get("include_logs")
+            or "true"
+        )
+        include_log_content = str(include_log_content_raw).strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
 
         try:
             limit = min(max(int(req.params.get("limit") or 200), 1), 5000)
@@ -3042,17 +3112,49 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
             limit = 200
         order = (req.params.get("order") or "desc").strip().lower()
 
-        conn_str = os.environ.get(STORAGE_CONN)
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name=TABLE_NAME
-        )
+        table_client = _get_table_client(TABLE_NAME)
 
-        filter_query = f"PartitionKey eq '{partition_key}'"
+        filter_parts = [f"PartitionKey eq '{_odata_escape(partition_key)}'"]
         if exec_id:
-            filter_query += f" and ExecId eq '{exec_id}'"
+            filter_parts.append(f"ExecId eq '{_odata_escape(exec_id)}'")
+        if (not latest_only) and status:
+            filter_parts.append(f"Status eq '{_odata_escape(status)}'")
+
+        f_dt = parse_dt_local(from_dt)
+        t_dt = parse_dt_local(to_dt)
+        if f_dt:
+            filter_parts.append(f"RequestedAt ge '{_odata_escape(f_dt.isoformat())}'")
+        if t_dt:
+            filter_parts.append(f"RequestedAt le '{_odata_escape(t_dt.isoformat())}'")
+
+        filter_query = " and ".join(filter_parts)
+        selected_columns = [
+            "PartitionKey",
+            "RowKey",
+            "ExecId",
+            "Status",
+            "RequestedAt",
+            "ApprovalRequired",
+            "ApprovalExpiresAt",
+            "Name",
+            "Id",
+            "Runbook",
+            "Run_Args",
+            "Worker",
+            "Group",
+            "OnCall",
+            "Initiator",
+            "Severity",
+            "MonitorCondition",
+            "ResourceInfo",
+        ]
+        if include_log_content or q:
+            selected_columns.append("Log")
 
         try:
-            entities = table_client.query_entities(query_filter=filter_query)
+            entities = table_client.query_entities(
+                query_filter=filter_query, select=selected_columns
+            )
             data = list(entities)
         except Exception as e:
             logging.error(f"Table query failed: {e}")
@@ -3063,23 +3165,6 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=500,
                 mimetype="application/json",
             )
-
-        # Helpers
-        def parse_dt_local(v: str) -> Optional[datetime]:
-            if not v:
-                return None
-            try:
-                return datetime.fromisoformat(v)
-            except Exception:
-                try:
-                    from datetime import datetime as dt
-
-                    return dt.strptime(v.replace(" ", "T"), "%Y-%m-%dT%H:%M:%S")
-                except Exception:
-                    return None
-
-        f_dt = parse_dt_local(from_dt)
-        t_dt = parse_dt_local(to_dt)
 
         def contains_any(e: dict, s: str) -> bool:
             s = s.lower()
@@ -3193,6 +3278,9 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
 
         hydrated_items = []
         for item in filtered:
+            if not include_log_content:
+                hydrated_items.append(item)
+                continue
             try:
                 hydrated_items.append(_hydrate_log_field(item))
             except Exception as e:
@@ -3225,7 +3313,7 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
 )
 def register_worker(req: func.HttpRequest) -> func.HttpResponse:
     import utils
-    from azure.data.tables import TableClient, UpdateMode
+    from azure.data.tables import UpdateMode
 
     expected_key = os.environ.get("CLOUDO_SECRET_KEY")
     request_key = req.headers.get("x-cloudo-key")
@@ -3249,10 +3337,7 @@ def register_worker(req: func.HttpRequest) -> func.HttpResponse:
                 "Missing capability, worker_id or url", status_code=400
             )
 
-        conn_str = os.environ.get("AzureWebJobsStorage")
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name="WorkersRegistry"
-        )
+        table_client = _get_table_client(TABLE_WORKERS_SCHEMAS)
 
         entity = {
             "PartitionKey": capability,
@@ -3299,7 +3384,7 @@ def list_workers(req: func.HttpRequest, workers: str) -> func.HttpResponse:
 
     try:
         # Parse binding result (can be string or list depending on extension version)
-        data = json.loads(workers) if isinstance(workers, str) else (workers or [])
+        data = _rows_from_binding(workers) or []
 
         return func.HttpResponse(
             json.dumps(data, ensure_ascii=False),
@@ -3399,8 +3484,6 @@ def auth_register(req: func.HttpRequest) -> func.HttpResponse:
 
     body = req.get_json()
     try:
-        from azure.data.tables import TableClient
-
         username = body.get("username").lower()
         password = body.get("password")
         email = body.get("email")
@@ -3413,10 +3496,7 @@ def auth_register(req: func.HttpRequest) -> func.HttpResponse:
                 headers={"Access-Control-Allow-Origin": "*"},
             )
 
-        conn_str = os.environ.get(STORAGE_CONN)
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name=TABLE_USERS
-        )
+        table_client = _get_table_client(TABLE_USERS)
 
         try:
             table_client.get_entity(partition_key="Operator", row_key=username)
@@ -3481,8 +3561,6 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
 
     body = req.get_json()
     try:
-        from azure.data.tables import TableClient
-
         username = body.get("username").lower()
         password = body.get("password")
 
@@ -3494,10 +3572,7 @@ def auth_login(req: func.HttpRequest) -> func.HttpResponse:
                 headers={"Access-Control-Allow-Origin": "*"},
             )
 
-        conn_str = os.environ.get(STORAGE_CONN)
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name=TABLE_USERS
-        )
+        table_client = _get_table_client(TABLE_USERS)
 
         user_entity = table_client.get_entity(
             partition_key="Operator", row_key=username
@@ -3649,12 +3724,7 @@ def auth_google(req: func.HttpRequest) -> func.HttpResponse:
                 headers={"Access-Control-Allow-Origin": "*"},
             )
 
-        from azure.data.tables import TableClient
-
-        conn_str = os.environ.get(STORAGE_CONN)
-        table_client = TableClient.from_connection_string(
-            conn_str, table_name=TABLE_USERS
-        )
+        table_client = _get_table_client(TABLE_USERS)
 
         username = email.split("@")[0].lower()
 
@@ -3764,10 +3834,9 @@ def auth_profile(req: func.HttpRequest) -> func.HttpResponse:
         return error_res
 
     username = session.get("username")
-    from azure.data.tables import TableClient, UpdateMode
+    from azure.data.tables import UpdateMode
 
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_USERS)
+    table_client = _get_table_client(TABLE_USERS)
 
     try:
         user_entity = table_client.get_entity(
@@ -3910,10 +3979,9 @@ def users_management(req: func.HttpRequest) -> func.HttpResponse:
             headers={"Access-Control-Allow-Origin": "*"},
         )
 
-    from azure.data.tables import TableClient, UpdateMode
+    from azure.data.tables import UpdateMode
 
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_USERS)
+    table_client = _get_table_client(TABLE_USERS)
 
     if req.method == "GET":
         try:
@@ -4060,12 +4128,7 @@ def settings_management(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return create_cors_response()
 
-    from azure.data.tables import TableClient
-
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name=TABLE_SETTINGS
-    )
+    table_client = _get_table_client(TABLE_SETTINGS)
 
     # Verification of admin role
     session, error_res = _get_authenticated_user(req)
@@ -4148,10 +4211,7 @@ def get_audit_logs(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return create_cors_response()
 
-    from azure.data.tables import TableClient
-
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(conn_str, table_name=TABLE_AUDIT)
+    table_client = _get_table_client(TABLE_AUDIT)
 
     # Verification of admin role
     session, error_res = _get_authenticated_user(req)
@@ -4174,22 +4234,34 @@ def get_audit_logs(req: func.HttpRequest) -> func.HttpResponse:
             limit = int(limit) if limit and limit.lower() != "all" else None
         except ValueError:
             limit = None
+        days_raw = req.params.get("days")
+        try:
+            days = min(max(int(days_raw or 30), 1), 180)
+        except ValueError:
+            days = 30
 
-        entities = table_client.query_entities(query_filter="")
         logs = []
-        for e in entities:
-            logs.append(
-                {
-                    "timestamp": e.get("timestamp"),
-                    "operator": e.get("operator"),
-                    "action": e.get("action"),
-                    "target": e.get("target"),
-                    "details": e.get("details"),
-                }
+        now = datetime.now(timezone.utc)
+        for day_offset in range(days):
+            pk = (now - timedelta(days=day_offset)).strftime("%Y%m%d")
+            entities = table_client.query_entities(
+                query_filter=f"PartitionKey eq '{pk}'",
+                select=["timestamp", "operator", "action", "target", "details"],
             )
-        # Sort by timestamp descending
-        logs.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+            for e in entities:
+                logs.append(
+                    {
+                        "timestamp": e.get("timestamp"),
+                        "operator": e.get("operator"),
+                        "action": e.get("action"),
+                        "target": e.get("target"),
+                        "details": e.get("details"),
+                    }
+                )
+            if limit and len(logs) >= limit:
+                break
 
+        logs.sort(key=lambda x: x["timestamp"] or "", reverse=True)
         if limit:
             logs = logs[:limit]
 
@@ -4221,12 +4293,23 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return create_cors_response()
 
-    from azure.data.tables import TableClient, UpdateMode
+    from azure.data.tables import UpdateMode
 
-    conn_str = os.environ.get(STORAGE_CONN)
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name=TABLE_SCHEDULES
-    )
+    table_client = _get_table_client(TABLE_SCHEDULES)
+
+    def _as_bool(value: Any, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _is_terraform_locked(entity: Optional[dict[str, Any]]) -> bool:
+        if not entity:
+            return False
+        managed_by = str(entity.get("managed_by") or "").strip().lower()
+        locked = _as_bool(entity.get("locked"), default=False)
+        return managed_by == "terraform" or locked
 
     # Verification of authentication
     session, error_res = _get_authenticated_user(req)
@@ -4260,6 +4343,8 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
                         "enabled": e.get("enabled"),
                         "oncall": e.get("oncall"),
                         "last_run": e.get("last_run"),
+                        "managed_by": e.get("managed_by") or "manual",
+                        "locked": _is_terraform_locked(e),
                     }
                 )
             return func.HttpResponse(
@@ -4278,28 +4363,98 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "POST":
         try:
             body = req.get_json()
+            if not isinstance(body, dict):
+                return func.HttpResponse(
+                    json.dumps({"error": "Invalid request body"}),
+                    status_code=400,
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
             schedule_id = body.get("id") or str(uuid.uuid4())
 
-            entity = {
-                "PartitionKey": "Schedule",
-                "RowKey": schedule_id,
-                "name": body.get("name"),
-                "cron": body.get("cron"),
-                "runbook": body.get("runbook"),
-                "run_args": body.get("run_args"),
-                "queue": body.get("queue"),
-                "worker_pool": body.get("worker_pool"),
-                "enabled": body.get("enabled", True),
-                "oncall": body.get("oncall", True),
-                "last_run": body.get("last_run", ""),
-            }
+            existing = None
+            try:
+                existing = table_client.get_entity(
+                    partition_key="Schedule", row_key=schedule_id
+                )
+            except Exception:
+                existing = None
+
+            if _is_terraform_locked(existing):
+                immutable_fields = [
+                    "name",
+                    "cron",
+                    "runbook",
+                    "run_args",
+                    "queue",
+                    "worker_pool",
+                ]
+                for field in immutable_fields:
+                    if field in body and (body.get(field) or "") != (
+                        existing.get(field) or ""
+                    ):
+                        return func.HttpResponse(
+                            json.dumps(
+                                {
+                                    "error": "Terraform-managed schedule allows only enabled toggle. Other fields are read-only."
+                                }
+                            ),
+                            status_code=403,
+                            headers={"Access-Control-Allow-Origin": "*"},
+                        )
+                if "oncall" in body and _as_bool(
+                    body.get("oncall"), default=True
+                ) != _as_bool(existing.get("oncall"), default=True):
+                    return func.HttpResponse(
+                        json.dumps(
+                            {
+                                "error": "Terraform-managed schedule allows only enabled toggle. Other fields are read-only."
+                            }
+                        ),
+                        status_code=403,
+                        headers={"Access-Control-Allow-Origin": "*"},
+                    )
+
+                entity = {
+                    "PartitionKey": "Schedule",
+                    "RowKey": schedule_id,
+                    "name": existing.get("name"),
+                    "cron": existing.get("cron"),
+                    "runbook": existing.get("runbook"),
+                    "run_args": existing.get("run_args"),
+                    "queue": existing.get("queue"),
+                    "worker_pool": existing.get("worker_pool"),
+                    "enabled": _as_bool(
+                        body.get("enabled"),
+                        default=_as_bool(existing.get("enabled"), default=True),
+                    ),
+                    "oncall": _as_bool(existing.get("oncall"), default=True),
+                    "last_run": existing.get("last_run", ""),
+                    "managed_by": existing.get("managed_by", "terraform"),
+                    "locked": _as_bool(existing.get("locked"), default=True),
+                }
+            else:
+                entity = {
+                    "PartitionKey": "Schedule",
+                    "RowKey": schedule_id,
+                    "name": body.get("name"),
+                    "cron": body.get("cron"),
+                    "runbook": body.get("runbook"),
+                    "run_args": body.get("run_args"),
+                    "queue": body.get("queue"),
+                    "worker_pool": body.get("worker_pool"),
+                    "enabled": _as_bool(body.get("enabled"), default=True),
+                    "oncall": _as_bool(body.get("oncall"), default=True),
+                    "last_run": (existing or {}).get("last_run", ""),
+                    "managed_by": (existing or {}).get("managed_by", "manual"),
+                    "locked": _as_bool((existing or {}).get("locked"), default=False),
+                }
             table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
 
             log_audit(
                 user=session.get("username") or "SYSTEM",
                 action="SCHEDULE_UPSERT",
                 target=schedule_id,
-                details=f"Name: {body.get('name')}, Cron: {body.get('cron')}",
+                details=f"Name: {entity.get('name')}, Cron: {entity.get('cron')}",
             )
             return func.HttpResponse(
                 json.dumps({"success": True, "id": schedule_id}),
@@ -4320,6 +4475,28 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
                 return func.HttpResponse(
                     json.dumps({"error": "Missing id"}),
                     status_code=400,
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
+
+            try:
+                existing = table_client.get_entity(
+                    partition_key="Schedule", row_key=schedule_id
+                )
+            except Exception:
+                return func.HttpResponse(
+                    json.dumps({"error": f"Schedule '{schedule_id}' not found"}),
+                    status_code=404,
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
+
+            if _is_terraform_locked(existing):
+                return func.HttpResponse(
+                    json.dumps(
+                        {
+                            "error": "Terraform-managed schedule is read-only and cannot be deleted."
+                        }
+                    ),
+                    status_code=403,
                     headers={"Access-Control-Allow-Origin": "*"},
                 )
 
@@ -4458,9 +4635,20 @@ def runbook_schemas(
 
     requester_username = session.get("username")
 
+    def _as_bool(value: Any, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
     if req.method == "GET":
         try:
             schemas_data = json.loads(entities)
+            if isinstance(schemas_data, list):
+                for item in schemas_data:
+                    if isinstance(item, dict):
+                        item["enabled"] = _as_bool(item.get("enabled"), default=True)
             logging.info(f"schemas: {str(schemas_data)}")
 
             return func.HttpResponse(
@@ -4482,12 +4670,20 @@ def runbook_schemas(
     if req.method == "POST":
         try:
             body = req.get_json()
+            if not isinstance(body, dict):
+                return func.HttpResponse(
+                    body=json.dumps({"error": "Invalid request body"}),
+                    status_code=400,
+                    mimetype="application/json",
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
 
             schema_id = body.get("id", str(uuid.uuid4()))
             new_entity = {
                 "PartitionKey": body.get("PartitionKey", "RunbookSchema"),
                 "RowKey": schema_id,
                 **body,
+                "enabled": _as_bool(body.get("enabled"), default=True),
             }
 
             outputTable.set(json.dumps(new_entity))
@@ -4522,9 +4718,16 @@ def runbook_schemas(
 
     if req.method == "PUT":
         try:
-            from azure.data.tables import TableClient, UpdateMode
+            from azure.data.tables import UpdateMode
 
             body = req.get_json()
+            if not isinstance(body, dict):
+                return func.HttpResponse(
+                    body=json.dumps({"error": "Invalid request body"}),
+                    status_code=400,
+                    mimetype="application/json",
+                    headers={"Access-Control-Allow-Origin": "*"},
+                )
             schema_id = body.get("id")
 
             if not schema_id:
@@ -4541,12 +4744,10 @@ def runbook_schemas(
                 "PartitionKey": body.get("PartitionKey", "RunbookSchema"),
                 "RowKey": schema_id,
                 **body,
+                "enabled": _as_bool(body.get("enabled"), default=True),
             }
 
-            conn_str = os.environ.get(STORAGE_CONN)
-            table_client = TableClient.from_connection_string(
-                conn_str, table_name=TABLE_SCHEMAS
-            )
+            table_client = _get_table_client(TABLE_SCHEMAS)
             table_client.upsert_entity(entity=updated_entity, mode=UpdateMode.REPLACE)
 
             # Audit log
@@ -4579,8 +4780,6 @@ def runbook_schemas(
 
     if req.method == "DELETE":
         try:
-            from azure.data.tables import TableClient
-
             # Try to get schema_id from query params first, then body
             schema_id = req.params.get("id")
             partition_key = req.params.get("PartitionKey", "RunbookSchema")
@@ -4603,10 +4802,7 @@ def runbook_schemas(
                     },
                 )
 
-            conn_str = os.environ.get(STORAGE_CONN)
-            table_client = TableClient.from_connection_string(
-                conn_str, table_name=TABLE_SCHEMAS
-            )
+            table_client = _get_table_client(TABLE_SCHEMAS)
             table_client.delete_entity(partition_key=partition_key, row_key=schema_id)
 
             # Audit log
@@ -4884,20 +5080,30 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
     Scheduler Engine: Check for scheduled runbooks and execute them.
     """
     import logging
-    import os
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    from azure.data.tables import TableClient
-    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
     from utils import format_requested_at, is_cron_now, today_partition_key
 
-    conn_str = os.environ.get("AzureWebJobsStorage")
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name=TABLE_SCHEDULES
-    )
+    table_client = _get_table_client(TABLE_SCHEDULES)
+    log_table_client = _get_table_client(TABLE_NAME)
+    workers_table = _get_table_client(TABLE_WORKERS_SCHEMAS)
 
     try:
+        worker_pool_to_queue: dict[str, str] = {}
+        try:
+            workers = workers_table.query_entities(
+                query_filter="PartitionKey ne ''",
+                select=["PartitionKey", "Queue"],
+            )
+            for w in workers:
+                pool = str(w.get("PartitionKey") or "").strip()
+                queue_name = str(w.get("Queue") or "").strip()
+                if pool and queue_name and pool not in worker_pool_to_queue:
+                    worker_pool_to_queue[pool] = queue_name
+        except Exception as werr:
+            logging.error(f"[Scheduler] Failed to load WorkersRegistry map: {werr}")
+
         schedules = table_client.query_entities(
             query_filter="PartitionKey eq 'Schedule' and enabled eq true"
         )
@@ -4930,26 +5136,7 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
                 target_queue = "cloudo-default"
 
                 if worker_pool:
-                    try:
-                        workers_table = TableClient.from_connection_string(
-                            conn_str, table_name="WorkersRegistry"
-                        )
-                        entities = list(
-                            workers_table.query_entities(
-                                query_filter=f"PartitionKey eq '{worker_pool}'"
-                            )
-                        )
-                        logging.warning(
-                            f"[WorkersRegistry] Found {len(entities)} workers"
-                        )
-                        for w in entities:
-                            if w.get("Queue"):
-                                target_queue = w.get("Queue")
-                                break
-                    except Exception as e:
-                        logging.error(
-                            f"[Scheduler] Failed to resolve queue for pool {worker_pool}: {e}"
-                        )
+                    target_queue = worker_pool_to_queue.get(worker_pool, target_queue)
 
                 requested_at = format_requested_at()
                 partition_key = today_partition_key()
@@ -4969,9 +5156,6 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
                 }
 
                 try:
-                    log_table_client = TableClient.from_connection_string(
-                        conn_str, table_name=TABLE_NAME
-                    )
                     log_entry = build_log_entry(
                         status="scheduled",
                         partition_key=partition_key,
@@ -5000,11 +5184,11 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
                     logging.error(f"[Scheduler] Failed to log scheduled status: {le}")
 
                 q_name = target_queue
-                queue_service = QueueClient.from_connection_string(
-                    conn_str, q_name, message_encode_policy=TextBase64EncodePolicy()
-                )
+                queue_service = _get_queue_client(q_name)
                 try:
-                    queue_service.send_message(json.dumps(queue_payload))
+                    queue_service.send_message(
+                        json.dumps(queue_payload, ensure_ascii=False)
+                    )
                 except Exception as qe:
                     if "QueueNotFound" in str(qe):
                         logging.warning(f"[Scheduler] Queue {q_name} not found")
@@ -5029,12 +5213,8 @@ def worker_cleanup(cleanupTimer: func.TimerRequest) -> None:
     Garbage Collector: Cleanup old workers where LastSeen is > 3 minutes.
     """
     import utils
-    from azure.data.tables import TableClient
 
-    conn_str = os.environ.get("AzureWebJobsStorage")
-    table_client = TableClient.from_connection_string(
-        conn_str, table_name="WorkersRegistry"
-    )
+    table_client = _get_table_client(TABLE_WORKERS_SCHEMAS)
 
     now_str = utils.utc_now_iso()
     now_dt = datetime.fromisoformat(now_str.replace("Z", "+00:00"))

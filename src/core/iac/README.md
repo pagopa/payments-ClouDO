@@ -102,6 +102,7 @@ module "cloudo" {
   # ==========================================
 
   schemas = file("YOUR_PATH/schemas.json.tpl")
+  schedules = file("YOUR_PATH/schedules.json.tpl")
 
   orchestrator_image = {
     image_name        = "pagopa/cloudo-orchestrator"
@@ -206,6 +207,29 @@ module "cloudo" {
   tags = module.tag_config.tags
 }
 ```
+
+### schedules.json.tpl example
+
+```json
+{
+  "schedule-default": {
+    "partition_key": "Schedule",
+    "entity": [
+      {
+        "name": "Cache Health Check",
+        "cron": "0 */5 * * * *",
+        "runbook": "src/runbooks/aks/cache-health.sh",
+        "run_args": "--namespace apiconfig",
+        "worker_pool": "generic",
+        "enabled": true,
+        "oncall": true
+      }
+    ]
+  }
+}
+```
+
+`id` is generated automatically by Terraform as UUID.
 
 ## Requirements
 

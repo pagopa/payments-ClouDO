@@ -58,6 +58,30 @@ variable "schemas" {
   }
 }
 
+variable "schedules" {
+  description = "Schedules to seed into CloudoSchedules table."
+  type        = string
+  default     = "{}"
+  validation {
+    condition = alltrue([
+      for k, v in jsondecode(var.schedules) : (
+        length(setsubtract(keys(v), ["partition_key", "entity"])) == 0 &&
+        alltrue([
+          for item in v.entity : (
+            length(setsubtract(keys(item), [
+              "name", "cron", "runbook", "run_args", "queue", "worker_pool", "enabled", "oncall"
+            ])) == 0 &&
+            item.name != "" && item.cron != "" && item.runbook != "" &&
+            contains([true, false], lookup(item, "enabled", true)) &&
+            contains([true, false], lookup(item, "oncall", true))
+          )
+        ])
+      )
+    ])
+    error_message = "The schedules definition contains invalid keys or empty required fields (name, cron, runbook)."
+  }
+}
+
 variable "subscription_id" {
   type        = string
   description = "(Optional) The Azure subscription ID for resource permission scope."
@@ -323,6 +347,12 @@ variable "api_manager_hostname" {
   type        = string
   description = "The hostname of the API Manager (e.g., api.pagopa.it)"
   default     = ""
+}
+
+variable "api_management_allow_tracing" {
+  type        = bool
+  description = "Whether to allow tracing for the API Management instance"
+  default     = false
 }
 
 variable "api_path" {

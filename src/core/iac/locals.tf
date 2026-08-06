@@ -26,4 +26,17 @@ locals {
     },
   )
 
+  schedules_executor = flatten([
+    for schedule_group, k in jsondecode(var.schedules) :
+    [
+      for idx, item in k.entity :
+      {
+        schedule_key  = "${schedule_group}:${idx}"
+        entity        = item
+        partition_key = k.partition_key
+      }
+    ]
+    ]
+  )
+
 }

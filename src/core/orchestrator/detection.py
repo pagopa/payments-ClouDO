@@ -228,14 +228,27 @@ class GenericSourceParser(AlertParser):
     """
 
     def parse(self, body: dict) -> dict[str, Any]:
-        source = str(body.get("source") or "unknown").lower()
-        rule = body.get("rule", "")
-        severity = body.get("severity", "Sev4")
-        monitor_condition = body.get("monitorCondition", "Fired")
-        payload = body.get("payload") or {}
+        body = body if isinstance(body, dict) else {}
+        lower_body = lower_keys(body)
+
+        source = str(
+            body.get("source") or lower_body.get("source") or "unknown"
+        ).lower()
+        rule = body.get("rule") or lower_body.get("rule") or ""
+        severity = body.get("severity") or lower_body.get("severity") or "Sev4"
+        monitor_condition = (
+            body.get("monitorCondition")
+            or body.get("monitor_condition")
+            or lower_body.get("monitorcondition")
+            or lower_body.get("monitor_condition")
+            or "Fired"
+        )
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
         compact_raw = json.dumps(body, separators=(",", ":"))
         result = self._base_result(
-            source, compact_raw, payload, [rule], severity, monitor_condition
+            source, compact_raw, payload, [str(rule)], severity, monitor_condition
         )
         return self._parse_payload(payload, result)
 
@@ -263,10 +276,27 @@ class ElasticParser(GenericSourceParser):
     """
 
     def _parse_payload(self, payload: dict, result: dict) -> dict[str, Any]:
+        alert_attributes = payload.get("attributes")
+        if not isinstance(alert_attributes, dict):
+            alert_attributes = {}
+
         elastic_data = {
             "type": payload.get("type"),
-            "attributes": payload.get("attributes"),
+            "attributes": alert_attributes,
         }
+
+        payload_severity = alert_attributes.get("severity") or payload.get("severity")
+        if payload_severity:
+            result["severity"] = payload_severity
+
+        payload_monitor_condition = (
+            alert_attributes.get("monitorCondition")
+            or alert_attributes.get("monitor_condition")
+            or payload.get("monitorCondition")
+            or payload.get("monitor_condition")
+        )
+        if payload_monitor_condition:
+            result["monitorCondition"] = payload_monitor_condition
 
         if payload.get("type") == "aks":
             alert_attributes = payload.get("attributes", {})
@@ -324,10 +354,12 @@ def detect_source(body: dict) -> str:
     if not isinstance(body, dict):
         return SOURCE_AZURE_MONITOR
 
-    if "source" in body:
-        return str(body["source"]).lower()
+    lower_body = lower_keys(body)
 
-    data = body.get("data") or {}
+    if "source" in lower_body:
+        return str(lower_body["source"]).lower()
+
+    data = lower_body.get("data") or {}
     if isinstance(data, dict) and "essentials" in data:
         return SOURCE_AZURE_MONITOR
 

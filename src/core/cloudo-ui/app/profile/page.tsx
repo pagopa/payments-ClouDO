@@ -87,25 +87,30 @@ export default function ProfilePage() {
       const res = await cloudoFetch(`/auth/profile`);
       if (res.ok) {
         const data = await res.json();
+        const nextUsername = data.username ?? "";
+        const nextEmail = data.email ?? "";
+        const nextApiToken = data.api_token ?? "";
+        const nextPicture = data.picture ?? "";
+        const nextSsoProvider = data.sso_provider ?? "";
         setProfile((prev) => ({
           ...prev,
-          username: data.username,
-          email: data.email,
-          api_token: data.api_token,
-          picture: data.picture,
-          sso_provider: data.sso_provider,
+          username: nextUsername,
+          email: nextEmail,
+          api_token: nextApiToken,
+          picture: nextPicture,
+          sso_provider: nextSsoProvider,
         }));
         // Synchronize local storage user if it changed
         const userData = localStorage.getItem("cloudo_user");
         if (userData) {
           const u = JSON.parse(userData);
           let updated = false;
-          if (u.picture !== data.picture) {
-            u.picture = data.picture;
+          if (u.picture !== nextPicture) {
+            u.picture = nextPicture;
             updated = true;
           }
-          if (u.sso_provider !== data.sso_provider) {
-            u.sso_provider = data.sso_provider;
+          if (u.sso_provider !== nextSsoProvider) {
+            u.sso_provider = nextSsoProvider;
             updated = true;
           }
           if (updated) {
@@ -188,7 +193,7 @@ export default function ProfilePage() {
 
       if (res.ok) {
         const data = await res.json();
-        setProfile((prev) => ({ ...prev, api_token: data.api_token }));
+        setProfile((prev) => ({ ...prev, api_token: data.api_token ?? "" }));
         addNotification("success", "New API Token generated");
       } else {
         const data = await res.json();
