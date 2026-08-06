@@ -1188,36 +1188,12 @@ def Trigger(
             approve_url = f"{base}/api/approvals/{partition_key}/{exec_id}/approve?p={payload_b64}&s={sig}&code={func_key}"
             reject_url = f"{base}/api/approvals/{partition_key}/{exec_id}/reject?p={payload_b64}&s={sig}&code={func_key}"
 
-            pending_log = build_log_entry(
-                status="pending",
-                partition_key=partition_key,
-                exec_id=exec_id,
-                row_key=exec_id,
-                requested_at=requested_at,
-                name=schema.name or "",
-                schema_id=schema.id,
-                runbook=schema.runbook,
-                run_args=schema.run_args,
-                worker=schema.worker,
-                group=schema.group,
-                log_msg=json.dumps(
-                    {
-                        "message": "Awaiting approval",
-                        "approve": approve_url,
-                        "reject": reject_url,
-                        "resource_info": resource_info,
-                    },
-                    ensure_ascii=False,
-                ),
-                oncall=schema.oncall,
-                initiator=requester_username,
-                resource_info=resource_info,
-                monitor_condition=monitor_condition,
-                severity=severity,
-                approval_required=True,
-                approval_expires_at=expires_at,
-            )
-            log_table.set(json.dumps(pending_log, ensure_ascii=False))
+            pending_log_payload = {
+                "message": "Awaiting approval",
+                "approve": approve_url,
+                "reject": reject_url,
+                "resource_info": resource_info,
+            }
 
             if requester_username:
                 log_audit(
@@ -1235,6 +1211,7 @@ def Trigger(
                 or routing_info.get("opsgenie_token")
                 or resolve_jsm_apikey(routing_info.get("team"))
             )
+            notification_warnings: list[str] = []
 
             # UI Base URL
             ui_base = (
@@ -1246,7 +1223,7 @@ def Trigger(
                 f"{ui_base}/executions?execId={exec_id}&partitionKey={partition_key}"
             )
 
-            if slack_token:
+            if slack_token and slack_channel:
                 try:
                     # Truncate description and compact resource info to avoid Slack limits
                     description_truncated = (
@@ -1368,7 +1345,13 @@ def Trigger(
                         ],
                     )
                 except Exception as e:
-                    logging.error(f"[{exec_id}] Slack approval notify failed: {e}")
+                    msg = f"Slack approval notify failed: {e}"
+                    logging.warning(f"[{exec_id}] {msg}")
+                    notification_warnings.append(msg)
+            else:
+                msg = "Slack approval notify skipped: missing token or channel"
+                logging.warning(f"[{exec_id}] {msg}")
+                notification_warnings.append(msg)
 
             if jsm_token:
                 try:
@@ -1400,7 +1383,40 @@ def Trigger(
                         },
                     )
                 except Exception as e:
-                    logging.error(f"[{exec_id}] JSM approval notify failed: {e}")
+                    msg = f"JSM approval notify failed: {e}"
+                    logging.warning(f"[{exec_id}] {msg}")
+                    notification_warnings.append(msg)
+            else:
+                msg = "JSM approval notify skipped: missing token"
+                logging.warning(f"[{exec_id}] {msg}")
+                notification_warnings.append(msg)
+
+            if notification_warnings:
+                pending_log_payload["notification_status"] = "warning"
+                pending_log_payload["notification_warnings"] = notification_warnings
+
+            pending_log = build_log_entry(
+                status="pending",
+                partition_key=partition_key,
+                exec_id=exec_id,
+                row_key=exec_id,
+                requested_at=requested_at,
+                name=schema.name or "",
+                schema_id=schema.id,
+                runbook=schema.runbook,
+                run_args=schema.run_args,
+                worker=schema.worker,
+                group=schema.group,
+                log_msg=json.dumps(pending_log_payload, ensure_ascii=False),
+                oncall=schema.oncall,
+                initiator=requester_username,
+                resource_info=resource_info,
+                monitor_condition=monitor_condition,
+                severity=severity,
+                approval_required=True,
+                approval_expires_at=expires_at,
+            )
+            log_table.set(json.dumps(pending_log, ensure_ascii=False))
 
             body = json.dumps(
                 {
@@ -1410,6 +1426,10 @@ def Trigger(
                     "approve": approve_url,
                     "reject": reject_url,
                     "expires_at (UTC)": expires_at,
+                    "notification_status": (
+                        "warning" if notification_warnings else "ok"
+                    ),
+                    "notification_warnings": notification_warnings,
                 },
                 ensure_ascii=False,
             )
@@ -3114,6 +3134,8 @@ def logs_query(req: func.HttpRequest) -> func.HttpResponse:
             "ExecId",
             "Status",
             "RequestedAt",
+            "ApprovalRequired",
+            "ApprovalExpiresAt",
             "Name",
             "Id",
             "Runbook",
