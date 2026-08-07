@@ -35,4 +35,4 @@ COPY ${APP_PATH}/ /home/site/wwwroot/
 
 WORKDIR /home/site/wwwroot
 
-CMD ["python", "-m", "uvicorn", "--app-dir", "/home/site/wwwroot", "fastapi_app:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["python", "-m", "uvicorn", "--app-dir", "/home/site/wwwroot", "fastapi_app:app", "--host", "0.0.0.0", "--port", "80", "--no-access-log"]

@@ -29,6 +29,14 @@ _STOP_EVENT = threading.Event()
 _BACKGROUND_THREADS: list[threading.Thread] = []
 
 
+def _configure_runtime_logging() -> None:
+    # Disable per-request access logs (GET/POST lines) to reduce noise.
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.handlers.clear()
+    access_logger.propagate = False
+    access_logger.disabled = True
+
+
 class _OutBinding:
     def __init__(self) -> None:
         self._values: list[Any] = []
@@ -198,7 +206,7 @@ def _read_route_specs() -> list[dict[str, Any]]:
                 {
                     "function_name": node.name,
                     "route": str(route_data.get("route", "")).strip(),
-                    "methods": route_data.get("methods", ["GET"]),
+                    "methods": route_data.get("methods", ["GET", "POST"]),
                     "bindings": bindings,
                 }
             )
@@ -307,11 +315,16 @@ def _run_scheduler_timers() -> None:
         def past_due(self) -> bool:
             return False
 
-    # Align to the next minute boundary so that cron expressions with second=0
-    # (e.g. "0 */1 * * * *") evaluate correctly inside scheduler_engine.
-    now = datetime.now()
-    secs_to_next_minute = 60 - now.second - now.microsecond / 1_000_000
-    _STOP_EVENT.wait(secs_to_next_minute)
+    def _wait_until_next_minute() -> None:
+        """Sleep until the next minute boundary so now.second ≈ 0 on each call,
+        matching the Azure cron format where the first field is seconds."""
+        now = datetime.now()
+        secs = 60 - now.second - now.microsecond / 1_000_000
+        if secs < 1:
+            secs += 60
+        _STOP_EVENT.wait(secs)
+
+    _wait_until_next_minute()
 
     while not _STOP_EVENT.is_set():
         try:
@@ -322,8 +335,9 @@ def _run_scheduler_timers() -> None:
             legacy.worker_cleanup(_Timer())
         except Exception:
             logging.exception("Worker cleanup failed")
-        # Sleep exactly 60 s to stay aligned with minute boundaries.
-        _STOP_EVENT.wait(60)
+        # Recalculate sleep to next minute boundary after each run,
+        # so drift from execution time never accumulates.
+        _wait_until_next_minute()
 
 
 def _start_background_workers() -> None:
@@ -346,12 +360,12 @@ def _stop_background_workers() -> None:
 
 BANNER = r"""
 \033[1;36m
-   ██████╗██╗      ██████╗ ██╗   ██╗██████╗  ██████╗
-  ██╔════╝██║     ██╔═══██╗██║   ██║██╔══██╗██╔═══██╗
-  ██║     ██║     ██║   ██║██║   ██║██║  ██║██║   ██║
-  ██║     ██║     ██║   ██║██║   ██║██║  ██║██║   ██║
-  ╚██████╗███████╗╚██████╔╝╚██████╔╝██████╔╝╚██████╔╝
-   ╚═════╝╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝  ╚═════╝
+   ______  __                   ______      ___
+ .' ___  |[  |                 |_   _ `.  .'   `.
+/ .'   \_| | |  .--.   __   _    | | `. \/  .-.  \
+| |        | |/ .'`\ \[  | | |   | |  | || |   | |
+\ `.___.'\ | || \__. | | \_/ |, _| |_.' /\  `-'  /
+ `.____ .'[___]'.__.'  '.__.'_/|______.'  `.___.'
 \033[0m
   service  : ORCHESTRATOR
   role     : Event-driven orchestration engine
@@ -362,8 +376,19 @@ BANNER = r"""
 app = FastAPI(title="CloudDO Orchestrator", version="fastapi-migration")
 
 
+@app.get("/admin/warmup")
+def _admin_warmup() -> JSONResponse:
+    return JSONResponse({"status": "ok"})
+
+
+@app.get("/admin/host/status")
+def _admin_host_status() -> JSONResponse:
+    return JSONResponse({"state": "Running"})
+
+
 @app.on_event("startup")
 def _on_startup() -> None:
+    _configure_runtime_logging()
     print(BANNER.replace("\\033", "\033"))
     _start_background_workers()
 

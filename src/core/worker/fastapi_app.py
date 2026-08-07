@@ -25,6 +25,14 @@ _BACKGROUND_THREADS: list[threading.Thread] = []
 _QUEUE_CLIENTS: dict[tuple[str, str], Any] = {}
 
 
+def _configure_runtime_logging() -> None:
+    # Disable per-request access logs (GET/POST lines) to reduce noise.
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.handlers.clear()
+    access_logger.propagate = False
+    access_logger.disabled = True
+
+
 class _OutBinding:
     def __init__(self) -> None:
         self._values: list[Any] = []
@@ -233,7 +241,7 @@ def _read_route_specs() -> list[dict[str, Any]]:
                 {
                     "function_name": node.name,
                     "route": str(route_data.get("route", "")).strip(),
-                    "methods": route_data.get("methods", ["GET"]),
+                    "methods": route_data.get("methods", ["GET", "POST"]),
                     "bindings": bindings,
                 }
             )
@@ -369,12 +377,12 @@ def _stop_background_workers() -> None:
 
 BANNER = r"""
 \033[1;33m
-  ██╗    ██╗ ██████╗ ██████╗ ██╗  ██╗███████╗██████╗
-  ██║    ██║██╔═══██╗██╔══██╗██║ ██╔╝██╔════╝██╔══██╗
-  ██║ █╗ ██║██║   ██║██████╔╝█████╔╝ █████╗  ██████╔╝
-  ██║███╗██║██║   ██║██╔══██╗██╔═██╗ ██╔══╝  ██╔══██╗
-  ╚███╔███╔╝╚██████╔╝██║  ██║██║  ██╗███████╗██║  ██║
-   ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+   ______  __                   ______      ___
+ .' ___  |[  |                 |_   _ `.  .'   `.
+/ .'   \_| | |  .--.   __   _    | | `. \/  .-.  \
+| |        | |/ .'`\ \[  | | |   | |  | || |   | |
+\ `.___.'\ | || \__. | | \_/ |, _| |_.' /\  `-'  /
+ `.____ .'[___]'.__.'  '.__.'_/|______.'  `.___.'
 \033[0m
   service  : WORKER
   role     : Runbook queue processor
@@ -385,8 +393,19 @@ BANNER = r"""
 app = FastAPI(title="CloudDO Worker", version="fastapi-migration")
 
 
+@app.get("/admin/warmup")
+def _admin_warmup() -> JSONResponse:
+    return JSONResponse({"status": "ok"})
+
+
+@app.get("/admin/host/status")
+def _admin_host_status() -> JSONResponse:
+    return JSONResponse({"state": "Running"})
+
+
 @app.on_event("startup")
 def _on_startup() -> None:
+    _configure_runtime_logging()
     print(BANNER.replace("\\033", "\033"))
     _start_background_workers()
 
