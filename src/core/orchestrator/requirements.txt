@@ -3,6 +3,8 @@
 # azure-monitor-opentelemetry
 
 azure-functions
+fastapi
+uvicorn[standard]
 requests
 PyYAML
 slack-sdk==3.36.0

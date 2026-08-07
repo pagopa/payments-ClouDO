@@ -115,8 +115,8 @@ dev:
 	bash src/tests/ingest_test_schema.sh localhost:7072
 	@set -euo pipefail; \
 	trap 'echo "Stopping dev processes..."; kill -9 -P $$; exit 0' INT TERM; \
-	( cd $(ORCH_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ exec func start ) & \
-	( cd $(WORKER_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ exec func start -p 7072 ) & \
+	( cd $(ORCH_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ API_PREFIX=/api exec python -m uvicorn fastapi_app:app --host 0.0.0.0 --port 7071 ) & \
+	( cd $(WORKER_PATH) && FEATURE_DEV=true DEV_SCRIPT_PATH=src/runbooks/ API_PREFIX=/api exec python -m uvicorn fastapi_app:app --host 0.0.0.0 --port 7072 ) & \
 	( cd $(FE_PATH) && API_URL=http://localhost:7071/api exec npm run dev ) & \
 	wait
 

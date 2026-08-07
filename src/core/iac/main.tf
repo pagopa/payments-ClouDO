@@ -26,23 +26,28 @@ module "cloudo_orchestrator" {
 
   app_settings = merge(
     {
-      "TABLE_SCHEMA_NAME"                   = azurerm_storage_table.runbook_schemas.name
-      "TABLE_LOGGER_NAME"                   = azurerm_storage_table.runbook_logger.name
-      "SLACK_TOKEN_DEFAULT"                 = var.slack_integration.token
-      "SLACK_CHANNEL_DEFAULT"               = var.slack_integration.channel
-      "JSM_API_KEY_DEFAULT"                 = var.jsm_api_key
-      "GITHUB_REPO"                         = var.github_repo_info.repo_name
-      "GITHUB_BRANCH"                       = var.github_repo_info.repo_branch
-      "GITHUB_TOKEN"                        = var.orchestrator_image.registry_password
-      "GITHUB_PATH_PREFIX"                  = var.github_repo_info.runbook_path
-      "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
-      "APPROVAL_TTL_MIN"                    = var.approval_runbook.ttl_min
-      "APPROVAL_SECRET"                     = var.approval_runbook.secret
-      "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
-      "NEXTJS_URL"                          = "${var.prefix}-cloudo-ui.azurewebsites.net"
-      "FEATURE_DEV"                         = var.env == "dev" ? "true" : "false"
-      "CLOUDO_ENVIRONMENT"                  = var.env
-      "CLOUDO_ENVIRONMENT_SHORT"            = substr(var.env, 0, 1)
+      "TABLE_SCHEMA_NAME"                       = azurerm_storage_table.runbook_schemas.name
+      "TABLE_LOGGER_NAME"                       = azurerm_storage_table.runbook_logger.name
+      "SLACK_TOKEN_DEFAULT"                     = var.slack_integration.token
+      "SLACK_CHANNEL_DEFAULT"                   = var.slack_integration.channel
+      "JSM_API_KEY_DEFAULT"                     = var.jsm_api_key
+      "GITHUB_REPO"                             = var.github_repo_info.repo_name
+      "GITHUB_BRANCH"                           = var.github_repo_info.repo_branch
+      "GITHUB_TOKEN"                            = var.orchestrator_image.registry_password
+      "GITHUB_PATH_PREFIX"                      = var.github_repo_info.runbook_path
+      "WEBSITES_ENABLE_APP_SERVICE_STORAGE"     = false
+      "WEBSITES_PORT"                           = "80"
+      "API_PREFIX"                              = var.fastapi_api_prefix
+      "FASTAPI_NOTIFICATION_CONCURRENCY"        = tostring(var.orchestrator_fastapi_notification_concurrency)
+      "FASTAPI_NOTIFICATION_BATCH_SIZE"         = tostring(var.orchestrator_fastapi_notification_batch_size)
+      "FASTAPI_NOTIFICATION_VISIBILITY_TIMEOUT" = tostring(var.orchestrator_fastapi_notification_visibility_timeout)
+      "APPROVAL_TTL_MIN"                        = var.approval_runbook.ttl_min
+      "APPROVAL_SECRET"                         = var.approval_runbook.secret
+      "CLOUDO_SECRET_KEY"                       = random_password.internal_auth_token.result
+      "NEXTJS_URL"                              = "${var.prefix}-cloudo-ui.azurewebsites.net"
+      "FEATURE_DEV"                             = var.env == "dev" ? "true" : "false"
+      "CLOUDO_ENVIRONMENT"                      = var.env
+      "CLOUDO_ENVIRONMENT_SHORT"                = substr(var.env, 0, 1)
     },
     local.orchestrator_smart_routing_app_settings
   )
@@ -163,10 +168,15 @@ module "cloudo_worker" {
     "FUNCTIONS_WORKER_RUNTIME"            = "python"
     "DOTNET_RUNNING_IN_CONTAINER"         = true
     "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = false
+    "WEBSITES_PORT"                       = "80"
+    "API_PREFIX"                          = var.fastapi_api_prefix
     "ORCHESTRATOR_URL"                    = "https://${module.cloudo_orchestrator.default_hostname}/api/workers/register"
     "RECEIVER_URL"                        = "https://${module.cloudo_orchestrator.default_hostname}/api/receiver"
     "CLOUDO_SECRET_KEY"                   = random_password.internal_auth_token.result
     "WORKER_CAPABILITY"                   = each.value
+    "FASTAPI_QUEUE_CONCURRENCY"           = tostring(var.worker_fastapi_queue_concurrency)
+    "FASTAPI_QUEUE_BATCH_SIZE"            = tostring(var.worker_fastapi_queue_batch_size)
+    "FASTAPI_QUEUE_VISIBILITY_TIMEOUT"    = tostring(var.worker_fastapi_queue_visibility_timeout)
     "CLOUDO_ENVIRONMENT"                  = var.env
     "CLOUDO_ENVIRONMENT_SHORT"            = substr(var.env, 0, 1)
     "FEATURE_DEV"                         = var.env == "dev" ? "true" : "false"

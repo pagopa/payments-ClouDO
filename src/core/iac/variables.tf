@@ -217,6 +217,48 @@ variable "workers_config" {
   })
 }
 
+variable "fastapi_api_prefix" {
+  type        = string
+  description = "API prefix exposed by FastAPI applications."
+  default     = "/api"
+}
+
+variable "orchestrator_fastapi_notification_concurrency" {
+  type        = number
+  description = "Concurrent workers for orchestrator notification queue polling."
+  default     = 4
+}
+
+variable "orchestrator_fastapi_notification_batch_size" {
+  type        = number
+  description = "Max batch size per orchestrator notification queue poll."
+  default     = 4
+}
+
+variable "orchestrator_fastapi_notification_visibility_timeout" {
+  type        = number
+  description = "Visibility timeout in seconds for orchestrator notification queue messages."
+  default     = 300
+}
+
+variable "worker_fastapi_queue_concurrency" {
+  type        = number
+  description = "Concurrent workers for runbook queue polling in each worker app."
+  default     = 4
+}
+
+variable "worker_fastapi_queue_batch_size" {
+  type        = number
+  description = "Max batch size per runbook queue poll in each worker app."
+  default     = 4
+}
+
+variable "worker_fastapi_queue_visibility_timeout" {
+  type        = number
+  description = "Visibility timeout in seconds for worker queue messages."
+  default     = 3600
+}
+
 variable "autoscale_max_capacity" {
   default     = 1
   type        = number

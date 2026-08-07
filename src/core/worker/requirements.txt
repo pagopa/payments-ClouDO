@@ -3,6 +3,8 @@
 # azure-monitor-opentelemetry
 
 azure-functions
+fastapi
+uvicorn[standard]
 requests
 azure-mgmt-compute
 azure-mgmt-storage

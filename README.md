@@ -28,6 +28,7 @@ Centralized runbook automation for manual or event-driven execution.
 - Clone the repository.
 - Install Python dependencies as documented in the project (e.g., using pip).
 - Configure environment variables and credentials as needed.
+- Orchestrator and Worker now run on **FastAPI** (served by **Uvicorn**) with `/api` route prefix.
 
 ### Test environment
 

@@ -128,6 +128,14 @@ def _status_priority(status: Any) -> int:
     return STATUS_PRIORITY.get(str(status or "").strip().lower(), 0)
 
 
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _get_entity_id(e: dict) -> str:
     return str(e.get("Id") or e.get("id") or "").strip()
 
@@ -4297,13 +4305,6 @@ def schedules_management(req: func.HttpRequest) -> func.HttpResponse:
 
     table_client = _get_table_client(TABLE_SCHEDULES)
 
-    def _as_bool(value: Any, default: bool = False) -> bool:
-        if isinstance(value, bool):
-            return value
-        if value is None:
-            return default
-        return str(value).strip().lower() in {"1", "true", "yes", "on"}
-
     def _is_terraform_locked(entity: Optional[dict[str, Any]]) -> bool:
         if not entity:
             return False
@@ -5105,15 +5106,23 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
             logging.error(f"[Scheduler] Failed to load WorkersRegistry map: {werr}")
 
         schedules = table_client.query_entities(
-            query_filter="PartitionKey eq 'Schedule' and enabled eq true"
+            query_filter="PartitionKey eq 'Schedule'"
         )
         now = datetime.now(ZoneInfo("Europe/Rome"))
+        # FastAPI-based scheduler can drift by 1-2s from the minute boundary.
+        # Normalize seconds for cron matching to avoid missing "0 * * * * *" jobs.
+        now_for_cron = now.replace(second=0, microsecond=0)
 
         for s in schedules:
+            # Terraform-backed entities can store booleans as strings ("true"/"false").
+            if not _as_bool(s.get("enabled"), default=True):
+                continue
+
             cron_expr = s.get("cron", "0 */1 * * * *")
             last_run_str = s.get("last_run", "")
+            oncall_enabled = _as_bool(s.get("oncall"), default=True)
 
-            should_run_by_cron = is_cron_now(cron_expr, now)
+            should_run_by_cron = is_cron_now(cron_expr, now_for_cron)
 
             should_run = False
             if should_run_by_cron:
@@ -5150,7 +5159,7 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
                     "id": s.get("RowKey"),
                     "name": s.get("name"),
                     "status": "scheduled",
-                    "oncall": s.get("oncall"),
+                    "oncall": oncall_enabled,
                     "require_approval": False,
                     "requested_at": requested_at,
                 }
@@ -5168,7 +5177,7 @@ def scheduler_engine(schedulerTimer: func.TimerRequest) -> None:
                         run_args=s.get("run_args"),
                         worker=worker_pool,
                         group="-",
-                        oncall=s.get("oncall"),
+                        oncall=oncall_enabled,
                         log_msg=json.dumps(
                             {
                                 "status": "scheduled",
