@@ -102,7 +102,7 @@ ingress:
 
 azurite:
   enabled: false
-  image: mcr.microsoft.com/azure-storage/azurite:3.33.0
+  image: mcr.microsoft.com/azure-storage/azurite:latest
   resources:
     requests:
       cpu: 50m
