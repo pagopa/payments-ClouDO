@@ -25,7 +25,7 @@ spec:
             - /bin/sh
             - -c
             - |
-              until curl -sf http://azurite:10000/devstoreaccount1; do
+              until [ "$(curl -s -o /dev/null -w "%{http_code}" http://azurite:10000/devstoreaccount1)" != "000" ]; do
                 echo "waiting for azurite...";
                 sleep 3;
               done
