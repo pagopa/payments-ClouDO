@@ -56,9 +56,10 @@ spec:
               from azure.core.exceptions import ResourceExistsError
 
               conn = os.environ["AzureWebJobsStorage"]
+              storage_api_version = "2023-11-03"
               table_service = TableServiceClient.from_connection_string(conn)
-              queue_service = QueueServiceClient.from_connection_string(conn)
-              blob_service = BlobServiceClient.from_connection_string(conn)
+              queue_service = QueueServiceClient.from_connection_string(conn, api_version=storage_api_version)
+              blob_service = BlobServiceClient.from_connection_string(conn, api_version=storage_api_version)
 
               tables = [
                   "RunbookSchemas",
