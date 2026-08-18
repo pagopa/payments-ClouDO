@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudo-config
+  namespace: {{ include "cloudo.namespace" . }}
+  labels:
+    {{- include "cloudo.labels" . | nindent 4 }}
+data:
+  API_PREFIX: {{ .Values.config.apiPrefix | quote }}
+  CLOUDO_ENVIRONMENT: {{ .Values.config.environment | quote }}
+  CLOUDO_ENVIRONMENT_SHORT: {{ .Values.config.environmentShort | quote }}
+  FEATURE_DEV: {{ .Values.config.featureDev | quote }}
+  GITHUB_REPO: {{ .Values.config.githubRepo | quote }}
+  GITHUB_BRANCH: {{ .Values.config.githubBranch | quote }}
+  GITHUB_PATH_PREFIX: {{ .Values.config.githubPathPrefix | quote }}
+  LOGS_BLOB_CONTAINER: {{ .Values.config.logsBlobContainer | quote }}
+  WEBSITES_PORT: {{ .Values.config.websitesPort | quote }}
+  AKS_INTEGRATION_ENABLED: {{ .Values.config.aksIntegrationEnabled | quote }}
+  FASTAPI_NOTIFICATION_CONCURRENCY: {{ .Values.fastapi.notification.concurrency | quote }}
+  FASTAPI_NOTIFICATION_BATCH_SIZE: {{ .Values.fastapi.notification.batchSize | quote }}
+  FASTAPI_NOTIFICATION_VISIBILITY_TIMEOUT: {{ .Values.fastapi.notification.visibilityTimeout | quote }}
+  FASTAPI_QUEUE_CONCURRENCY: {{ .Values.fastapi.queue.concurrency | quote }}
+  FASTAPI_QUEUE_BATCH_SIZE: {{ .Values.fastapi.queue.batchSize | quote }}
+  FASTAPI_QUEUE_VISIBILITY_TIMEOUT: {{ .Values.fastapi.queue.visibilityTimeout | quote }}
+---
+{{- range .Values.workers }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudo-worker-{{ .name }}-config
+  namespace: {{ include "cloudo.namespace" $ }}
+  labels:
+    {{- include "cloudo.labels" $ | nindent 4 }}
+data:
+  QUEUE_NAME: {{ .queue | quote }}
+  WORKER_CAPABILITY: {{ .capability | quote }}
+  WEBSITE_SITE_NAME: {{ printf "worker-%s" .name | quote }}
+  ORCHESTRATOR_URL: "http://orchestrator/api/workers/register"
+  RECEIVER_URL: "http://orchestrator/api/receiver"
+---
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudo-ui-config
+  namespace: {{ include "cloudo.namespace" . }}
+  labels:
+    {{- include "cloudo.labels" . | nindent 4 }}
+data:
+  API_URL: "http://orchestrator/api"
+  ORCHESTRATOR_URL: "http://orchestrator"

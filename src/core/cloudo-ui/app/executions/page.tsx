@@ -1,6 +1,6 @@
 "use client";
 
-import { LogsPanel } from "../components/LogsPanel";
+import { LogsPanel } from "./components/LogsPanel";
 import { HiOutlineTerminal } from "react-icons/hi";
 
 export default function ExecutionsPage() {

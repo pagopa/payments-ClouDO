@@ -1,16 +1,4 @@
 locals {
-  entity_executor = flatten([
-    for partition, k in jsondecode(var.schemas) :
-    [
-      for item in k.entity :
-      {
-        entity        = item
-        partition_key = k.partition_key
-      }
-    ]
-    ]
-  )
-
   orchestrator_smart_routing_app_settings = merge(
     { for team, key in var.team_jsm_api_keys :
       "JSM_API_KEY_${upper(replace(team, "-", "_"))}" => key
@@ -25,18 +13,4 @@ locals {
       ROUTING_RULES = local.routing_rules_json_from_object
     },
   )
-
-  schedules_executor = flatten([
-    for schedule_group, k in jsondecode(var.schedules) :
-    [
-      for idx, item in k.entity :
-      {
-        schedule_key  = "${schedule_group}:${idx}"
-        entity        = item
-        partition_key = k.partition_key
-      }
-    ]
-    ]
-  )
-
 }

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-alert
+spec:
+  selector:
+    app: worker-alert
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

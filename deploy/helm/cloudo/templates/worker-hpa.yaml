@@ -1,0 +1,25 @@
+{{- range .Values.workers }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: worker-{{ .name }}
+  namespace: {{ include "cloudo.namespace" $ }}
+  labels:
+    {{- include "cloudo.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker-{{ .name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: worker-{{ .name }}
+  minReplicas: {{ .hpa.minReplicas }}
+  maxReplicas: {{ .hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .hpa.cpuUtilization }}
+{{- end }}

@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudo-ui
+  namespace: {{ include "cloudo.namespace" . }}
+  labels:
+    {{- include "cloudo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+spec:
+  replicas: {{ .Values.ui.replicas }}
+  selector:
+    matchLabels:
+      app: cloudo-ui
+  template:
+    metadata:
+      labels:
+        app: cloudo-ui
+        {{- include "cloudo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ui
+    spec:
+      containers:
+        - name: ui
+          image: {{ include "cloudo.uiImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-ui-config
+                  key: API_URL
+            - name: ORCHESTRATOR_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-ui-config
+                  key: ORCHESTRATOR_URL
+            - name: FEATURE_DEV
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: FEATURE_DEV
+            - name: CLOUDO_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cloudo-secrets
+                  key: CLOUDO_SECRET_KEY
+            - name: FUNCTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cloudo-secrets
+                  key: FUNCTION_KEY
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: cloudo-secrets
+                  key: GOOGLE_CLIENT_ID
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.ui.resources | nindent 12 }}

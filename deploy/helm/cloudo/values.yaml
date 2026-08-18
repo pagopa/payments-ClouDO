@@ -1,0 +1,115 @@
+global:
+  namespace: cloudo-helm
+
+image:
+  registry: ghcr.io/pagopa
+  tag: "0.0.0"
+  pullPolicy: IfNotPresent
+
+secrets:
+  azureWebJobsStorage: ""
+  cloudoSecretKey: ""
+  sessionSecret: ""
+  approvalSecret: ""
+  slackTokenDefault: ""
+  slackChannelDefault: "#cloudo"
+  jsmApiKeyDefault: ""
+  githubToken: ""
+  googleClientId: ""
+  functionKey: ""
+
+config:
+  apiPrefix: "/api"
+  environment: "prod"
+  environmentShort: "p"
+  featureDev: "false"
+  githubRepo: "pagopa/payments-cloudo"
+  githubBranch: "main"
+  githubPathPrefix: "src/runbooks"
+  logsBlobContainer: "runbook-logs"
+  websitesPort: "80"
+  aksIntegrationEnabled: "true"
+
+fastapi:
+  notification:
+    concurrency: "4"
+    batchSize: "4"
+    visibilityTimeout: "300"
+  queue:
+    concurrency: "4"
+    batchSize: "4"
+    visibilityTimeout: "3600"
+
+orchestrator:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+workers:
+  - name: local
+    capability: local
+    queue: local
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 5
+      cpuUtilization: 70
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+  - name: alert
+    capability: alert
+    queue: alert
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 5
+      cpuUtilization: 70
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+ui:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: cloudo.example.internal
+  tls:
+    enabled: false
+    secretName: ""
+
+azurite:
+  enabled: false
+  image: mcr.microsoft.com/azure-storage/azurite:3.33.0
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+bootstrap:
+  adminPassword: "admin"

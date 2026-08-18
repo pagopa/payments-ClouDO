@@ -1,0 +1,936 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "Requests",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$functionAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "Requests",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$webAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "B"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "Requests",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$workerAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "C"
+        }
+      ],
+      "title": "Requests (Function + Worker + Web App)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "azureMonitor": {
+            "aggregation": "Average",
+            "dimensionFilters": [],
+            "metricName": "AverageResponseTime",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$functionAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Average",
+            "dimensionFilters": [],
+            "metricName": "AverageResponseTime",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$webAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "B"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Average",
+            "dimensionFilters": [],
+            "metricName": "AverageResponseTime",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$workerAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "C"
+        }
+      ],
+      "title": "Average Response Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "Http5xx",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$functionAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "Http5xx",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$webAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "B"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "Http5xx",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$workerAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "C"
+        }
+      ],
+      "title": "HTTP 5xx",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "azureMonitor": {
+            "aggregation": "Average",
+            "dimensionFilters": [],
+            "metricName": "MemoryWorkingSet",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$functionAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Average",
+            "dimensionFilters": [],
+            "metricName": "MemoryWorkingSet",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$webAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "B"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Average",
+            "dimensionFilters": [],
+            "metricName": "MemoryWorkingSet",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$workerAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "C"
+        }
+      ],
+      "title": "Memory Working Set",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "CpuTime",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$functionAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "CpuTime",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$webAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "B"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "CpuTime",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$workerAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "C"
+        }
+      ],
+      "title": "CPU Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "FunctionExecutionCount",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$functionAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "FunctionExecutionCount",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$workerAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "B"
+        }
+      ],
+      "title": "Function Executions (Orchestrator + Worker)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 24
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "Http5xx",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$functionAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        }
+      ],
+      "title": "Function 5xx (latest)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 24
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "Http5xx",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$webAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        }
+      ],
+      "title": "Web App 5xx (latest)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 500
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 24
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "azureMonitor": {
+            "aggregation": "Average",
+            "dimensionFilters": [],
+            "metricName": "AverageResponseTime",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$functionAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Average",
+            "dimensionFilters": [],
+            "metricName": "AverageResponseTime",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$webAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "B"
+        },
+        {
+          "azureMonitor": {
+            "aggregation": "Average",
+            "dimensionFilters": [],
+            "metricName": "AverageResponseTime",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$workerAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "C"
+        }
+      ],
+      "title": "Avg Response Time (latest)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 28
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "azureMonitor": {
+            "aggregation": "Total",
+            "dimensionFilters": [],
+            "metricName": "Http5xx",
+            "metricNamespace": "Microsoft.Web/sites",
+            "resourceGroup": "$resourceGroup",
+            "resourceName": "$workerAppName",
+            "resourceType": "Microsoft.Web/sites",
+            "subscription": "$subscriptionId",
+            "timeGrain": "auto"
+          },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        }
+      ],
+      "title": "Worker 5xx (latest)",
+      "type": "stat"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["cloudo", "function-app", "web-app", "worker", "azure-monitor"],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": "Azure Monitor",
+          "value": "Azure Monitor"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "grafana-azure-monitor-datasource",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "hide": 0,
+        "label": "Subscription ID",
+        "name": "subscriptionId",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "hide": 0,
+        "label": "Resource Group",
+        "name": "resourceGroup",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "hide": 0,
+        "label": "Function App Name",
+        "name": "functionAppName",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "hide": 0,
+        "label": "Web App Name",
+        "name": "webAppName",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "hide": 0,
+        "label": "Worker App Name",
+        "name": "workerAppName",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Cloudo Unified - Function App, Worker & Web App",
+  "uid": "cloudo-unified",
+  "version": 3,
+  "weekStart": ""
+}
