@@ -103,6 +103,14 @@ ingress:
 azurite:
   enabled: false
   image: mcr.microsoft.com/azure-storage/azurite:latest
+  skipApiVersionCheck: true
+  persistence:
+    enabled: true
+    existingClaim: ""
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
   resources:
     requests:
       cpu: 50m

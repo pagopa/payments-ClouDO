@@ -1,3 +1,23 @@
+{{- if and .Values.azurite.enabled .Values.azurite.persistence.enabled (not .Values.azurite.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "cloudo.fullname" . }}-azurite-data
+  namespace: {{ include "cloudo.namespace" . }}
+  labels:
+    {{- include "cloudo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: azurite
+spec:
+  accessModes:
+    {{- toYaml .Values.azurite.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.azurite.persistence.size | quote }}
+  {{- if .Values.azurite.persistence.storageClass }}
+  storageClassName: {{ .Values.azurite.persistence.storageClass | quote }}
+  {{- end }}
+---
+{{- end }}
 {{- if .Values.azurite.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -30,7 +50,12 @@ spec:
             - "0.0.0.0"
             - --tableHost
             - "0.0.0.0"
+            - --location
+            - /data
             - --loose
+            {{- if .Values.azurite.skipApiVersionCheck }}
+            - --skipApiVersionCheck
+            {{- end }}
           ports:
             - containerPort: 10000
               name: blob
@@ -40,6 +65,17 @@ spec:
               name: table
           resources:
             {{- toYaml .Values.azurite.resources | nindent 12 }}
+          volumeMounts:
+            - name: azurite-data
+              mountPath: /data
+      volumes:
+        - name: azurite-data
+          {{- if .Values.azurite.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-azurite-data" (include "cloudo.fullname" .)) .Values.azurite.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
 ---
 apiVersion: v1
 kind: Service
