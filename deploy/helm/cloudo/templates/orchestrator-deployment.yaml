@@ -17,11 +17,40 @@ spec:
         app: orchestrator
         {{- include "cloudo.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: orchestrator
+      {{- with .Values.orchestrator.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
+      serviceAccountName: {{ include "cloudo.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.orchestrator.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.orchestrator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.orchestrator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.orchestrator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: orchestrator
           image: {{ include "cloudo.orchestratorImage" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.orchestrator.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - containerPort: 80
               name: http
@@ -29,42 +58,42 @@ spec:
             - name: AzureWebJobsStorage
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: AzureWebJobsStorage
             - name: CLOUDO_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: CLOUDO_SECRET_KEY
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: SESSION_SECRET
             - name: APPROVAL_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: APPROVAL_SECRET
             - name: SLACK_TOKEN_DEFAULT
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: SLACK_TOKEN_DEFAULT
             - name: SLACK_CHANNEL_DEFAULT
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: SLACK_CHANNEL_DEFAULT
             - name: JSM_API_KEY_DEFAULT
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: JSM_API_KEY_DEFAULT
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: GITHUB_TOKEN
             - name: NEXTJS_URL
               value: "http://cloudo-ui:3000"

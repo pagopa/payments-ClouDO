@@ -1,6 +1,8 @@
+{{- if .Values.global.createNamespace }}
 apiVersion: v1
 kind: Namespace
 metadata:
   name: {{ include "cloudo.namespace" . }}
   labels:
     {{- include "cloudo.labels" . | nindent 4 }}
+{{- end }}

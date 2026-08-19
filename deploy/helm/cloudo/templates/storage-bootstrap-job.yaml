@@ -1,3 +1,4 @@
+{{- if .Values.bootstrap.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -6,6 +7,10 @@ metadata:
   labels:
     {{- include "cloudo.labels" . | nindent 4 }}
     app.kubernetes.io/component: bootstrap
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   ttlSecondsAfterFinished: 3600
   backoffLimit: 5
@@ -17,6 +22,11 @@ spec:
         app.kubernetes.io/component: bootstrap
     spec:
       restartPolicy: OnFailure
+      serviceAccountName: {{ include "cloudo.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if .Values.azurite.enabled }}
       initContainers:
         - name: wait-for-azurite
@@ -37,10 +47,14 @@ spec:
             - name: AzureWebJobsStorage
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: AzureWebJobsStorage
             - name: ADMIN_PASSWORD
-              value: {{ .Values.bootstrap.adminPassword | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cloudo.secretName" . }}
+                  key: BOOTSTRAP_ADMIN_PASSWORD
+                  optional: true
           command:
             - /bin/sh
             - -c
@@ -90,7 +104,8 @@ spec:
               print("blob container ok: runbook-logs")
 
               users_table = table_service.get_table_client("CloudoUsers")
-              admin_password = os.environ.get("ADMIN_PASSWORD", "admin")
+              admin_password = os.environ.get("ADMIN_PASSWORD", {{ .Values.bootstrap.adminPassword | quote }})
+              admin_email = {{ .Values.bootstrap.adminEmail | quote }}
               hashed = bcrypt.hashpw(admin_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
               try:
                   users_table.create_entity({
@@ -98,9 +113,10 @@ spec:
                       "RowKey": "admin",
                       "password": hashed,
                       "role": "ADMIN",
-                      "email": "admin@cloudo.local",
+                      "email": admin_email,
                   })
                   print("admin user created")
               except ResourceExistsError:
                   print("admin user already exists, skipping")
               PY
+{{- end }}

@@ -1,0 +1,135 @@
+# Production example — Azure Storage Account + AKS Workload Identity.
+# Copy and customize; do NOT commit secrets inline.
+#
+# Apply with:
+#   helm upgrade --install cloudo ./deploy/helm/cloudo \
+#     -f deploy/helm/cloudo/values-azure.yaml \
+#     --set secrets.azureWebJobsStorage="<connection-string>" \
+#     --set secrets.cloudoSecretKey="<key>" \
+#     --set secrets.sessionSecret="<secret>"
+#
+# Or use existingSecretName to point to a pre-existing Secret (Key Vault CSI,
+# External Secrets Operator, Sealed Secrets, etc.):
+#   existingSecretName: cloudo-kv-secret
+
+global:
+  namespace: cloudo
+
+image:
+  registry: ghcr.io/pagopa
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# ServiceAccount — annotate for AKS Workload Identity (optional)
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  annotations:
+    azure.workload.identity/client-id: "<managed-identity-client-id>"
+
+# ---------------------------------------------------------------------------
+# Secrets — provide inline (or use existingSecretName for external management)
+# ---------------------------------------------------------------------------
+# existingSecretName: cloudo-kv-secret
+
+secrets:
+  azureWebJobsStorage: ""  # fill via --set or external secret
+  cloudoSecretKey: ""
+  sessionSecret: ""
+  approvalSecret: ""
+  githubToken: ""
+  googleClientId: ""
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+config:
+  environment: "prod"
+  environmentShort: "p"
+  featureDev: "false"
+  githubRepo: "pagopa/payments-cloudo"
+  githubBranch: "main"
+  aksIntegrationEnabled: "true"
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
+orchestrator:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# ---------------------------------------------------------------------------
+# Workers
+# ---------------------------------------------------------------------------
+workers:
+  - name: local
+    capability: local
+    queue: local
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 10
+      cpuUtilization: 70
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+  - name: alert
+    capability: alert
+    queue: alert
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 5
+      cpuUtilization: 70
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+# ---------------------------------------------------------------------------
+# UI
+# ---------------------------------------------------------------------------
+ui:
+  replicas: 2
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+  host: cloudo.example.com
+  tls:
+    enabled: true
+    secretName: cloudo-tls
+
+# ---------------------------------------------------------------------------
+# Bootstrap
+# ---------------------------------------------------------------------------
+bootstrap:
+  enabled: true
+  adminEmail: "admin@example.com"
+  adminPassword: ""  # fill via --set bootstrap.adminPassword=<pw>
+
+# ---------------------------------------------------------------------------
+# Azurite — DISABLED in production
+# ---------------------------------------------------------------------------
+azurite:
+  enabled: false

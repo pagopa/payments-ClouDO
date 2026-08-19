@@ -55,6 +55,29 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Return the name of the Secret to use for application secrets.
+Uses existingSecretName when provided, otherwise the chart-managed "cloudo-secrets".
+*/}}
+{{- define "cloudo.secretName" -}}
+{{- if .Values.existingSecretName -}}
+{{- .Values.existingSecretName -}}
+{{- else -}}
+cloudo-secrets
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the ServiceAccount name.
+*/}}
+{{- define "cloudo.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+  {{- default (include "cloudo.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+  {{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Orchestrator image
 */}}
 {{- define "cloudo.orchestratorImage" -}}

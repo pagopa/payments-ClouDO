@@ -19,11 +19,40 @@ spec:
         app: worker-{{ .name }}
         {{- include "cloudo.selectorLabels" $ | nindent 8 }}
         app.kubernetes.io/component: worker-{{ .name }}
+      {{- with $.Values.workerDefaults.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
+      serviceAccountName: {{ include "cloudo.serviceAccountName" $ }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.workerDefaults.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.workerDefaults.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.workerDefaults.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.workerDefaults.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: worker-{{ .name }}
           image: {{ include "cloudo.workerImage" $ }}
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          {{- with $.Values.workerDefaults.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - containerPort: 80
               name: http
@@ -31,17 +60,17 @@ spec:
             - name: AzureWebJobsStorage
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" $ }}
                   key: AzureWebJobsStorage
             - name: CLOUDO_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" $ }}
                   key: CLOUDO_SECRET_KEY
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" $ }}
                   key: GITHUB_TOKEN
             - name: API_PREFIX
               valueFrom:

@@ -35,8 +35,8 @@ data:
   QUEUE_NAME: {{ .queue | quote }}
   WORKER_CAPABILITY: {{ .capability | quote }}
   WEBSITE_SITE_NAME: {{ printf "worker-%s" .name | quote }}
-  ORCHESTRATOR_URL: "http://orchestrator/api/workers/register"
-  RECEIVER_URL: "http://orchestrator/api/receiver"
+  ORCHESTRATOR_URL: {{ printf "%s/api/workers/register" $.Values.orchestrator.serviceUrl | quote }}
+  RECEIVER_URL: {{ printf "%s/api/receiver" $.Values.orchestrator.serviceUrl | quote }}
 ---
 {{- end }}
 apiVersion: v1
@@ -47,5 +47,5 @@ metadata:
   labels:
     {{- include "cloudo.labels" . | nindent 4 }}
 data:
-  API_URL: "http://orchestrator/api"
-  ORCHESTRATOR_URL: "http://orchestrator"
+  API_URL: {{ .Values.ui.apiUrl | quote }}
+  ORCHESTRATOR_URL: {{ .Values.ui.orchestratorUrl | quote }}

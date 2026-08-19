@@ -17,11 +17,40 @@ spec:
         app: cloudo-ui
         {{- include "cloudo.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: ui
+      {{- with .Values.ui.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
+      serviceAccountName: {{ include "cloudo.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: ui
           image: {{ include "cloudo.uiImage" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.ui.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - containerPort: 3000
               name: http
@@ -44,17 +73,17 @@ spec:
             - name: CLOUDO_KEY
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: CLOUDO_SECRET_KEY
             - name: FUNCTION_KEY
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: FUNCTION_KEY
             - name: GOOGLE_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: cloudo-secrets
+                  name: {{ include "cloudo.secretName" . }}
                   key: GOOGLE_CLIENT_ID
           readinessProbe:
             httpGet:

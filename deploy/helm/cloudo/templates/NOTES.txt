@@ -1,0 +1,63 @@
+ClouDO has been deployed successfully!
+
+  Release : {{ .Release.Name }}
+  Namespace: {{ include "cloudo.namespace" . }}
+  Version  : {{ .Chart.AppVersion }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Access
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{- if .Values.ingress.enabled }}
+  UI  ➜  http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}/
+  API ➜  http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}/api/healthz
+{{- else }}
+  Ingress is disabled. Expose the UI with:
+
+    kubectl -n {{ include "cloudo.namespace" . }} port-forward svc/cloudo-ui 3000:3000
+    kubectl -n {{ include "cloudo.namespace" . }} port-forward svc/orchestrator 8080:80
+
+  Then open http://localhost:3000
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Storage
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{- if .Values.azurite.enabled }}
+  ⚠  Azurite (local emulator) is ENABLED.
+     This is suitable for development only.
+     For production, set azurite.enabled=false and provide a real
+     Azure Storage connection string via secrets.azureWebJobsStorage
+     (or existingSecretName).
+{{- else if .Values.existingSecretName }}
+  Azure Storage credentials are read from existing Secret: {{ .Values.existingSecretName }}
+{{- else }}
+  Azure Storage connection string is stored in Secret: cloudo-secrets
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Bootstrap
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{- if .Values.bootstrap.enabled }}
+  The bootstrap Job runs as a Helm hook (post-install/post-upgrade).
+  It creates required tables, queues, blob containers and the admin user.
+  Monitor it with:
+
+    kubectl -n {{ include "cloudo.namespace" . }} get jobs -l app.kubernetes.io/component=bootstrap
+    kubectl -n {{ include "cloudo.namespace" . }} logs -l app=cloudo-storage-bootstrap
+{{- else }}
+  Bootstrap is DISABLED (bootstrap.enabled=false).
+  Ensure the Azure Storage resources and admin user exist before routing traffic.
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  AKS Workload Identity (passwordless auth)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  To use a Managed Identity instead of a connection string, annotate
+  the ServiceAccount with the identity client-id and set the storage
+  connection string to use the identity endpoint:
+
+    serviceAccount:
+      annotations:
+        azure.workload.identity/client-id: "<managed-identity-client-id>"
+
+  More info: https://learn.microsoft.com/en-us/azure/aks/workload-identity-overview
