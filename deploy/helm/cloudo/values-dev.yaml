@@ -22,3 +22,6 @@ secrets:
 bootstrap:
   enabled: true
   adminPassword: "admin"
+
+ingress:
+  enabled: false
