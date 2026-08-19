@@ -20,4 +20,5 @@ secrets:
   approvalSecret: "dev-approval-secret"
 
 bootstrap:
+  enabled: true
   adminPassword: "admin"
