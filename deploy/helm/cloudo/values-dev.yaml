@@ -1,0 +1,27 @@
+# Development overrides — uses in-cluster Azurite as storage backend.
+# Apply with: helm upgrade --install cloudo ./deploy/helm/cloudo -f deploy/helm/cloudo/values-dev.yaml
+
+global:
+  namespace: cloudo-dev
+
+config:
+  environment: "dev"
+  environmentShort: "d"
+  featureDev: "true"
+  aksIntegrationEnabled: "false"
+
+azurite:
+  enabled: true
+
+secrets:
+  azureWebJobsStorage: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1;"
+  cloudoSecretKey: "dev-secret-key-change-me"
+  sessionSecret: "dev-session-secret"
+  approvalSecret: "dev-approval-secret"
+
+bootstrap:
+  enabled: true
+  adminPassword: "admin"
+
+ingress:
+  enabled: false

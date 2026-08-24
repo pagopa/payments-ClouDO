@@ -1,0 +1,179 @@
+{{- range .Values.workers }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-{{ .name }}
+  namespace: {{ include "cloudo.namespace" $ }}
+  labels:
+    {{- include "cloudo.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker-{{ .name }}
+spec:
+  replicas: {{ .replicas }}
+  selector:
+    matchLabels:
+      app: worker-{{ .name }}
+  template:
+    metadata:
+      labels:
+        app: worker-{{ .name }}
+        {{- include "cloudo.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: worker-{{ .name }}
+      {{- with $.Values.workerDefaults.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "cloudo.serviceAccountName" $ }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.workerDefaults.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.workerDefaults.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.workerDefaults.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.workerDefaults.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker-{{ .name }}
+          image: {{ include "cloudo.workerImage" $ }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          {{- with $.Values.workerDefaults.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: 80
+              name: http
+          env:
+            - name: AzureWebJobsStorage
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cloudo.secretName" $ }}
+                  key: AzureWebJobsStorage
+            - name: CLOUDO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cloudo.secretName" $ }}
+                  key: CLOUDO_SECRET_KEY
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cloudo.secretName" $ }}
+                  key: GITHUB_TOKEN
+            - name: API_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: API_PREFIX
+            - name: CLOUDO_ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: CLOUDO_ENVIRONMENT
+            - name: CLOUDO_ENVIRONMENT_SHORT
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: CLOUDO_ENVIRONMENT_SHORT
+            - name: FEATURE_DEV
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: FEATURE_DEV
+            - name: GITHUB_REPO
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: GITHUB_REPO
+            - name: GITHUB_BRANCH
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: GITHUB_BRANCH
+            - name: GITHUB_PATH_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: GITHUB_PATH_PREFIX
+            - name: LOGS_BLOB_CONTAINER
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: LOGS_BLOB_CONTAINER
+            - name: AKS_INTEGRATION_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: AKS_INTEGRATION_ENABLED
+            - name: WEBSITES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: WEBSITES_PORT
+            - name: FASTAPI_QUEUE_CONCURRENCY
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: FASTAPI_QUEUE_CONCURRENCY
+            - name: FASTAPI_QUEUE_BATCH_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: FASTAPI_QUEUE_BATCH_SIZE
+            - name: FASTAPI_QUEUE_VISIBILITY_TIMEOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-config
+                  key: FASTAPI_QUEUE_VISIBILITY_TIMEOUT
+            - name: QUEUE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-worker-{{ .name }}-config
+                  key: QUEUE_NAME
+            - name: WORKER_CAPABILITY
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-worker-{{ .name }}-config
+                  key: WORKER_CAPABILITY
+            - name: WEBSITE_SITE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-worker-{{ .name }}-config
+                  key: WEBSITE_SITE_NAME
+            - name: ORCHESTRATOR_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-worker-{{ .name }}-config
+                  key: ORCHESTRATOR_URL
+            - name: RECEIVER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: cloudo-worker-{{ .name }}-config
+                  key: RECEIVER_URL
+          readinessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+{{- end }}

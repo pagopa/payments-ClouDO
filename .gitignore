@@ -209,7 +209,6 @@ zsdoc/data
 !/tests/_output/.gitkeep
 
 # Azurite
-*azurite*
 __blobstorage__
 __queuestorage__
 

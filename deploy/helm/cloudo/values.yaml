@@ -1,0 +1,229 @@
+# -- Kubernetes namespace to deploy into.
+global:
+  namespace: cloudo
+  # -- Set to false if the namespace is managed externally.
+  createNamespace: true
+
+# ---------------------------------------------------------------------------
+# Container image
+# ---------------------------------------------------------------------------
+image:
+  registry: ghcr.io/pagopa
+  tag: "0.0.0"
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets for private registries.
+# @example:
+#   imagePullSecrets:
+#     - name: my-registry-secret
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ---------------------------------------------------------------------------
+# Service Account
+# ---------------------------------------------------------------------------
+serviceAccount:
+  # -- Create a dedicated ServiceAccount for all Cloudo pods.
+  create: true
+  # -- Name of the ServiceAccount. Auto-generated from the release name when empty.
+  name: ""
+  # -- Annotations added to the ServiceAccount.
+  # Use this for AKS Workload Identity (passwordless auth to Azure Storage):
+  #   azure.workload.identity/client-id: "<managed-identity-client-id>"
+  annotations: {}
+
+# ---------------------------------------------------------------------------
+# Secrets
+# ---------------------------------------------------------------------------
+# -- Name of an existing Secret to use instead of creating one.
+# The Secret must contain all the same keys as the generated one (see secret.yaml).
+# Useful for Key Vault CSI provider, External Secrets Operator, Sealed Secrets, etc.
+existingSecretName: ""
+
+secrets:
+  # -- Azure Storage connection string.
+  # Azure Storage Account:
+  #   "DefaultEndpointsProtocol=https;AccountName=<name>;AccountKey=<key>;EndpointSuffix=core.windows.net"
+  # Local Azurite emulator: set automatically via values-dev.yaml.
+  # Ignored when existingSecretName is set.
+  azureWebJobsStorage: ""
+  # -- Internal API key shared between orchestrator and workers (auto-generated in prod).
+  cloudoSecretKey: ""
+  sessionSecret: ""
+  approvalSecret: ""
+  slackTokenDefault: ""
+  slackChannelDefault: "#cloudo"
+  jsmApiKeyDefault: ""
+  githubToken: ""
+  googleClientId: ""
+  functionKey: ""
+
+# ---------------------------------------------------------------------------
+# Application config
+# ---------------------------------------------------------------------------
+config:
+  apiPrefix: "/api"
+  environment: "prod"
+  environmentShort: "p"
+  featureDev: "false"
+  githubRepo: "pagopa/payments-cloudo"
+  githubBranch: "main"
+  githubPathPrefix: "src/runbooks"
+  logsBlobContainer: "runbook-logs"
+  websitesPort: "80"
+  aksIntegrationEnabled: "true"
+
+# ---------------------------------------------------------------------------
+# FastAPI / queue tuning
+# ---------------------------------------------------------------------------
+fastapi:
+  notification:
+    concurrency: "4"
+    batchSize: "4"
+    visibilityTimeout: "300"
+  queue:
+    concurrency: "4"
+    batchSize: "4"
+    visibilityTimeout: "3600"
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
+orchestrator:
+  replicas: 1
+  # -- In-cluster base URL used by workers to reach the orchestrator.
+  serviceUrl: "http://orchestrator"
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Workers
+# Each entry: name, capability, queue, replicas, hpa, resources
+# ---------------------------------------------------------------------------
+workers:
+  - name: local
+    capability: local
+    queue: local
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 5
+      cpuUtilization: 70
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+  - name: alert
+    capability: alert
+    queue: alert
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 5
+      cpuUtilization: 70
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+# -- Defaults applied to all workers (can be overridden at the worker level).
+workerDefaults:
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# UI
+# ---------------------------------------------------------------------------
+ui:
+  replicas: 1
+  # -- URL used by the UI server to call the orchestrator API (in-cluster).
+  apiUrl: "http://orchestrator/api"
+  # -- Base URL used by the UI server to reach the orchestrator (in-cluster).
+  orchestratorUrl: "http://orchestrator"
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  # -- Extra annotations for the Ingress resource.
+  # @example:
+  #   annotations:
+  #     cert-manager.io/cluster-issuer: letsencrypt-prod
+  #     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+  annotations: {}
+  host: cloudo.example.internal
+  tls:
+    enabled: false
+    secretName: ""
+
+# ---------------------------------------------------------------------------
+# Bootstrap job — creates tables, queues, blob container and admin user
+# ---------------------------------------------------------------------------
+bootstrap:
+  # -- Set to false to skip the bootstrap job (e.g. re-installs where infra already exists).
+  enabled: true
+  adminPassword: "admin"
+  adminEmail: "admin@cloudo.local"
+
+# ---------------------------------------------------------------------------
+# Azurite — in-cluster Azure Storage emulator (dev/test only)
+# ---------------------------------------------------------------------------
+azurite:
+  # -- Enable Azurite. Do NOT use in production; use a real Azure Storage Account instead.
+  enabled: false
+  image: mcr.microsoft.com/azure-storage/azurite:latest
+  # -- Skip API version checks so newer SDK clients work against an older Azurite build.
+  skipApiVersionCheck: true
+  persistence:
+    # -- Use a PersistentVolumeClaim to retain data across pod restarts.
+    enabled: true
+    existingClaim: ""
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

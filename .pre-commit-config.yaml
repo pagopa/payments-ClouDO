@@ -34,6 +34,8 @@ repos:
     hooks:
       - id: check-merge-conflict
       - id: check-yaml
+        args: ["--allow-multiple-documents"]
+        exclude: ^deploy/helm/.*/templates/.*\.ya?ml$
       - id: check-toml
       - id: check-json
       - id: end-of-file-fixer

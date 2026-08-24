@@ -287,33 +287,6 @@ function LogsPanelContent() {
     return "border-cloudo-muted/60 text-cloudo-muted bg-cloudo-muted/5";
   };
 
-  const formatLogContent = (content: string) => {
-    if (!content)
-      return (
-        <span className="italic text-cloudo-muted opacity-20">
-          No log data available
-        </span>
-      );
-    return content.split("\n").map((line, i) => {
-      let color = "text-cloudo-text/80";
-      if (
-        line.toUpperCase().includes("ERROR") ||
-        line.toUpperCase().includes("EXCEPTION")
-      )
-        color = "text-red-600";
-      if (line.toUpperCase().includes("WARN")) color = "text-yellow-600";
-      if (line.toUpperCase().includes("INFO")) color = "text-blue-600";
-      return (
-        <div
-          key={i}
-          className={`${color} font-mono text-xs leading-relaxed py-1 border-b border-white/2 break-all`}
-        >
-          {line}
-        </div>
-      );
-    });
-  };
-
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -422,8 +395,8 @@ function LogsPanelContent() {
         }}
       >
         {/* Filters Card */}
-        <div className="bg-cloudo-panel border border-cloudo-border shadow-none overflow-hidden">
-          <div className="px-4 sm:px-6 py-4 border-b border-cloudo-border flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between bg-cloudo-panel-2">
+        <div className="bg-cloudo-panel/40 border border-cloudo-border/80 overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-cloudo-border/80 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
             <div className="flex items-start sm:items-center gap-3 min-w-0">
               <HiOutlineDatabase className="text-cloudo-accent w-5 h-5 shrink-0 mt-0.5 sm:mt-0" />
               <div className="min-w-0">
@@ -437,22 +410,22 @@ function LogsPanelContent() {
             </div>
             <button
               onClick={handleReset}
-              className="self-start sm:self-auto text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-cloudo-muted hover:text-cloudo-text transition-colors border border-cloudo-border px-3 py-1.5 bg-cloudo-dark/30"
+              className="self-start sm:self-auto text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-cloudo-muted hover:text-cloudo-text transition-colors border border-cloudo-border/80 px-3 py-1.5 bg-cloudo-dark/20 hover:border-cloudo-accent/30"
             >
               Reset filters
             </button>
           </div>
 
-          <div className="p-4 sm:p-6 bg-cloudo-dark/20">
-            <div className="flex flex-col xl:flex-row xl:flex-wrap gap-4 sm:gap-5 items-stretch xl:items-end">
-              <div className="space-y-2 w-full xl:flex-[2_1_340px] min-w-0">
-                <div className="flex items-center justify-between ml-1">
-                  <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted block">
+          <div className="p-4 sm:p-6 bg-cloudo-dark/10">
+            <div className="flex flex-col xl:flex-row xl:flex-wrap gap-3.5 sm:gap-4 items-stretch xl:items-end">
+              <div className="space-y-2 w-full xl:flex-[2_1_340px] min-w-0 px-0.5 py-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black uppercase tracking-[0.22em] text-cloudo-muted block">
                     Telemetry_Date
                   </label>
                   <button
                     onClick={setTodayDate}
-                    className="text-[9px] font-black uppercase tracking-tighter text-cloudo-accent hover:text-white transition-colors"
+                    className="text-[9px] font-black uppercase tracking-widest text-cloudo-accent hover:text-white transition-colors"
                   >
                     [ GO_TODAY ]
                   </button>
@@ -464,7 +437,7 @@ function LogsPanelContent() {
                         handleDateChange(dateValue.subtract({ days: 1 }));
                       }
                     }}
-                    className="h-10 w-10 sm:h-11 sm:w-11 flex items-center justify-center border border-cloudo-border text-cloudo-muted hover:text-cloudo-accent hover:border-cloudo-accent/40 transition-all bg-cloudo-dark/30 shrink-0"
+                    className="h-10 w-10 sm:h-11 sm:w-11 flex items-center justify-center border border-cloudo-border/70 text-cloudo-muted hover:text-cloudo-accent hover:border-cloudo-accent/40 transition-all bg-cloudo-dark/20 shrink-0"
                     title="Previous Day"
                   >
                     <HiOutlineChevronLeft className="w-3 h-3" />
@@ -473,7 +446,7 @@ function LogsPanelContent() {
                     <HiOutlineCalendar className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                     <input
                       type="date"
-                      className="input input-icon pl-10 relative bg-transparent border border-cloudo-border text-cloudo-text w-full py-2 px-3 leading-tight focus:outline-none focus:border-cloudo-accent transition-colors block text-xs font-bold"
+                      className="input input-icon pl-10 relative bg-cloudo-dark/20 border border-cloudo-border/70 text-cloudo-text w-full py-2 px-3 leading-tight focus:outline-none focus:border-cloudo-accent transition-colors block text-xs font-bold"
                       value={dateValue ? dateValue.toString() : ""}
                       onChange={(e) =>
                         handleDateChange(
@@ -490,7 +463,7 @@ function LogsPanelContent() {
                         handleDateChange(dateValue.add({ days: 1 }));
                       }
                     }}
-                    className="h-10 w-10 sm:h-11 sm:w-11 flex items-center justify-center border border-cloudo-border text-cloudo-muted hover:text-cloudo-accent hover:border-cloudo-accent/40 transition-all bg-cloudo-dark/30 shrink-0"
+                    className="h-10 w-10 sm:h-11 sm:w-11 flex items-center justify-center border border-cloudo-border/70 text-cloudo-muted hover:text-cloudo-accent hover:border-cloudo-accent/40 transition-all bg-cloudo-dark/20 shrink-0"
                     title="Next Day"
                   >
                     <HiOutlineChevronRight className="w-3 h-3" />
@@ -498,14 +471,14 @@ function LogsPanelContent() {
                 </div>
               </div>
 
-              <div className="space-y-2 w-full sm:w-[calc(50%-0.625rem)] xl:flex-[1_1_190px] min-w-0">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+              <div className="space-y-2 w-full sm:w-[calc(50%-0.625rem)] xl:flex-[1_1_190px] min-w-0 px-0.5 py-1">
+                <label className="text-[10px] font-black uppercase tracking-[0.22em] text-cloudo-muted block">
                   State
                 </label>
                 <div className="relative group">
                   <HiOutlineTag className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <select
-                    className="input input-icon pl-10 appearance-none relative w-full"
+                    className="input input-icon pl-10 pr-8 appearance-none relative w-full bg-cloudo-dark/20 border border-cloudo-border/70 focus:border-cloudo-accent"
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -522,15 +495,15 @@ function LogsPanelContent() {
                 </div>
               </div>
 
-              <div className="space-y-2 w-full sm:w-[calc(50%-0.625rem)] xl:flex-[1_1_230px] min-w-0">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+              <div className="space-y-2 w-full sm:w-[calc(50%-0.625rem)] xl:flex-[1_1_230px] min-w-0 px-0.5 py-1">
+                <label className="text-[10px] font-black uppercase tracking-[0.22em] text-cloudo-muted block">
                   Exec_ID
                 </label>
                 <div className="relative group">
                   <HiOutlineFingerPrint className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
-                    className="input input-icon pl-10 pr-10 relative w-full"
+                    className="input input-icon pl-10 pr-10 relative w-full bg-cloudo-dark/20 border border-cloudo-border/70 focus:border-cloudo-accent"
                     placeholder="Execution ID..."
                     value={execId}
                     onChange={(e) => setExecId(e.target.value)}
@@ -547,15 +520,15 @@ function LogsPanelContent() {
                 </div>
               </div>
 
-              <div className="space-y-2 w-full xl:flex-[2_1_340px] min-w-0">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+              <div className="space-y-2 w-full xl:flex-[2_1_340px] min-w-0 px-0.5 py-1">
+                <label className="text-[10px] font-black uppercase tracking-[0.22em] text-cloudo-muted block">
                   Search_Term
                 </label>
                 <div className="relative group">
                   <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="text"
-                    className="input input-icon pl-10 pr-10 relative w-full"
+                    className="input input-icon pl-10 pr-10 relative w-full bg-cloudo-dark/20 border border-cloudo-border/70 focus:border-cloudo-accent"
                     placeholder="Keywords in logs..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
@@ -572,15 +545,15 @@ function LogsPanelContent() {
                 </div>
               </div>
 
-              <div className="space-y-2 w-full sm:w-[calc(50%-0.625rem)] xl:flex-[1_1_130px] min-w-0">
-                <label className="text-[11px] font-black uppercase tracking-widest text-cloudo-muted ml-1 block">
+              <div className="space-y-2 w-full sm:w-[calc(50%-0.625rem)] xl:flex-[1_1_130px] min-w-0 px-0.5 py-1">
+                <label className="text-[10px] font-black uppercase tracking-[0.22em] text-cloudo-muted block">
                   Limit
                 </label>
                 <div className="relative group">
                   <HiOutlineDatabase className="absolute left-3 top-1/2 -translate-y-1/2 text-cloudo-muted/70 w-4 h-4 group-focus-within:text-cloudo-accent transition-colors pointer-events-none z-10" />
                   <input
                     type="number"
-                    className="input input-icon pl-10 relative w-full"
+                    className="input input-icon pl-10 relative w-full bg-cloudo-dark/20 border border-cloudo-border/70 focus:border-cloudo-accent"
                     placeholder="200"
                     value={limit}
                     onChange={(e) => setLimit(e.target.value)}
@@ -589,7 +562,7 @@ function LogsPanelContent() {
                 </div>
               </div>
 
-              <div className="w-full sm:w-[calc(50%-0.625rem)] xl:flex-[1_1_220px] h-10 sm:h-11 xl:h-12 flex flex-col justify-end">
+              <div className="w-full sm:w-[calc(50%-0.625rem)] xl:flex-[1_1_220px] h-10 sm:h-11 xl:h-12 flex flex-col justify-end px-0.5 py-1">
                 <button
                   onClick={() => runQuery()}
                   disabled={loading}
@@ -621,33 +594,33 @@ function LogsPanelContent() {
           )}
           <div className="overflow-x-auto overflow-y-auto custom-scrollbar">
             {/* Desktop Table View */}
-            <table className="hidden md:table w-full text-xs border-collapse min-w-190 xl:min-w-200">
-              <thead className="bg-cloudo-panel-2 sticky top-0 z-10 border-b border-cloudo-border">
+            <table className="hidden md:table w-full text-xs border-separate border-spacing-0 min-w-190 xl:min-w-200">
+              <thead className="bg-cloudo-panel-2/95 sticky top-0 z-10 border-b border-cloudo-border backdrop-blur-sm">
                 <tr className="text-[10px] font-black text-cloudo-muted uppercase tracking-[0.3em]">
-                  <th className="px-3 lg:px-4 py-3.5 text-left min-w-28">
+                  <th className="px-4 lg:px-5 py-3.5 text-left min-w-28">
                     Timestamp
                   </th>
-                  <th className="px-3 lg:px-4 py-3.5 text-center w-14">
+                  <th className="px-4 lg:px-5 py-3.5 text-center w-32">
                     State
                   </th>
-                  <th className="px-3 lg:px-4 py-3.5 text-left min-w-42">
+                  <th className="px-4 lg:px-5 py-3.5 text-left min-w-42">
                     Process_Context
                   </th>
-                  <th className="px-3 lg:px-4 py-3.5 text-left min-w-30">
+                  <th className="px-4 lg:px-5 py-3.5 text-left min-w-30">
                     Asset_ID
                   </th>
-                  <th className="hidden lg:table-cell px-3 lg:px-4 py-3.5 text-left min-w-45">
+                  <th className="hidden lg:table-cell px-4 lg:px-5 py-3.5 text-left min-w-45">
                     Execution_Details
                   </th>
-                  <th className="hidden xl:table-cell px-3 lg:px-4 py-3.5 text-left min-w-25">
+                  <th className="hidden xl:table-cell px-4 lg:px-5 py-3.5 text-left min-w-25">
                     Worker
                   </th>
-                  <th className="hidden xl:table-cell px-3 lg:px-4 py-3.5 text-center w-10">
+                  <th className="hidden xl:table-cell px-4 lg:px-5 py-3.5 text-center w-16">
                     On Call
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-cloudo-border/50">
+              <tbody className="divide-y divide-cloudo-border/40">
                 {logs.map((log) => (
                   <tr
                     key={log.ExecId}
@@ -657,8 +630,8 @@ function LogsPanelContent() {
                     }}
                     className={`group cursor-pointer transition-all duration-200 border-l-2 hover:z-20 hover:shadow-xl ${
                       selectedLog?.ExecId === log.ExecId
-                        ? "bg-cloudo-accent/10 border-cloudo-accent"
-                        : "border-transparent hover:bg-white/3 odd:bg-white/1"
+                        ? "bg-cloudo-accent/12 border-cloudo-accent shadow-[inset_0_0_0_1px_rgba(66,153,225,0.25)]"
+                        : "border-transparent hover:bg-cloudo-panel-2/40 odd:bg-white/[0.015]"
                     } ${
                       log.Status?.toLowerCase() === "failed" ||
                       log.Status?.toLowerCase() === "error"
@@ -668,7 +641,7 @@ function LogsPanelContent() {
                           : "hover:border-cloudo-muted/30"
                     }`}
                   >
-                    <td className="px-3 lg:px-4 py-3.5 whitespace-nowrap">
+                    <td className="px-4 lg:px-5 py-3.5 whitespace-nowrap">
                       <div className="text-cloudo-text font-bold text-[11px]">
                         {log.RequestedAt?.split("T")[1]?.slice(0, 8)}
                       </div>
@@ -676,12 +649,18 @@ function LogsPanelContent() {
                         {log.RequestedAt?.split("T")[0]}
                       </div>
                     </td>
-                    <td className="px-3 lg:px-4 py-3.5">
-                      <div className="flex justify-center" title={log.Status}>
+                    <td className="px-4 lg:px-5 py-3.5">
+                      <div
+                        className={`inline-flex items-center justify-center gap-1.5 w-full rounded-sm border px-2 py-1 text-[9px] font-black uppercase tracking-wider ${getStatusBadgeClass(
+                          log.Status,
+                        )}`}
+                        title={log.Status}
+                      >
                         {getStatusIcon(log.Status)}
+                        <span>{log.Status || "unknown"}</span>
                       </div>
                     </td>
-                    <td className="px-3 lg:px-4 py-3.5">
+                    <td className="px-4 lg:px-5 py-3.5">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
                           <div className="text-cloudo-text font-bold uppercase tracking-widest">
@@ -693,7 +672,7 @@ function LogsPanelContent() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 lg:px-4 py-3.5">
+                    <td className="px-4 lg:px-5 py-3.5">
                       <div className="flex flex-col gap-0.5 group/cell">
                         <div className="text-[11px] font-black text-cloudo-accent/80 truncate max-w-60 font-mono transition-all">
                           {log.Id || "SYSTEM"}
@@ -716,7 +695,7 @@ function LogsPanelContent() {
                         )}
                       </div>
                     </td>
-                    <td className="hidden lg:table-cell px-3 lg:px-4 py-3.5">
+                    <td className="hidden lg:table-cell px-4 lg:px-5 py-3.5">
                       <div className="flex flex-col gap-0.5">
                         <div className="text-[11px] font-mono text-cloudo-accent/70 uppercase tracking-widest">
                           {log.Runbook}
@@ -728,14 +707,14 @@ function LogsPanelContent() {
                         )}
                       </div>
                     </td>
-                    <td className="hidden xl:table-cell px-3 lg:px-4 py-3.5">
+                    <td className="hidden xl:table-cell px-4 lg:px-5 py-3.5">
                       <div>
                         <div className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest">
                           {log.Worker || "N/A"}
                         </div>
                       </div>
                     </td>
-                    <td className="hidden xl:table-cell px-3 lg:px-4 py-3.5 text-center">
+                    <td className="hidden xl:table-cell px-4 lg:px-5 py-3.5 text-center">
                       {(log.OnCall === true || log.OnCall === "true") && (
                         <div className="flex justify-center">
                           <div className="w-1.5 h-1.5 bg-cloudo-err animate-pulse" />
@@ -758,8 +737,8 @@ function LogsPanelContent() {
                   }}
                   className={`p-4 sm:p-5 flex flex-col gap-3 transition-all duration-200 border-l-4 ${
                     selectedLog?.ExecId === log.ExecId
-                      ? "bg-cloudo-accent/10 border-cloudo-accent"
-                      : "border-transparent hover:bg-white/3"
+                      ? "bg-cloudo-accent/12 border-cloudo-accent"
+                      : "border-transparent hover:bg-cloudo-panel-2/35"
                   }`}
                 >
                   <div className="flex justify-between items-start">
@@ -879,20 +858,27 @@ function LogsPanelContent() {
             className={`bg-cloudo-panel border border-cloudo-border flex flex-col transition-all duration-500 ease-in-out overflow-hidden shadow-2xl ${
               isExpanded
                 ? "fixed inset-4 z-60 animate-in zoom-in-95 duration-500 overflow-y-auto custom-scrollbar ring-1 ring-cloudo-accent/20"
-                : "animate-in slide-in-from-right-full duration-500 relative"
+                : "animate-in slide-in-from-right-full duration-500 relative rounded-l-md"
             }`}
             style={isExpanded ? {} : { width: `${detailWidth}px` }}
           >
-            <div className="p-6 border-b border-cloudo-border bg-cloudo-panel-2 flex justify-between items-center">
+            <div className="p-5 lg:p-6 border-b border-cloudo-border bg-linear-to-r from-cloudo-panel-2 to-cloudo-panel flex justify-between items-center gap-4">
               <div className="flex items-center gap-4">
                 <div>
                   <h3 className="text-xs font-black text-cloudo-text uppercase tracking-[0.2em]">
                     {selectedLog.Name || "Runtime Process"}
                   </h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="text-[10px] text-cloudo-muted font-mono">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <code className="text-[10px] text-cloudo-muted font-mono border border-cloudo-border px-2 py-0.5 bg-cloudo-dark/40">
                       {selectedLog.ExecId}
                     </code>
+                    <span
+                      className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 border ${getStatusBadgeClass(
+                        selectedLog.Status,
+                      )}`}
+                    >
+                      {selectedLog.Status || "unknown"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -940,22 +926,62 @@ function LogsPanelContent() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-8 space-y-8 custom-scrollbar bg-cloudo-dark/30">
-              {/* Section: Execution Timeline */}
-              <ExecutionTimeline
-                execId={selectedLog.ExecId}
-                partitionKey={selectedLog.PartitionKey}
-              />
-
-              {/* Section: Identity & Deployment */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-3 bg-cloudo-accent" />
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
-                    Process Identity & Deployment
-                  </h3>
+            <div className="flex-1 overflow-auto p-5 lg:p-6 space-y-5 custom-scrollbar bg-cloudo-dark/35">
+              <div className="border border-cloudo-border bg-cloudo-dark/40 p-4 space-y-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                  Execution Snapshot
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+                  <div
+                    className={`px-3 py-2 border text-[10px] font-black uppercase tracking-widest ${getStatusBadgeClass(
+                      selectedLog.Status,
+                    )}`}
+                  >
+                    {selectedLog.Status || "unknown"}
+                  </div>
+                  <div className="px-3 py-2 border border-cloudo-border text-[10px] font-black uppercase tracking-widest text-cloudo-muted">
+                    Worker:{" "}
+                    <span className="text-cloudo-text">
+                      {selectedLog.Worker || "N/A"}
+                    </span>
+                  </div>
+                  <div className="px-3 py-2 border border-cloudo-border text-[10px] font-black uppercase tracking-widest text-cloudo-muted">
+                    On Call:{" "}
+                    <span
+                      className={
+                        selectedLog.OnCall === true ||
+                        selectedLog.OnCall === "true"
+                          ? "text-cloudo-err"
+                          : "text-cloudo-text"
+                      }
+                    >
+                      {selectedLog.OnCall === true ||
+                      selectedLog.OnCall === "true"
+                        ? "ACTIVE"
+                        : "INACTIVE"}
+                    </span>
+                  </div>
+                  <button
+                    className="px-3 py-2 border border-cloudo-border text-[10px] font-black uppercase tracking-widest text-cloudo-accent hover:border-cloudo-accent/40 transition-colors text-left"
+                    onClick={() => copyToClipboard(selectedLog.ExecId)}
+                  >
+                    {copied ? "ID COPIED" : "COPY EXEC ID"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="border border-cloudo-border bg-cloudo-dark/40 p-4">
+                <ExecutionTimeline
+                  execId={selectedLog.ExecId}
+                  partitionKey={selectedLog.PartitionKey}
+                />
+              </div>
+
+              <div className="border border-cloudo-border bg-cloudo-dark/40 p-4 space-y-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                  Process Identity
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <DetailItem
                     label="Asset_Path"
                     value={selectedLog.Runbook}
@@ -966,53 +992,6 @@ function LogsPanelContent() {
                     value={selectedLog.Initiator || "SYSTEM"}
                     icon={<HiOutlineTag />}
                   />
-                  <div className="bg-cloudo-accent/5 border border-cloudo-border p-3 space-y-2 overflow-hidden">
-                    <div className="flex items-center gap-2 text-cloudo-muted/60">
-                      <HiExclamationCircle className="text-sm" />
-                      <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-                        Severity
-                      </span>
-                    </div>
-                    <div
-                      className={`text-[9px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-sm border inline-flex items-center gap-1.5 w-fit ${
-                        getSeverityStyles(selectedLog.Severity || "INFO").bg
-                      } ${
-                        getSeverityStyles(selectedLog.Severity || "INFO").border
-                      } ${
-                        getSeverityStyles(selectedLog.Severity || "INFO").text
-                      }`}
-                    >
-                      <span
-                        className={`w-1 h-1 rounded-full animate-pulse ${
-                          getSeverityStyles(selectedLog.Severity || "INFO").dot
-                        }`}
-                      />
-                      {selectedLog.Severity || "MANUAL"}
-                    </div>
-                  </div>
-                  <div className="bg-cloudo-accent/5 border border-cloudo-border p-3 space-y-2 overflow-hidden">
-                    <div className="flex items-center gap-2 text-cloudo-muted/60">
-                      <HiClock className="text-sm" />
-                      <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-                        On Call
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 h-4">
-                      {selectedLog.OnCall === true ||
-                      selectedLog.OnCall === "true" ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 bg-cloudo-err animate-pulse" />
-                          <span className="text-[10px] font-black text-cloudo-err uppercase tracking-widest">
-                            Active
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest opacity-30">
-                          Inactive
-                        </span>
-                      )}
-                    </div>
-                  </div>
                   <DetailItem
                     label="Node"
                     value={selectedLog.Worker || "DYNAMIC"}
@@ -1026,53 +1005,15 @@ function LogsPanelContent() {
                 </div>
               </div>
 
-              {/* Section: Execution Status */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-3 bg-cloudo-accent" />
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
-                    Execution Status
-                  </h3>
+              <div className="border border-cloudo-border bg-cloudo-dark/40 p-4 space-y-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                  Runtime Arguments
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  <DetailItem
-                    label="Status"
-                    value={selectedLog.Status}
-                    icon={<HiOutlineTag />}
-                    className={`flex-col items-start space-y-1! ${getStatusBadgeClass(
-                      selectedLog.Status,
-                    )}`}
-                  />
-                  <div
-                    className="bg-cloudo-accent/5 border border-cloudo-border p-3 flex flex-col justify-center items-center gap-1 cursor-pointer hover:bg-cloudo-accent/10 transition-colors"
-                    onClick={() => copyToClipboard(selectedLog.ExecId)}
-                  >
-                    <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest block">
-                      Copy_ID
-                    </span>
-                    {copied ? (
-                      <HiOutlineClipboardCheck className="text-cloudo-ok w-3 h-3" />
-                    ) : (
-                      <HiOutlineClipboard className="w-3 h-3" />
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Section: Runtime Arguments */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-3 bg-cloudo-accent" />
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
-                    Runtime Arguments
-                  </h3>
-                </div>
-                <div className="bg-cloudo-dark/60 border border-cloudo-border p-4 font-mono text-[11px] text-cloudo-accent whitespace-pre-wrap break-all leading-relaxed">
+                <div className="bg-cloudo-dark/70 border border-cloudo-border px-4 py-3 font-mono text-[11px] text-cloudo-accent whitespace-pre-wrap break-all leading-relaxed">
                   {selectedLog.Run_Args || "EMPTY_ARGS"}
                 </div>
               </div>
 
-              {/* Section: Resource Info */}
               {(() => {
                 let info: Record<string, unknown> = {};
                 if (selectedLog.ResourceInfo) {
@@ -1081,12 +1022,10 @@ function LogsPanelContent() {
                     if (parsed && typeof parsed === "object") {
                       info = parsed as Record<string, unknown>;
                     } else {
-                      // Fallback: show raw string if JSON is not an object
                       info = { _raw: selectedLog.ResourceInfo };
                     }
                   } catch (e) {
                     console.warn("Failed to parse ResourceInfo:", e);
-                    // Ensure we still display the raw content if parsing fails
                     info = { _raw: selectedLog.ResourceInfo };
                   }
                 }
@@ -1099,14 +1038,11 @@ function LogsPanelContent() {
 
                 if (validEntries.length > 0) {
                   return (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-1 h-3 bg-cloudo-accent" />
-                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
-                          Resource Info
-                        </h3>
+                    <div className="border border-cloudo-border bg-cloudo-dark/40 p-4 space-y-3">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                        Resource Info
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="divide-y divide-cloudo-border">
                         {validEntries.map(([k, v]) => {
                           const isRaw = k === "_raw";
                           let displayValue = String(v);
@@ -1124,39 +1060,37 @@ function LogsPanelContent() {
                           return (
                             <div
                               key={k}
-                              className={`bg-cloudo-accent/5 border border-cloudo-border p-3 flex flex-col group gap-2 ${
-                                isRaw ? "md:col-span-2" : ""
+                              className={`py-2.5 ${
+                                isRaw
+                                  ? "space-y-2"
+                                  : "grid grid-cols-[8rem_1fr] gap-3 items-start"
                               }`}
                             >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest shrink-0">
-                                  {k}
-                                </span>
-                                {isRaw && (
+                              <div className="text-[10px] font-black text-cloudo-muted uppercase tracking-widest">
+                                {k}
+                              </div>
+                              {isRaw ? (
+                                <>
                                   <button
                                     onClick={() =>
                                       setIsRawExpanded(!isRawExpanded)
                                     }
-                                    className="text-[9px] font-black uppercase tracking-widest text-cloudo-accent hover:text-white transition-colors flex items-center gap-1"
+                                    className="text-[9px] font-black uppercase tracking-widest text-cloudo-accent hover:text-white transition-colors"
                                   >
-                                    <span>
-                                      {isRawExpanded
-                                        ? "[ COLLAPSE ]"
-                                        : "[ EXPAND ]"}
-                                    </span>
+                                    {isRawExpanded
+                                      ? "[ COLLAPSE ]"
+                                      : "[ EXPAND ]"}
                                   </button>
-                                )}
-                              </div>
-                              {(!isRaw || isRawExpanded) && (
-                                <span
-                                  className={`text-xs font-mono text-cloudo-text group-hover:text-cloudo-accent transition-colors break-all ${
-                                    isRaw
-                                      ? "whitespace-pre-wrap text-left"
-                                      : "text-right"
-                                  }`}
-                                >
+                                  {isRawExpanded && (
+                                    <pre className="text-xs font-mono text-cloudo-text whitespace-pre-wrap break-all">
+                                      {displayValue}
+                                    </pre>
+                                  )}
+                                </>
+                              ) : (
+                                <div className="text-xs font-mono text-cloudo-text break-all text-right">
                                   {displayValue}
-                                </span>
+                                </div>
                               )}
                             </div>
                           );
@@ -1168,14 +1102,10 @@ function LogsPanelContent() {
                 return null;
               })()}
 
-              {/* Section: Telemetry Logs */}
-              <div className="space-y-4">
+              <div className="border border-cloudo-border bg-cloudo-dark/40 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1 h-2 bg-cloudo-accent" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.2em] text-cloudo-text">
-                      Standard Output Stream
-                    </span>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+                    Standard Output Stream
                   </div>
                   <button
                     onClick={() => copyToClipboard(selectedLog.Log)}
@@ -1195,8 +1125,20 @@ function LogsPanelContent() {
                     )}
                   </button>
                 </div>
-                <div className="bg-cloudo-dark p-6 border border-cloudo-border font-mono text-xs min-h-100 overflow-x-auto">
-                  {formatLogContent(selectedLog.Log)}
+                <div className="bg-cloudo-dark/80 border border-cloudo-border overflow-hidden">
+                  <div className="px-4 py-2 border-b border-cloudo-border bg-cloudo-panel-2/70 flex items-center justify-between">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-cloudo-muted/90">
+                      {selectedLog.Log
+                        ? `${
+                            selectedLog.Log.split("\n").filter(Boolean).length
+                          } linee`
+                        : "0 linee"}
+                    </span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-cloudo-muted/60">
+                      terminal stream
+                    </span>
+                  </div>
+                  <ExecutionLogOutput content={selectedLog.Log} />
                 </div>
               </div>
             </div>
@@ -1252,17 +1194,17 @@ function ExecutionTimeline({
     }
   }, [execId, partitionKey]);
 
-  const getStatusColor = (status: string) => {
+  const getStatusTone = (status: string) => {
     const s = status.toLowerCase();
     if (s === "accepted")
-      return "bg-cloudo-accent/20 border-cloudo-accent text-cloudo-accent";
+      return "border-cloudo-accent/40 bg-cloudo-accent/8 text-cloudo-accent";
     if (s === "running")
-      return "bg-yellow-500/20 border-yellow-500/50 text-yellow-400";
+      return "border-yellow-500/40 bg-yellow-500/8 text-yellow-400";
     if (s === "succeeded" || s === "completed")
-      return "bg-cloudo-ok/20 border-cloudo-ok text-cloudo-ok";
+      return "border-cloudo-ok/40 bg-cloudo-ok/8 text-cloudo-ok";
     if (s === "failed" || s === "error")
-      return "bg-cloudo-err/20 border-cloudo-err text-cloudo-err";
-    return "bg-cloudo-muted/10 border-cloudo-muted/30 text-cloudo-muted";
+      return "border-cloudo-err/40 bg-cloudo-err/8 text-cloudo-err";
+    return "border-cloudo-border bg-cloudo-dark/40 text-cloudo-muted";
   };
 
   const getStatusIcon = (status: string) => {
@@ -1278,14 +1220,13 @@ function ExecutionTimeline({
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-1 h-3 bg-cloudo-accent" />
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
-            Execution Timeline
-          </h3>
+      <div className="space-y-3">
+        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+          Execution Timeline
         </div>
-        <div className="text-[11px] text-cloudo-muted">Loading timeline...</div>
+        <div className="border border-cloudo-border bg-cloudo-dark/55 px-3 py-2 text-[11px] text-cloudo-muted">
+          Loading timeline...
+        </div>
       </div>
     );
   }
@@ -1295,48 +1236,49 @@ function ExecutionTimeline({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <div className="w-1 h-3 bg-cloudo-accent" />
-        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
-          Execution Timeline
-        </h3>
+    <div className="space-y-3">
+      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cloudo-muted">
+        Execution Timeline
       </div>
 
-      {/* Timeline Schema */}
-      <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
+      <div className="space-y-0">
         {timelineLogs.map((log, idx) => {
+          const timestamp = log.RequestedAt || "UNKNOWN";
+          const [datePart, timePartRaw] = timestamp.split("T");
+          const timePart = timePartRaw?.slice(0, 8) || timestamp;
+
           return (
-            <div
-              key={`${log.ExecId}-${log.RowKey}`}
-              className="flex items-center gap-2 md:gap-3"
-            >
-              {/* Phase Box */}
+            <div key={`${log.ExecId}-${log.RowKey}`} className="relative pl-12">
+              {idx < timelineLogs.length - 1 && (
+                <div className="absolute left-[1.15rem] top-8 bottom-[-0.35rem] w-px bg-cloudo-border" />
+              )}
+
+              <div className="absolute left-0 top-1 flex items-center justify-center w-9 h-9 border border-cloudo-border bg-cloudo-dark/70 text-[10px] font-black text-cloudo-muted">
+                {String(idx + 1).padStart(2, "0")}
+              </div>
+
               <div
-                className={`flex flex-col items-center gap-1 p-3 md:p-4 rounded-lg border-2 transition-all hover:shadow-lg ${getStatusColor(
+                className={`mb-2 border px-3 py-2 ${getStatusTone(
                   log.Status || "",
                 )}`}
               >
-                <div className="text-2xl md:text-3xl">
-                  {getStatusIcon(log.Status || "")}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="shrink-0">
+                      {getStatusIcon(log.Status || "")}
+                    </span>
+                    <span className="text-[10px] font-black uppercase tracking-widest truncate">
+                      {log.Status || "UNKNOWN"}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-cloudo-muted whitespace-nowrap">
+                    {timePart}
+                  </span>
                 </div>
-                <div className="text-xs md:text-sm font-bold uppercase tracking-wide">
-                  {log.Status || "UNKNOWN"}
-                </div>
-                <div className="text-xs md:text-xs font-bold">
-                  {log.RequestedAt || "UNKNOWN"}
+                <div className="mt-1 text-[10px] text-cloudo-muted/80 font-mono">
+                  {datePart || timestamp}
                 </div>
               </div>
-
-              {/* Connector with Duration */}
-              {idx < timelineLogs.length - 1 && (
-                <div className="flex flex-col items-center gap-1">
-                  <div
-                    className="h-1 bg-linear-to-r from-cloudo-accent to-cloudo-accent/30 rounded-full"
-                    style={{ width: `24px` }}
-                  />
-                </div>
-              )}
             </div>
           );
         })}
@@ -1358,10 +1300,10 @@ function DetailItem({
 }) {
   return (
     <div
-      className={`bg-cloudo-accent/5 border border-cloudo-border p-3 space-y-2 overflow-hidden ${className}`}
+      className={`bg-cloudo-dark/55 border border-cloudo-border px-3 py-2 space-y-1.5 overflow-hidden hover:border-cloudo-accent/40 transition-colors ${className}`}
     >
-      <div className="flex items-center gap-2 text-cloudo-muted/60">
-        <span className="text-sm">{icon}</span>
+      <div className="flex items-center gap-2 text-cloudo-muted/70">
+        <span className="text-sm text-cloudo-accent/80">{icon}</span>
         <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
           {label}
         </span>
@@ -1372,6 +1314,48 @@ function DetailItem({
       >
         {value}
       </div>
+    </div>
+  );
+}
+
+function ExecutionLogOutput({ content }: { content: string }) {
+  if (!content) {
+    return (
+      <div className="px-5 py-8 text-center">
+        <span className="italic text-cloudo-muted opacity-30 text-xs">
+          No log data available
+        </span>
+      </div>
+    );
+  }
+
+  const lines = content.split("\n").filter((line) => line.trim() !== "");
+
+  return (
+    <div className="max-h-[26rem] overflow-auto custom-scrollbar font-mono text-xs">
+      {lines.map((line, index) => {
+        const upper = line.toUpperCase();
+        const tone =
+          upper.includes("ERROR") || upper.includes("EXCEPTION")
+            ? "text-cloudo-err"
+            : upper.includes("WARN")
+              ? "text-cloudo-warn"
+              : upper.includes("INFO")
+                ? "text-cloudo-accent"
+                : "text-cloudo-text/85";
+
+        return (
+          <div
+            key={`${index}-${line.slice(0, 12)}`}
+            className="grid grid-cols-[3.5rem_1fr] gap-3 px-4 py-1.5 border-b border-cloudo-border/40 hover:bg-cloudo-panel-2/40 transition-colors"
+          >
+            <span className="text-[10px] text-cloudo-muted/70 text-right select-none">
+              {String(index + 1).padStart(4, "0")}
+            </span>
+            <span className={`${tone} break-all leading-relaxed`}>{line}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -13,13 +13,6 @@ data "azurerm_application_insights" "this" {
 #   depends_on = [module.cloudo_orchestrator]
 # }
 
-# Random UUID for RowKey
-resource "random_uuid" "uuid" {
-  for_each = {
-    for i in local.entity_executor : i.entity.id => i
-  }
-}
-
 # Random admin password
 resource "random_password" "admin_password" {
   length           = 16

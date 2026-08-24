@@ -1,0 +1,102 @@
+{{- if and .Values.azurite.enabled .Values.azurite.persistence.enabled (not .Values.azurite.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "cloudo.fullname" . }}-azurite-data
+  namespace: {{ include "cloudo.namespace" . }}
+  labels:
+    {{- include "cloudo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: azurite
+spec:
+  accessModes:
+    {{- toYaml .Values.azurite.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.azurite.persistence.size | quote }}
+  {{- if .Values.azurite.persistence.storageClass }}
+  storageClassName: {{ .Values.azurite.persistence.storageClass | quote }}
+  {{- end }}
+---
+{{- end }}
+{{- if .Values.azurite.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azurite
+  namespace: {{ include "cloudo.namespace" . }}
+  labels:
+    {{- include "cloudo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: azurite
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azurite
+  template:
+    metadata:
+      labels:
+        app: azurite
+        {{- include "cloudo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: azurite
+    spec:
+      containers:
+        - name: azurite
+          image: {{ .Values.azurite.image }}
+          command:
+            - azurite
+            - --blobHost
+            - "0.0.0.0"
+            - --queueHost
+            - "0.0.0.0"
+            - --tableHost
+            - "0.0.0.0"
+            - --location
+            - /data
+            - --loose
+            {{- if .Values.azurite.skipApiVersionCheck }}
+            - --skipApiVersionCheck
+            {{- end }}
+          ports:
+            - containerPort: 10000
+              name: blob
+            - containerPort: 10001
+              name: queue
+            - containerPort: 10002
+              name: table
+          resources:
+            {{- toYaml .Values.azurite.resources | nindent 12 }}
+          volumeMounts:
+            - name: azurite-data
+              mountPath: /data
+      volumes:
+        - name: azurite-data
+          {{- if .Values.azurite.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-azurite-data" (include "cloudo.fullname" .)) .Values.azurite.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: azurite
+  namespace: {{ include "cloudo.namespace" . }}
+  labels:
+    {{- include "cloudo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: azurite
+spec:
+  type: ClusterIP
+  selector:
+    app: azurite
+  ports:
+    - name: blob
+      port: 10000
+      targetPort: blob
+    - name: queue
+      port: 10001
+      targetPort: queue
+    - name: table
+      port: 10002
+      targetPort: table
+{{- end }}

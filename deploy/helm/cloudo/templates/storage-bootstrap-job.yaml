@@ -1,0 +1,122 @@
+{{- if .Values.bootstrap.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cloudo-storage-bootstrap
+  namespace: {{ include "cloudo.namespace" . }}
+  labels:
+    {{- include "cloudo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bootstrap
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: cloudo-storage-bootstrap
+        {{- include "cloudo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: bootstrap
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "cloudo.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.azurite.enabled }}
+      initContainers:
+        - name: wait-for-azurite
+          image: curlimages/curl:8.6.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until [ "$(curl -s -o /dev/null -w "%{http_code}" http://azurite:10000/devstoreaccount1)" != "000" ]; do
+                echo "waiting for azurite...";
+                sleep 3;
+              done
+      {{- end }}
+      containers:
+        - name: bootstrap
+          image: python:3.11-slim
+          env:
+            - name: AzureWebJobsStorage
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cloudo.secretName" . }}
+                  key: AzureWebJobsStorage
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cloudo.secretName" . }}
+                  key: BOOTSTRAP_ADMIN_PASSWORD
+                  optional: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+              pip install --no-cache-dir azure-data-tables azure-storage-queue azure-storage-blob bcrypt >/dev/null
+              python - <<'PY'
+              import os
+              import bcrypt
+              from azure.data.tables import TableServiceClient
+              from azure.storage.queue import QueueServiceClient
+              from azure.storage.blob import BlobServiceClient
+              from azure.core.exceptions import ResourceExistsError
+
+              conn = os.environ["AzureWebJobsStorage"]
+              storage_api_version = "2023-11-03"
+              table_service = TableServiceClient.from_connection_string(conn)
+              queue_service = QueueServiceClient.from_connection_string(conn, api_version=storage_api_version)
+              blob_service = BlobServiceClient.from_connection_string(conn, api_version=storage_api_version)
+
+              tables = [
+                  "RunbookSchemas",
+                  "RunbookLogs",
+                  "WorkersRegistry",
+                  "CloudoUsers",
+                  "CloudoSettings",
+                  "CloudoAuditLogs",
+                  "CloudoSchedules",
+              ]
+              queues = ["local", "alert", "cloudo-notification"]
+
+              for name in tables:
+                  table_service.create_table_if_not_exists(name)
+                  print(f"table ok: {name}")
+
+              for name in queues:
+                  try:
+                      queue_service.create_queue(name)
+                  except ResourceExistsError:
+                      pass
+                  print(f"queue ok: {name}")
+
+              try:
+                  blob_service.create_container("runbook-logs")
+              except ResourceExistsError:
+                  pass
+              print("blob container ok: runbook-logs")
+
+              users_table = table_service.get_table_client("CloudoUsers")
+              admin_password = os.environ.get("ADMIN_PASSWORD", {{ .Values.bootstrap.adminPassword | quote }})
+              admin_email = {{ .Values.bootstrap.adminEmail | quote }}
+              hashed = bcrypt.hashpw(admin_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+              try:
+                  users_table.create_entity({
+                      "PartitionKey": "Operator",
+                      "RowKey": "admin",
+                      "password": hashed,
+                      "role": "ADMIN",
+                      "email": admin_email,
+                  })
+                  print("admin user created")
+              except ResourceExistsError:
+                  print("admin user already exists, skipping")
+              PY
+{{- end }}

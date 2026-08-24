@@ -284,22 +284,11 @@ resource "azurerm_storage_table_entity" "admin_user" {
   entity           = { password = random_password.admin_password.result, role = "ADMIN", email = "admin@cloudo.local" }
 }
 
-resource "azurerm_storage_table_entity" "schemas" {
-  for_each = {
-    for i in local.entity_executor : i.entity.id => i
-  }
+module "cloudo_seed" {
+  source = "./modules/cloudo_seed"
 
-  storage_table_id = azurerm_storage_table.runbook_schemas.id
-
-  partition_key = each.value.partition_key
-  row_key       = random_uuid.uuid[each.key].result
-
-  entity = merge(
-    each.value.entity,
-    {
-      enabled = try(tobool(lookup(each.value.entity, "enabled", true)), true)
-      group   = lookup(each.value.entity, "group", null) == null ? "-" : each.value.entity.group
-      tags    = lookup(each.value.entity, "tags", null) == null ? "terraform" : contains(split(",", each.value.entity.tags), "terraform") ? each.value.entity.tags : "${each.value.entity.tags},terraform"
-    }
-  )
+  schemas_table_id   = azurerm_storage_table.runbook_schemas.id
+  schedules_table_id = azurerm_storage_table.cloudo_schedules.id
+  schemas            = var.schemas
+  schedules          = var.schedules
 }
