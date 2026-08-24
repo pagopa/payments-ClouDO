@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cloudo-config
-data:
-  CLOUDO_ENVIRONMENT: "dev"
-  CLOUDO_ENVIRONMENT_SHORT: "d"
-  FEATURE_DEV: "true"
-  AKS_INTEGRATION_ENABLED: "false"
