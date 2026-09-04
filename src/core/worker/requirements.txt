@@ -10,6 +10,7 @@ azure-mgmt-compute
 azure-mgmt-storage
 azure-mgmt-resource
 azure-mgmt-apimanagement
+azure-mgmt-consumption
 azure-keyvault-secrets
 azure-mgmt-subscription
 azure-storage-blob
